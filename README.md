@@ -1,31 +1,33 @@
 # aex-tools
 
-Personal work tooling. Node scripts (no build step, ESM, Node >= 20.12), each runnable from PowerShell,
-or all together from one menu / a single `aex.exe`.
+Personal work tooling in Go: one `aex` binary with a menu over all tools, each also runnable
+directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
 
 ## Layout
 
-- `scripts/<name>.js` — one script per tool
-- `scripts/aex.js` — menu / dispatcher over all tools (the exe entry point). The menu is a
-  full-screen arrow-key UI (`lib/tui.js`, alternate screen) on a terminal; tools themselves run in the
-  normal screen, so their output stays in scrollback. Falls back to a numbered list with `--plain`,
-  `AEX_TUI=0`, or when stdin/stdout is not a terminal. The header shows who is logged in to AEXT
-  (`/api/auth/me`, never prompts) and the data folder.
-- `scripts/build-exe.js` — builds `dist/aex.exe`
-- `lib/` — shared helpers
-  - `paths.js` — exe detection, repo/exe folder, data folder (`--data-dir`), output paths
-  - `config.js` — `hoursPerDay()` / `tzOffsetHours()` from app settings, Jira→CSV project map, calendar
-    country, leave statuses; re-exports `paths.js`
-  - `env.js` — loads `.env`, `.env.private`, app settings (`.env.config`); auth settings list
-    (`AUTH_SETTINGS`), prompts for missing ones and saves them to app settings
-  - `dates.js` — day math and range expressions
-  - `jira.js`, `aext.js` — API clients
-  - `color.js` — ANSI colors, only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces
-  - `http.js` — on any unexpected response (status, non-JSON, wrong shape) dumps status, URL,
+- `main.go` — entry point: global args, tool list, dispatch; embeds `.env`
+- `menu.go` — menu shared parts (AEXT login header, plain numbered list, running a tool)
+- `menu_tui.go` — full-screen arrow-key menu ([Bubble Tea](https://github.com/charmbracelet/bubbletea),
+  alternate screen). Tools themselves run in the normal screen, so their output stays in scrollback.
+  Falls back to the numbered list with `--plain`, `AEX_TUI=0`, or when stdin/stdout is not a terminal.
+  The header shows who is logged in to AEXT (`/api/auth/me`, never prompts), settings and the data folder.
+- `tool_<name>.go` — one file per tool
+- `internal/`
+  - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
+    `.env.private`, app settings (`.env.config`); auth settings list, prompts for missing ones and saves
+    them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
+    leave statuses (`config.go`)
+  - `dates` — day math and range expressions
+  - `jira`, `aext` — API clients
+  - `httpx` — on any unexpected response (status, non-JSON, wrong shape) dumps status, URL,
     relevant headers (cookie values redacted) and body (capped at 300 KB) to stderr
-  - `tui.js`, `prompt.js`, `cli.js`, `csv.js`
-- `bin/<name>.ps1` — PowerShell entrypoint per script (thin wrapper over `bin/_invoke.ps1`)
-- `assets/logo.svg` — exe icon
+  - `quota` — monthly quota from AEXT working days, leaves and logged hours
+  - `ui` — ANSI colors (only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces), line
+    prompts, hidden input, key press
+- `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
+- `bin\build-exe.ps1` — builds the release `dist\aex.exe`
+- `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
+- `winres\winres.json`, `rsrc_windows_*.syso` — exe icon and version info
 
 ## Data folder
 
@@ -36,8 +38,8 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `session.txt` — AEXT session cookie (`AEXT_SESSION_FILE` overrides just this file)
 - `output\jira-export\` — generated files
 
-Change it with `--data-dir <dir>` (accepted by every script and the exe, before or after the tool name)
-or the `AEX_DATA_DIR` environment variable (real environment only). `data-folder` opens it in Explorer.
+Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
+environment variable (real environment only). `data-folder` opens it in Explorer.
 
 ## worklog-sync
 
@@ -56,13 +58,13 @@ The CSV is re-read before import, so it can be edited before confirming. After i
 
 ## quota
 
-`.\bin\quota.ps1` shows last and current month: working days (AEXT calendar, `WORKING_DAYS_COUNTRY`),
+`.\bin\quota.ps1` shows last and current month: working days (AEXT calendar, `WorkingDaysCountry`),
 expected hours (`HOURS_PER_DAY` app setting), logged, % filled, hours behind as of today, and hours/day needed
 over the remaining working days (today included).
 
 Leaves (`/api/leaves/my-requests`, fetched per calendar year) remove their working days from the quota
 and from gap detection in `worklog-sync`. `declined` and `cancelled` leaves are ignored with a warning
-(`IGNORED_LEAVE_STATUSES` in `lib/config.js`); `pending` (or any other non-`approved` status) is counted, with a warning;
+(`IgnoredLeaveStatuses` in `internal/settings/config.go`); `pending` (or any other non-`approved` status) is counted, with a warning;
 a leave created by someone other than you (by email) is also reported. Leave records are mostly
 redacted, so only ids, emails, dates, type and status are used.
 
@@ -81,6 +83,8 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 
 ## Usage
 
+Needs Go (see `go.mod`) for the scripts and builds; the built exe needs nothing.
+
 ```powershell
 .\bin\aex.ps1                  # menu: pick a tool, run it, back to the menu until q
 .\bin\aex.ps1 --plain          # numbered-list menu instead of the arrow-key UI (also AEX_TUI=0)
@@ -88,33 +92,37 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 .\bin\aex.ps1 --data-dir D:\aex-data
 .\bin\worklog-sync.ps1 --help
 # or
-npm run worklog-sync -- --help
+go run . worklog-sync --help
 ```
 
-Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
+The scripts build a dev exe into `dist\dev\` on each run (fast when nothing changed) and run it from the
+current folder. Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
 
 ## Executable
 
-`npm install`, then `npm run build:exe` builds `dist\aex.exe` (~70 MB): a Node
-[single executable application](https://nodejs.org/api/single-executable-applications.html) with node and
-all scripts inside, no Node install needed to run it. Double-click it to open a terminal with the menu,
-or run `aex.exe <tool> [args]`.
+`.\bin\build-exe.ps1` builds `dist\aex.exe` (~8 MB, no runtime needed). Double-click it to open a terminal
+with the menu, or run `aex.exe <tool> [args]`.
 
 - `.env` is embedded at build time. A `.env` or `.env.private` next to the exe is also read.
 - Everything else goes to the data folder. Run `configure` first, or missing settings are prompted for on first use.
-- Build uses the running Node for the exe; rebuild after changing scripts or `.env`.
-- Icon comes from `assets/logo.svg` (rendered to a multi-size .ico at build), version info from `package.json`.
+- Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` and
+  `.env.private` from the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads them from its own folder.
+- Icon and version info come from the committed `rsrc_windows_*.syso`. After changing `assets\logo.ico` or the
+  version in `winres\winres.json`, run `go generate` (uses [go-winres](https://github.com/tc-hib/go-winres)).
+  To re-render `logo.ico` from `logo.svg`, use any SVG renderer with sizes 16, 24, 32, 48, 64, 128, 256.
   Explorer caches icons per path, so an old icon may linger for `dist\aex.exe` until the cache refreshes.
-- `npm run build:exe -- --out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
+- `.\bin\build-exe.ps1 -Out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
   replaced then).
 
-## Adding a script
+## Adding a tool
 
-1. Create `scripts/foo.js` exporting `summary` and `async function main(argv)`, ending with
-   `if (isEntry(import.meta.url)) run(main);` (`lib/cli.js`).
-2. Add it to `TOOLS` in `scripts/aex.js`.
-3. Copy `bin/worklog-sync.ps1` to `bin/foo.ps1`, change the name.
-4. Add `"foo": "node scripts/foo.js"` to `package.json` scripts.
+1. Create `tool_foo.go` with `func foo(args []string) error`; parse args with `parseFlags` (gives `--help`).
+2. Add it to `tools` in `main.go`.
+3. Copy `bin\worklog-sync.ps1` to `bin\foo.ps1`, change the name.
+
+## Tests
+
+`go test ./...`
 
 ## Config
 
