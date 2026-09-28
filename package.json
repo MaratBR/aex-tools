@@ -9,6 +9,7 @@
   },
   "scripts": {
     "worklog-sync": "node scripts/worklog-sync.js",
-    "quota": "node scripts/quota.js"
+    "quota": "node scripts/quota.js",
+    "zip-repo": "node scripts/zip-repo.js"
   }
 }

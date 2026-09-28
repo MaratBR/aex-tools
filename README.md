@@ -43,6 +43,11 @@ and from gap detection in `worklog-sync`. `declined` and `cancelled` leaves are 
 a leave created by someone other than you (by email) is also reported. Leave records are mostly
 redacted, so only ids, emails, dates, type and status are used.
 
+## zip-repo
+
+`.\bin\zip-repo.ps1` zips the files committed at HEAD (`git archive`) into
+`output/repo-zip/<repo>-<commit>-<timestamp>.zip`. Uncommitted, staged, untracked and gitignored files are left out.
+
 ## Usage
 
 ```powershell
