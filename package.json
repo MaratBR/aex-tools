@@ -1,0 +1,14 @@
+{
+  "name": "aex-tools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal work tooling: Node scripts with PowerShell entrypoints",
+  "type": "module",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "worklog-sync": "node scripts/worklog-sync.js",
+    "quota": "node scripts/quota.js"
+  }
+}

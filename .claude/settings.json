@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env.private)",
+      "Read(**/.env.private)",
+      "Edit(./.env.private)",
+      "Edit(**/.env.private)",
+      "Bash(*.env.private*)",
+      "PowerShell(*.env.private*)",
+      "Read(./session.txt)",
+      "Edit(./session.txt)",
+      "Bash(*session.txt*)",
+      "PowerShell(*session.txt*)"
+    ]
+  }
+}
