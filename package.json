@@ -10,7 +10,6 @@
   "scripts": {
     "worklog-sync": "node scripts/worklog-sync.js",
     "quota": "node scripts/quota.js",
-    "zip-repo": "node scripts/zip-repo.js",
     "configure": "node scripts/configure.js",
     "data-folder": "node scripts/data-folder.js",
     "aex": "node scripts/aex.js",

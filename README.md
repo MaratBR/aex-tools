@@ -34,7 +34,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 
 - `.env.config` — app settings: auth settings saved by `configure` or prompts
 - `session.txt` — AEXT session cookie (`AEXT_SESSION_FILE` overrides just this file)
-- `output\jira-export\`, `output\repo-zip\` — generated files
+- `output\jira-export\` — generated files
 
 Change it with `--data-dir <dir>` (accepted by every script and the exe, before or after the tool name)
 or the `AEX_DATA_DIR` environment variable (real environment only). `data-folder` opens it in Explorer.
@@ -79,12 +79,6 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 
 `.\bin\data-folder.ps1` prints the data folder and opens it in the file manager (`--print`: only print).
 
-## zip-repo
-
-`.\bin\zip-repo.ps1` zips the files committed at HEAD (`git archive`) into
-`<data folder>\output\repo-zip\<repo>-<commit>-<timestamp>.zip`. Uncommitted, staged, untracked and
-gitignored files are left out.
-
 ## Usage
 
 ```powershell
@@ -104,7 +98,7 @@ Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
 `npm install`, then `npm run build:exe` builds `dist\aex.exe` (~70 MB): a Node
 [single executable application](https://nodejs.org/api/single-executable-applications.html) with node and
 all scripts inside, no Node install needed to run it. Double-click it to open a terminal with the menu,
-or run `aex.exe <tool> [args]`. zip-repo is left out (it needs the git checkout).
+or run `aex.exe <tool> [args]`.
 
 - `.env` is embedded at build time. A `.env` or `.env.private` next to the exe is also read.
 - Everything else goes to the data folder. Run `configure` first, or missing settings are prompted for on first use.

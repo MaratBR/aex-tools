@@ -10,15 +10,12 @@ import * as worklogSync from './worklog-sync.js';
 import * as quota from './quota.js';
 import * as configure from './configure.js';
 import * as dataFolder from './data-folder.js';
-import * as zipRepo from './zip-repo.js';
 
-// zip-repo needs the git checkout, so the exe leaves it out.
 const TOOLS = [
   { name: 'worklog-sync', ...worklogSync },
   { name: 'quota', ...quota },
   { name: 'configure', ...configure },
   { name: 'data-folder', ...dataFolder },
-  ...(isExe ? [] : [{ name: 'zip-repo', ...zipRepo }]),
 ];
 
 const HELP = `Usage: aex [--data-dir <dir>] [--plain] [<tool> [args...]]
