@@ -18,6 +18,9 @@ func (p Palette) wrap(open, close int, s string) string {
 	return fmt.Sprintf("\x1b[%dm%s\x1b[%dm", open, s, close)
 }
 
+// On reports whether this palette styles text.
+func (p Palette) On() bool { return p.on }
+
 func (p Palette) Bold(s string) string   { return p.wrap(1, 22, s) }
 func (p Palette) Dim(s string) string    { return p.wrap(2, 22, s) }
 func (p Palette) Red(s string) string    { return p.wrap(31, 39, s) }
@@ -49,5 +52,5 @@ func colorEnabled(f *os.File) bool {
 
 // Warn prints "Warning: <message>" to stderr.
 func Warn(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "%s %s\n", Err.Yellow("Warning:"), fmt.Sprintf(format, args...))
+	fmt.Fprintf(os.Stderr, "%s %s\n", Err.Bold(Err.Yellow("▲ Warning:")), fmt.Sprintf(format, args...))
 }

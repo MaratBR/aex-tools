@@ -68,7 +68,7 @@ func findTool(input string) *tool {
 }
 
 func printError(err error) {
-	fmt.Fprintf(os.Stderr, "%s %v\n", ui.Err.Red("error:"), err)
+	fmt.Fprintf(os.Stderr, "%s %v\n", ui.Err.Bold(ui.Err.Red("✖ error:")), err)
 }
 
 func main() {
@@ -89,6 +89,7 @@ func main() {
 func run(args []string) error {
 	plain := len(args) > 0 && args[0] == "--plain"
 	if plain {
+		ui.Plain = true
 		args = args[1:]
 	}
 	if len(args) == 0 {

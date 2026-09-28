@@ -28,13 +28,13 @@ func worklogSyncHelp() string {
 Exports your Jira worklogs for a date range to <data folder>/output/jira-export/<timestamp>.csv,
 then offers to send the CSV to AEXT.
 
-By default the range is suggested from AEXT: first working day of this month with no hours
-logged, through today. Decline (or pass --manual) to type a range instead.
+Without --range, a picker offers: a range suggested from AEXT (first working day of this
+month with no hours logged, through today), common ranges, or typing one.
 
   --range   Range expression, skips all range prompts. Examples:
             today, yesterday, this week, last week, this month, last month,
             2026.09.20, 26.09.20, 09.20, 09.20-09.30
-  --manual  Skip AEXT, ask for the range
+  --manual  Leave the AEXT suggestion out of the picker
 
 Dates are in %s (TZ_OFFSET_HOURS app setting, see configure).`, dates.TZLabel())
 }
@@ -45,17 +45,37 @@ func askRange(now string) (dates.Range, error) {
 	if err := ui.AssertInteractive("Asking for a range"); err != nil {
 		return dates.Range{}, err
 	}
-	for {
-		input, err := ui.Ask("Range (e.g. today, this week, 09.20, 09.20-09.30): ")
-		if err != nil {
-			return dates.Range{}, err
-		}
-		r, err := dates.ParseRange(input, now)
-		if err == nil {
-			return r, nil
-		}
-		fmt.Fprintln(os.Stderr, ui.Err.Red(err.Error()))
+	input, err := ui.Input(ui.Field{
+		Title:       "Range",
+		Description: "today, yesterday, this week, last week, this month, last month,\n2026.09.20, 09.20, 09.20-09.30",
+		Placeholder: "09.20-09.30",
+		Validate: func(s string) error {
+			_, err := dates.ParseRange(s, now)
+			return err
+		},
+	})
+	if err != nil {
+		return dates.Range{}, err
 	}
+	return dates.ParseRange(input, now)
+}
+
+// Ranges offered in the range picker, besides AEXT and typing one.
+var rangePresets = []string{"today", "yesterday", "this week", "last week", "this month", "last month"}
+
+// chooseRange asks for a range from a list: AEXT suggestion (unless manual), presets, or typed.
+// Returns "aext" or "other" for those, else a range expression.
+func chooseRange(now string, manual bool) (string, error) {
+	var options []ui.Option
+	if !manual {
+		options = append(options, ui.Option{Label: "Suggest from AEXT (first day without hours)", Value: "aext"})
+	}
+	for _, p := range rangePresets {
+		r, _ := dates.ParseRange(p, now)
+		options = append(options, ui.Option{Label: fmt.Sprintf("%-11s %s", strings.ToUpper(p[:1])+p[1:], r), Value: p})
+	}
+	options = append(options, ui.Option{Label: "Other…", Value: "other"})
+	return ui.Choose("Range", options)
 }
 
 func emptyWorkingDays(from, to string, d *quota.Data) []string {
@@ -145,28 +165,30 @@ func resolveRange(rangeExpr string, manual bool, now string, client func() (*aex
 	if rangeExpr != "" {
 		return dates.ParseRange(rangeExpr, now)
 	}
-	if !manual {
-		if err := ui.AssertInteractive("Choosing a range"); err != nil {
-			return dates.Range{}, err
-		}
-		yes, err := ui.Confirm("Determine range from AEXT?", true)
+	if err := ui.AssertInteractive("Choosing a range"); err != nil {
+		return dates.Range{}, err
+	}
+	choice, err := chooseRange(now, manual)
+	if err != nil {
+		return dates.Range{}, err
+	}
+	switch choice {
+	case "other":
+	case "aext":
+		c, err := client()
 		if err != nil {
 			return dates.Range{}, err
 		}
-		if yes {
-			c, err := client()
-			if err != nil {
-				return dates.Range{}, err
-			}
-			r, err := rangeFromAEXT(c, now)
-			if err != nil {
-				return dates.Range{}, err
-			}
-			if r != nil {
-				return *r, nil
-			}
-			fmt.Println("Nothing to import per AEXT, enter a range manually.")
+		r, err := rangeFromAEXT(c, now)
+		if err != nil {
+			return dates.Range{}, err
 		}
+		if r != nil {
+			return *r, nil
+		}
+		fmt.Println("Nothing to import per AEXT, enter a range manually.")
+	default:
+		return dates.ParseRange(choice, now)
 	}
 	return askRange(now)
 }
@@ -319,7 +341,7 @@ func worklogSync(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(quota.Format(now, data))
+	fmt.Println(quota.Format(now, data, false))
 	return nil
 }
 

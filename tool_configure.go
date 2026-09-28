@@ -56,38 +56,38 @@ func configure(args []string) error {
 		fallbacks := layers[:len(layers)-1]
 		_, inAppSettings := layers[len(layers)-1].Vars[s.Name]
 		current := settings.Get(s.Name)
-		fmt.Printf("%s %s\n", out.Bold(s.Name), out.Dim("- "+s.Hint))
+		shown := "not set"
 		if current != "" {
-			shown := current
+			shown = current
 			if s.Secret {
 				shown = mask(current)
 			}
-			fmt.Println(out.Dim("  current: " + shown))
 		}
-
-		removeLabel := "- = remove"
+		removeLabel := `"-" removes it`
 		if s.Default != "" {
-			removeLabel = "- = reset to " + s.Default
+			removeLabel = `"-" resets to ` + s.Default
 		}
-		read := ui.Ask
-		if s.Secret {
-			read = ui.PromptSecret
+		placeholder := "empty keeps current"
+		if current != "" && !s.Secret {
+			placeholder = current
 		}
-		var input string
-		for {
-			var err error
-			if input, err = read(fmt.Sprintf("  new value (empty = keep, %s): ", removeLabel)); err != nil {
-				return err
-			}
-			input = strings.TrimSpace(input)
-			problem := ""
-			if input != "" && input != "-" {
-				problem = settings.Problem(s.Name, input)
-			}
-			if problem == "" {
-				break
-			}
-			fmt.Fprintln(os.Stderr, "  "+ui.Err.Red(problem))
+		input, err := ui.Input(ui.Field{
+			Title:       s.Name,
+			Description: fmt.Sprintf("%s\nCurrent: %s · empty keeps it, %s", s.Hint, shown, removeLabel),
+			Placeholder: placeholder,
+			Secret:      s.Secret,
+			Validate: func(v string) error {
+				if v == "" || v == "-" {
+					return nil
+				}
+				if problem := settings.Problem(s.Name, v); problem != "" {
+					return errors.New(problem)
+				}
+				return nil
+			},
+		})
+		if err != nil {
+			return err
 		}
 		if input == "-" && s.Default != "" {
 			input = s.Default

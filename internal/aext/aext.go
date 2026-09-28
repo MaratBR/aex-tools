@@ -90,7 +90,12 @@ func (c *Client) login() (string, error) {
 		return "", err
 	}
 
-	code, err := ui.Ask(fmt.Sprintf("AEXT login code sent to %s. Code: ", email))
+	code, err := ui.Input(ui.Field{
+		Title:       "AEXT login code",
+		Description: "Sent to " + email,
+		Placeholder: "code from the email",
+		Validate:    ui.Required("code"),
+	})
 	if err != nil {
 		return "", err
 	}

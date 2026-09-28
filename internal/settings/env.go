@@ -307,18 +307,15 @@ func RequireAuth(name string) (string, error) {
 		return "", err
 	}
 
-	fmt.Fprintln(os.Stderr, ui.Err.Yellow(fmt.Sprintf("%s not set. %s. (configure sets all of these at once.)", name, def.Hint)))
-	read := ui.Ask
-	if def.Secret {
-		read = ui.PromptSecret
-	}
-	value, err := read(name + ": ")
+	fmt.Fprintln(os.Stderr, ui.Err.Yellow(name+" is not set."))
+	value, err := ui.Input(ui.Field{
+		Title:       name,
+		Description: def.Hint + ". configure sets all login settings at once.",
+		Secret:      def.Secret,
+		Validate:    ui.Required(name),
+	})
 	if err != nil {
 		return "", err
-	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("%s is required", name)
 	}
 	Set(name, value)
 

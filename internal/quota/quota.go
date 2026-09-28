@@ -3,9 +3,12 @@ package quota
 
 import (
 	"fmt"
+	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"aex/internal/aext"
 	"aex/internal/dates"
@@ -158,11 +161,15 @@ type Month struct {
 	Expected       float64
 	Logged         float64
 	Percent        float64
+	DaysDue        int // working days before today
 	ExpectedToDate float64
 	Behind         float64 // negative when ahead
 	Remaining      float64
-	DaysLeft       int
-	PerDayLeft     float64 // only when DaysLeft > 0
+	DaysLeft       int      // working days from today on
+	PerDayLeft     float64  // only when DaysLeft > 0
+	Missing        []string // working days before today without hours, sorted
+	Current        bool     // the month of now
+	Today          float64  // hours logged today, when Current
 }
 
 func ComputeMonth(month, now string, d *Data) Month {
@@ -171,8 +178,7 @@ func ComputeMonth(month, now string, d *Data) Month {
 	in := func(day string) bool { return day >= from && day <= to }
 	perDay := settings.HoursPerDay()
 
-	q := Month{Month: from[:7]}
-	daysDue := 0
+	q := Month{Month: from[:7], Current: in(now)}
 	for day := range d.WorkingDays {
 		if !in(day) {
 			continue
@@ -180,11 +186,15 @@ func ComputeMonth(month, now string, d *Data) Month {
 		q.WorkingDays++
 		// Today counts as remaining, not as already due.
 		if day < now {
-			daysDue++
+			q.DaysDue++
+			if d.HoursByDay[day] == 0 {
+				q.Missing = append(q.Missing, day)
+			}
 		} else {
 			q.DaysLeft++
 		}
 	}
+	slices.Sort(q.Missing)
 	for day := range d.LeaveDays {
 		if in(day) {
 			q.LeaveDays++
@@ -195,12 +205,15 @@ func ComputeMonth(month, now string, d *Data) Month {
 			q.Logged += h
 		}
 	}
+	if q.Current {
+		q.Today = d.HoursByDay[now]
+	}
 	q.Expected = float64(q.WorkingDays) * perDay
 	q.Percent = 100
 	if q.Expected > 0 {
 		q.Percent = q.Logged / q.Expected * 100
 	}
-	q.ExpectedToDate = float64(daysDue) * perDay
+	q.ExpectedToDate = float64(q.DaysDue) * perDay
 	q.Behind = q.ExpectedToDate - q.Logged
 	q.Remaining = max(0, q.Expected-q.Logged)
 	if q.DaysLeft > 0 {
@@ -209,53 +222,162 @@ func ComputeMonth(month, now string, d *Data) Month {
 	return q
 }
 
-func h(n float64) string { return fmt.Sprintf("%.2fh", n) }
+// Differences below this are rounding, not hours to log.
+const epsilon = 0.05
 
-// Format renders last month and the month of now, styled for stdout.
-func Format(now string, d *Data) string {
-	c := ui.Out
-	perDay := settings.HoursPerDay()
-	lines := []string{c.Bold("Quota") + c.Dim(fmt.Sprintf(" (%gh/working day, %s calendar)", perDay, settings.WorkingDaysCountry))}
-	for _, month := range []string{dates.PrevMonthStart(now), now} {
-		q := ComputeMonth(month, now, d)
-		finished := q.DaysLeft == 0
-		leave := ""
-		if q.LeaveDays > 0 {
-			leave = c.Dim(fmt.Sprintf(" (+%d on leave)", q.LeaveDays))
+// h formats hours with one decimal, dropping ".0": 8h, 7.5h.
+func h(n float64) string {
+	s := strconv.FormatFloat(math.Round(n*10)/10, 'f', 1, 64)
+	return strings.TrimSuffix(s, ".0") + "h"
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// shortDays lists days as "Mon 09.22", at most limit of them.
+func shortDays(days []string, limit int) string {
+	var parts []string
+	for i, day := range days {
+		if i == limit {
+			parts = append(parts, fmt.Sprintf("+%d more", len(days)-limit))
+			break
 		}
-		// Only a finished month's % is a verdict; mid-month it is just progress.
-		pct := fmt.Sprintf("%.1f%%", q.Percent)
+		t := dates.DayStart(day)
+		parts = append(parts, t.Format("Mon 01.02"))
+	}
+	return strings.Join(parts, ", ")
+}
+
+const (
+	barWidth  = 36
+	lineWidth = 64 // header lines: month name left, verdict right
+)
+
+// bar shows logged hours filled, and a marker where the hours due by today end.
+func bar(q Month, c ui.Palette) string {
+	if q.Expected <= 0 {
+		return ""
+	}
+	cells := func(v float64) int { return min(barWidth, int(math.Round(v/q.Expected*barWidth))) }
+	filled, due := cells(q.Logged), -1
+	if q.Current && q.DaysLeft > 0 {
+		due = cells(q.ExpectedToDate)
+	}
+	fill := c.Green
+	if q.Current && q.Behind > epsilon || !q.Current && q.Remaining > epsilon {
+		fill = c.Red
+	}
+	var b strings.Builder
+	for i := range barWidth {
 		switch {
-		case !finished:
-			pct = c.Bold(pct)
-		case q.Remaining > 0:
-			pct = c.Red(pct)
+		case i == due && i >= filled:
+			b.WriteString(c.Yellow("┃"))
+		case i < filled:
+			b.WriteString(fill("█"))
 		default:
-			pct = c.Green(pct)
+			b.WriteString(c.Dim("░"))
 		}
-		lines = append(lines, fmt.Sprintf("%s: %d working days%s, %s expected, %s logged, %s",
-			c.Bold(q.Month), q.WorkingDays, leave, h(q.Expected), h(q.Logged), pct))
-		if finished {
-			if q.Remaining > 0 {
-				lines = append(lines, "  "+c.Red(h(q.Remaining)+" short"))
-			}
-			continue
+	}
+	return b.String()
+}
+
+// header puts the month name left and the verdict right-aligned to lineWidth.
+func header(month, verdict, verdictPlain string, c ui.Palette) string {
+	name := dates.DayStart(month + "-01").Format("January 2006")
+	gap := max(2, lineWidth-utf8.RuneCountInString(name)-utf8.RuneCountInString(verdictPlain))
+	return c.Bold(name) + strings.Repeat(" ", gap) + verdict
+}
+
+func row(label, value string, c ui.Palette) string {
+	return "  " + c.Dim(fmt.Sprintf("%-14s", label)) + " " + value
+}
+
+func formatMonth(q Month, c ui.Palette) []string {
+	perDay := settings.HoursPerDay()
+	good := func(s string) (string, string) { return c.Green(c.Bold("✔ " + s)), "✔ " + s }
+	bad := func(s string) (string, string) { return c.Red(c.Bold("✖ " + s)), "✖ " + s }
+	total := fmt.Sprintf("%s / %s", h(q.Logged), h(q.Expected))
+
+	var lines []string
+	if !q.Current {
+		// Finished month: one line when complete, else what is short and where.
+		if q.Remaining <= epsilon {
+			v, p := good("complete · " + total)
+			return []string{header(q.Month, v, p, c)}
 		}
-		status := c.Green(h(-q.Behind) + " ahead")
-		if q.Behind > 0 {
-			status = c.Red(h(q.Behind) + " behind")
+		v, p := bad(h(q.Remaining) + " short")
+		lines = append(lines, header(q.Month, v, p, c),
+			bar(q, c)+"  "+total+c.Dim(fmt.Sprintf(" · %.0f%%", q.Percent)))
+		if len(q.Missing) > 0 {
+			lines = append(lines, row("Missing hours", c.Yellow(shortDays(q.Missing, 8)), c))
 		}
-		lines = append(lines, fmt.Sprintf("  By today: %s due, %s", h(q.ExpectedToDate), status))
+		return lines
+	}
+
+	var v, p string
+	switch {
+	case q.Remaining <= epsilon:
+		v, p = good("quota filled")
+	case q.Behind > epsilon:
+		v, p = bad(h(q.Behind) + " behind")
+	case q.Behind < -epsilon:
+		v, p = good("on track, " + h(-q.Behind) + " ahead")
+	default:
+		v, p = good("on track")
+	}
+	lines = append(lines, header(q.Month, v, p, c),
+		bar(q, c)+"  "+total+c.Dim(fmt.Sprintf(" · %.0f%%", q.Percent)))
+
+	lines = append(lines, row("Due by today", fmt.Sprintf("%s %s · logged %s",
+		h(q.ExpectedToDate), c.Dim(fmt.Sprintf("(%d of %d days)", q.DaysDue, q.WorkingDays)), h(q.Logged)), c))
+	if len(q.Missing) > 0 {
+		lines = append(lines, row("Missing hours", c.Yellow(shortDays(q.Missing, 8))+c.Dim("  → run worklog-sync"), c))
+	}
+	today := c.Dim("nothing logged yet")
+	if q.Today > 0 {
+		today = h(q.Today) + " logged"
+	}
+	lines = append(lines, row("Today", today, c))
+	if q.DaysLeft > 0 && q.Remaining > epsilon {
 		need := h(q.PerDayLeft) + "/day"
-		if q.PerDayLeft > perDay {
-			need = c.Yellow(need)
+		if q.PerDayLeft > perDay+epsilon {
+			need = c.Yellow(c.Bold(need))
 		} else {
 			need = c.Green(need)
 		}
-		lines = append(lines, fmt.Sprintf("  Remaining: %s over %d working day(s) incl. today -> %s", h(q.Remaining), q.DaysLeft, need))
+		lines = append(lines, row("To finish", fmt.Sprintf("%s over %s left → %s %s",
+			h(q.Remaining), plural(q.DaysLeft, "day", "days"), need, c.Dim(fmt.Sprintf("(normally %s)", h(perDay)))), c))
 	}
-	for _, w := range d.Warnings {
-		lines = append(lines, c.Yellow("Warning:")+" "+w)
+	expected := fmt.Sprintf("%s × %s = %s", plural(q.WorkingDays, "working day", "working days"), h(perDay), h(q.Expected))
+	if q.LeaveDays > 0 {
+		expected += " · " + plural(q.LeaveDays, "day", "days") + " on leave"
+	}
+	lines = append(lines, row("Expected", c.Dim(expected), c))
+	return lines
+}
+
+// Format renders this month, then last month, styled for stdout. Leave warnings are counted
+// unless verbose, which lists them.
+func Format(now string, d *Data, verbose bool) string {
+	c := ui.Out
+	var lines []string
+	lines = append(lines, formatMonth(ComputeMonth(now, now, d), c)...)
+	lines = append(lines, "")
+	lines = append(lines, formatMonth(ComputeMonth(dates.PrevMonthStart(now), now, d), c)...)
+
+	footer := fmt.Sprintf("%s/working day · %s calendar", h(settings.HoursPerDay()), settings.WorkingDaysCountry)
+	if len(d.Warnings) > 0 && !verbose {
+		footer += fmt.Sprintf(" · %s (quota --verbose)", plural(len(d.Warnings), "leave warning", "leave warnings"))
+	}
+	lines = append(lines, "", c.Dim(footer))
+	if verbose {
+		for _, w := range d.Warnings {
+			lines = append(lines, c.Yellow("▲")+" "+c.Dim(w))
+		}
 	}
 	return strings.Join(lines, "\n")
 }

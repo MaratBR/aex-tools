@@ -9,14 +9,19 @@ import (
 	"aex/internal/quota"
 )
 
-const quotaHelp = `Usage: quota
+const quotaHelp = `Usage: quota [--verbose]
 
-Shows AEXT hours quota for last month and this month: working days, expected vs logged
-hours, % filled, hours behind, and hours/day needed for the rest of this month.
+Shows AEXT hours quota for this month and last month: whether you are on track, working days
+without hours, hours logged today, and hours/day needed for the rest of this month.
+
+  --verbose  List leave warnings (unapproved or ignored leaves, leaves created by someone else)
+
 Quota settings: HOURS_PER_DAY app setting (see configure), WorkingDaysCountry in internal/settings/config.go.`
 
 func quotaTool(args []string) error {
-	if done, err := parseFlags(flag.NewFlagSet("quota", flag.ContinueOnError), args, quotaHelp); done || err != nil {
+	fs := flag.NewFlagSet("quota", flag.ContinueOnError)
+	verbose := fs.Bool("verbose", false, "")
+	if done, err := parseFlags(fs, args, quotaHelp); done || err != nil {
 		return err
 	}
 	c, err := aext.New()
@@ -28,6 +33,6 @@ func quotaTool(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(quota.Format(now, data))
+	fmt.Println(quota.Format(now, data, *verbose))
 	return nil
 }

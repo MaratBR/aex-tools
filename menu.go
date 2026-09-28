@@ -140,7 +140,8 @@ func splitArgs(line string) []string {
 
 // runTool runs a tool, printing its errors, and returns a one-line outcome for the menu.
 func runTool(t *tool, args []string) (status string, ok bool) {
-	fmt.Println(ui.Out.Bold("▶ " + strings.Join(append([]string{t.name}, args...), " ")))
+	fmt.Println(toolBanner(t.name, args))
+	fmt.Println()
 	err := func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -151,9 +152,9 @@ func runTool(t *tool, args []string) (status string, ok bool) {
 	}()
 	if err != nil {
 		printError(err)
-		return fmt.Sprintf("● %s failed: %v", t.name, err), false
+		return fmt.Sprintf("✖ %s failed: %v", t.name, err), false
 	}
-	return fmt.Sprintf("● %s finished", t.name), true
+	return fmt.Sprintf("✔ %s finished", t.name), true
 }
 
 func printMenu() {
@@ -217,14 +218,18 @@ func tuiMenu() error {
 
 		var args []string
 		if pick.withArgs {
-			line, err := ui.Ask(t.name + " args (try --help): ")
+			line, err := ui.Input(ui.Field{
+				Title:       t.name + " arguments",
+				Description: "Space-separated; quote values with spaces. --help lists them.",
+				Placeholder: "--help",
+			})
 			if err != nil {
 				return err
 			}
 			args = splitArgs(line)
 		}
 		status, statusOK = runTool(t, args)
-		fmt.Fprint(os.Stderr, ui.Err.Dim("\nPress any key to return to the menu..."))
+		fmt.Fprintf(os.Stderr, "\n%s  %s", statusLine(status, statusOK), ui.Err.Dim("press any key to return to the menu"))
 		loginDone = startLoginCheck()
 		ui.WaitKey()
 		fmt.Fprintln(os.Stderr)
