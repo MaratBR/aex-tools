@@ -10,6 +10,16 @@
   "scripts": {
     "worklog-sync": "node scripts/worklog-sync.js",
     "quota": "node scripts/quota.js",
-    "zip-repo": "node scripts/zip-repo.js"
+    "zip-repo": "node scripts/zip-repo.js",
+    "configure": "node scripts/configure.js",
+    "data-folder": "node scripts/data-folder.js",
+    "aex": "node scripts/aex.js",
+    "build:exe": "node scripts/build-exe.js"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "esbuild": "^0.28.2",
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^4.0.1"
   }
 }

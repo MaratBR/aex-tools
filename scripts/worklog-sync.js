@@ -1,9 +1,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { run } from '../lib/cli.js';
+import { isEntry, run } from '../lib/cli.js';
 import { JIRA_EXPORT_DIR, PROJECT_MAP } from '../lib/config.js';
-import { TZ_LABEL, addDays, eachDay, fileTimestamp, monthStart, parseRange, prevMonthStart, today } from '../lib/dates.js';
+import { addDays, eachDay, fileTimestamp, monthStart, parseRange, prevMonthStart, today, tzLabel } from '../lib/dates.js';
 import { createJiraClient, fetchMyWorklogs } from '../lib/jira.js';
 import { createAextClient } from '../lib/aext.js';
 import { fetchMonths, formatQuota } from '../lib/quota.js';
@@ -11,9 +11,11 @@ import { ask, assertInteractive, confirm } from '../lib/prompt.js';
 import { parseCsv, toCsv } from '../lib/csv.js';
 import { err, out } from '../lib/color.js';
 
+export const summary = 'Export Jira worklogs to CSV, then send them to AEXT';
+
 const HELP = `Usage: worklog-sync [--range <expr>] [--manual]
 
-Exports your Jira worklogs for a date range to output/jira-export/<timestamp>.csv,
+Exports your Jira worklogs for a date range to <data folder>/output/jira-export/<timestamp>.csv,
 then offers to send the CSV to AEXT.
 
 By default the range is suggested from AEXT: first working day of this month with no hours
@@ -24,7 +26,7 @@ logged, through today. Decline (or pass --manual) to type a range instead.
             2026.09.20, 26.09.20, 09.20, 09.20-09.30
   --manual  Skip AEXT, ask for the range
 
-Dates are in ${TZ_LABEL} (TZ_OFFSET_HOURS in lib/config.js).`;
+Dates are in ${tzLabel()} (TZ_OFFSET_HOURS app setting, see configure).`;
 
 const COLUMNS = [
   { header: 'date', value: (r) => r.day },
@@ -119,7 +121,7 @@ function toRows(worklogs) {
   );
 }
 
-run(async (argv) => {
+export async function main(argv) {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -137,7 +139,7 @@ run(async (argv) => {
   let aextClient;
   const aext = () => (aextClient ??= createAextClient());
   const range = await resolveRange(values, now, aext);
-  console.log(`Range: ${out.bold(fmtRange(range))} ${out.dim(`(${TZ_LABEL})`)}`);
+  console.log(`Range: ${out.bold(fmtRange(range))} ${out.dim(`(${tzLabel()})`)}`);
   if (!values.range && !(await confirm('Proceed?', true))) return;
 
   const jira = await createJiraClient();
@@ -157,7 +159,9 @@ run(async (argv) => {
     await importCsv(aext(), csvFile);
     console.log(formatQuota(now, await fetchMonths(aext(), now)));
   }
-});
+}
+
+if (isEntry(import.meta.url)) run(main);
 
 // Re-reads the CSV so manual edits made before confirming are what gets sent.
 async function importCsv(aext, file) {

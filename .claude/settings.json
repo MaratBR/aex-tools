@@ -10,7 +10,13 @@
       "Read(./session.txt)",
       "Edit(./session.txt)",
       "Bash(*session.txt*)",
-      "PowerShell(*session.txt*)"
+      "PowerShell(*session.txt*)",
+      "Read(./.env.config)",
+      "Read(**/.env.config)",
+      "Edit(./.env.config)",
+      "Edit(**/.env.config)",
+      "Bash(*.env.config*)",
+      "PowerShell(*.env.config*)"
     ]
   }
 }

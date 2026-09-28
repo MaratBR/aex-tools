@@ -6,3 +6,5 @@ output/
 .claude/settings.local.json
 *.log
 .DS_Store
+dist/
+.env.config

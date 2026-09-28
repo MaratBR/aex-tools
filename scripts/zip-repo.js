@@ -1,16 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { run } from '../lib/cli.js';
-import { REPO_ZIP_DIR, repoRoot } from '../lib/config.js';
+import { isEntry, run } from '../lib/cli.js';
+import { REPO_ZIP_DIR, appRoot as repoRoot } from '../lib/config.js';
 import { fileTimestamp } from '../lib/dates.js';
+
+export const summary = 'Zip the files committed at HEAD';
 
 const HELP = `Usage: zip-repo
 
-Zips the files committed at HEAD into output/repo-zip/<repo>-<commit>-<timestamp>.zip.
+Zips the files committed at HEAD into <data folder>/output/repo-zip/<repo>-<commit>-<timestamp>.zip.
 Uncommitted, staged, untracked and gitignored files are left out (uses git archive).`;
 
-run(async (argv) => {
+export async function main(argv) {
   if (argv.includes('--help') || argv.includes('-h')) {
     console.log(HELP);
     return;
@@ -25,4 +27,6 @@ run(async (argv) => {
     console.log('note: uncommitted changes are not included');
   }
   console.log(zipFile);
-});
+}
+
+if (isEntry(import.meta.url)) run(main);
