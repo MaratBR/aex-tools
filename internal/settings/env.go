@@ -133,6 +133,9 @@ func load(embedded string) {
 	vars = map[string]string{}
 	for _, l := range Layers() {
 		for k, v := range l.Vars {
+			if IsPlugin && IsSecret(k) && l.Label != Credentials.Name() {
+				continue
+			}
 			vars[k] = v
 		}
 	}
@@ -377,6 +380,9 @@ func Require(name string) (string, error) {
 func RequireAuth(name string) (string, error) {
 	if v := Get(name); v != "" {
 		return v, nil
+	}
+	if IsPlugin && IsSecret(name) {
+		return "", fmt.Errorf("%s was not passed to this plugin (it has to ask for access, see plugin.Main)", name)
 	}
 	var def Setting
 	for _, s := range AuthSettings {

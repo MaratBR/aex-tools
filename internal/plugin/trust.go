@@ -3,6 +3,7 @@ package plugin
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -33,12 +34,14 @@ func (s State) String() string {
 }
 
 // hashKey is the credential store key of the safe hash of the plugin at path.
-func hashKey(path string) string {
+func hashKey(path string) string { return "plugin-safe-sha256:" + normPath(path) }
+
+func normPath(path string) string {
 	path = filepath.Clean(path)
 	if runtime.GOOS == "windows" {
 		path = strings.ToLower(path)
 	}
-	return "plugin-safe-sha256:" + path
+	return path
 }
 
 func state(path, hash string) (State, error) {
@@ -54,7 +57,10 @@ func state(path, hash string) (State, error) {
 	return Safe, nil
 }
 
-func forget(path string) error { return settings.Credentials.Delete(hashKey(path)) }
+// forget forgets the plugin's safe hash and granted access.
+func forget(path string) error {
+	return errors.Join(settings.Credentials.Delete(hashKey(path)), settings.Credentials.Delete(grantKey(path)))
+}
 
 // openFile is a plugin file held open, with its SHA-256. On Windows it cannot be changed, renamed
 // or deleted while open, so what runs is what was hashed.

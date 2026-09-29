@@ -294,6 +294,21 @@ func (c *Client) TimeSummary(start, end string) ([]DaySummary, error) {
 		func(s DaySummary) bool { return s.Date != "" && s.HoursTotal != nil })
 }
 
+// TimeEntry is a logged time entry.
+type TimeEntry struct {
+	ID          *int64   `json:"id"`
+	Date        string   `json:"date"`
+	Project     string   `json:"project"`
+	Description string   `json:"description"`
+	HoursTotal  *float64 `json:"hours_total"`
+}
+
+// TimeEntries returns every entry in range (dates inclusive).
+func (c *Client) TimeEntries(start, end string) ([]TimeEntry, error) {
+	return list(c, "/api/time-entries/", url.Values{"start_date": {start}, "end_date": {end}},
+		func(e TimeEntry) bool { return e.ID != nil && e.Date != "" && e.HoursTotal != nil })
+}
+
 // list GETs a JSON array whose every item passes valid.
 func list[T any](c *Client, path string, query url.Values, valid func(T) bool) ([]T, error) {
 	items, err := request(c, "GET", path, query, nil, func(d *[]T) bool {

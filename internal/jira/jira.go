@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -128,18 +129,23 @@ func request[T any](c *Client, method, path string, query url.Values, body any, 
 	return httpx.ReadJSON(fmt.Sprintf("Jira %s %s", method, req.URL.Path), res, nil, validate)
 }
 
-type issue struct {
+// Issue is an issue with the requested fields decoded into F.
+type Issue[F any] struct {
 	Key    string `json:"key"`
-	Fields struct {
-		Project *struct {
-			Key string `json:"key"`
-		} `json:"project"`
-	} `json:"fields"`
+	Fields F      `json:"fields"`
 }
 
-type searchPage struct {
-	Issues        *[]issue `json:"issues"`
-	NextPageToken string   `json:"nextPageToken"`
+type projectFields struct {
+	Project *struct {
+		Key string `json:"key"`
+	} `json:"project"`
+}
+
+type issue = Issue[projectFields]
+
+type searchPage[F any] struct {
+	Issues        *[]Issue[F] `json:"issues"`
+	NextPageToken string      `json:"nextPageToken"`
 }
 
 type worklog struct {
@@ -156,17 +162,22 @@ type worklogPage struct {
 }
 
 func (c *Client) searchIssues(jql string, fields []string) ([]issue, error) {
+	return Search[projectFields](c, jql, fields)
+}
+
+// Search returns every issue matching jql, with fields decoded into F.
+func Search[F any](c *Client, jql string, fields []string) ([]Issue[F], error) {
 	type body struct {
 		JQL           string   `json:"jql"`
 		Fields        []string `json:"fields"`
 		MaxResults    int      `json:"maxResults"`
 		NextPageToken string   `json:"nextPageToken,omitempty"`
 	}
-	var issues []issue
+	var issues []Issue[F]
 	token := ""
 	for {
 		page, err := request(c, "POST", "/rest/api/3/search/jql", nil, body{jql, fields, 100, token},
-			func(p searchPage) bool { return p.Issues != nil })
+			func(p searchPage[F]) bool { return p.Issues != nil })
 		if err != nil {
 			return nil, err
 		}
@@ -293,4 +304,188 @@ func (c *Client) myIssueWorklogs(is issue, accountID string, after, before time.
 		}
 	}
 	return mine, nil
+}
+
+// IssueURL is the issue's page in the browser.
+func (c *Client) IssueURL(key string) string { return c.baseURL + "/browse/" + url.PathEscape(key) }
+
+// FindIssue returns one issue with fields decoded into F, or nil when there is no such issue (or
+// it is hidden from the current user: Jira answers 404 for both). Prints nothing on failure, so it
+// is safe while a prompt is on screen.
+func FindIssue[F any](c *Client, key string, fields []string) (*Issue[F], error) {
+	path := "/rest/api/3/issue/" + url.PathEscape(key)
+	req, err := httpx.NewRequest("GET", c.baseURL+path+"?"+url.Values{"fields": {strings.Join(fields, ",")}}.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", c.auth)
+	res, err := httpx.Client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Jira GET %s: %w", path, err)
+	}
+	defer httpx.Discard(res)
+	switch res.StatusCode {
+	case 404:
+		return nil, nil
+	case 200:
+	default:
+		return nil, fmt.Errorf("Jira GET %s: HTTP %d", path, res.StatusCode)
+	}
+	var is Issue[F]
+	if err := json.NewDecoder(res.Body).Decode(&is); err != nil || is.Key == "" {
+		return nil, fmt.Errorf("Jira GET %s: unexpected response", path)
+	}
+	return &is, nil
+}
+
+// AddComment posts a comment; body is an Atlassian Document Format document.
+func (c *Client) AddComment(key string, body any) error {
+	_, err := request[any](c, "POST", "/rest/api/3/issue/"+url.PathEscape(key)+"/comment", nil, map[string]any{"body": body}, nil)
+	return err
+}
+
+// Assign sets the issue's assignee.
+func (c *Client) Assign(key, accountID string) error {
+	body := map[string]any{"fields": map[string]any{"assignee": map[string]any{"accountId": accountID}}}
+	_, err := request[any](c, "PUT", "/rest/api/3/issue/"+url.PathEscape(key), nil, body, nil)
+	return err
+}
+
+// Transition is a workflow transition available on an issue.
+type Transition struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Transitions lists the transitions the current user can make on the issue now.
+func (c *Client) Transitions(key string) ([]Transition, error) {
+	page, err := request(c, "GET", "/rest/api/3/issue/"+url.PathEscape(key)+"/transitions", nil, nil, func(p struct {
+		Transitions *[]Transition `json:"transitions"`
+	}) bool {
+		return p.Transitions != nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return *page.Transitions, nil
+}
+
+// DoTransition moves the issue through the transition with the given id.
+func (c *Client) DoTransition(key, id string) error {
+	body := map[string]any{"transition": map[string]any{"id": id}}
+	_, err := request[any](c, "POST", "/rest/api/3/issue/"+url.PathEscape(key)+"/transitions", nil, body, nil)
+	return err
+}
+
+// User is a Jira user.
+type User struct {
+	AccountID    string `json:"accountId"`
+	DisplayName  string `json:"displayName"`
+	EmailAddress string `json:"emailAddress"` // empty when hidden by the profile's privacy settings
+	AccountType  string `json:"accountType"`
+	Active       bool   `json:"active"`
+}
+
+// SearchUsers finds active people (no apps) whose name or email matches query.
+func (c *Client) SearchUsers(query string) ([]User, error) {
+	users, err := request(c, "GET", "/rest/api/3/user/search", url.Values{"query": {query}, "maxResults": {"20"}}, nil,
+		func(u *[]User) bool { return u != nil })
+	if err != nil {
+		return nil, err
+	}
+	var people []User
+	for _, u := range *users {
+		if u.Active && u.AccountType == "atlassian" && u.AccountID != "" {
+			people = append(people, u)
+		}
+	}
+	return people, nil
+}
+
+var (
+	issueKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]*-[0-9]+$`)
+	// https://site.atlassian.net/browse/CM-7042, also with a query or fragment after it.
+	browseLink = regexp.MustCompile(`^https?://[^/\s]+/browse/([A-Za-z][A-Za-z0-9_]*-[0-9]+)(?:[/?#]\S*)?$`)
+	// Board and search links: ...?selectedIssue=CM-7042
+	selectedIssue = regexp.MustCompile(`^https?://\S*[?&]selectedIssue=([A-Za-z][A-Za-z0-9_]*-[0-9]+)(?:&\S*)?$`)
+)
+
+// ParseKey reads an issue key (any case) or an issue link and returns the key, upper-cased.
+func ParseKey(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	for _, link := range []*regexp.Regexp{browseLink, selectedIssue} {
+		if m := link.FindStringSubmatch(s); m != nil {
+			s = m[1]
+			break
+		}
+	}
+	s = strings.ToUpper(s)
+	return s, issueKey.MatchString(s)
+}
+
+// KeyFromPaste is a ui.Field Paste that turns a pasted issue link into its key.
+func KeyFromPaste(s string) string {
+	if key, ok := ParseKey(s); ok {
+		return key
+	}
+	return s
+}
+
+// Version is a project release (fix version). ReleaseDate is "2026-09-30", or "" when not set.
+type Version struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ReleaseDate string `json:"releaseDate"`
+	Released    bool   `json:"released"`
+}
+
+// ProjectVersions lists the project's releases.
+func (c *Client) ProjectVersions(project string) ([]Version, error) {
+	versions, err := request(c, "GET", "/rest/api/3/project/"+url.PathEscape(project)+"/versions", nil, nil,
+		func(v *[]Version) bool { return v != nil })
+	if err != nil {
+		return nil, err
+	}
+	return *versions, nil
+}
+
+// StatusChangedTo returns when the issue last moved into status (by name, any case); ok is false
+// when its history has no such move.
+func (c *Client) StatusChangedTo(key, status string) (at time.Time, ok bool, err error) {
+	type page struct {
+		Values *[]struct {
+			Created string `json:"created"`
+			Items   []struct {
+				Field    string `json:"field"`
+				ToString string `json:"toString"`
+			} `json:"items"`
+		} `json:"values"`
+		IsLast bool `json:"isLast"`
+	}
+	for start := 0; ; {
+		query := url.Values{"startAt": {fmt.Sprint(start)}, "maxResults": {"100"}}
+		p, err := request(c, "GET", "/rest/api/3/issue/"+url.PathEscape(key)+"/changelog", query, nil,
+			func(p page) bool { return p.Values != nil })
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		for _, h := range *p.Values {
+			for _, item := range h.Items {
+				if item.Field != "status" || !strings.EqualFold(item.ToString, status) {
+					continue
+				}
+				t, err := parseStarted(h.Created)
+				if err != nil {
+					return time.Time{}, false, fmt.Errorf("Jira changelog of %s: bad time %q", key, h.Created)
+				}
+				if t.After(at) {
+					at, ok = t, true
+				}
+			}
+		}
+		start += len(*p.Values)
+		if p.IsLast || len(*p.Values) == 0 {
+			return at, ok, nil
+		}
+	}
 }

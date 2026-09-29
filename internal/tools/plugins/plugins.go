@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
 
 	"aex/internal/plugin"
 	"aex/internal/tool"
@@ -98,6 +99,13 @@ func printList(plugins []plugin.Info) {
 			fmt.Printf("  %s\n", out.Red(p.DescribeErr.Error()))
 		case p.Summary != "":
 			fmt.Printf("  %s\n", p.Summary)
+		}
+		if len(p.Access) > 0 {
+			access := make([]string, len(p.Access))
+			for i, a := range p.Access {
+				access[i] = string(a)
+			}
+			fmt.Printf("  %s %s\n", out.Dim("Access  "), strings.Join(access, ", "))
 		}
 		fmt.Printf("  %s %s\n", out.Dim("File    "), p.FileInfo())
 		fmt.Printf("  %s %s\n", out.Dim("SHA-256 "), p.Hash)

@@ -33,6 +33,10 @@ func credentialKey(name string) string {
 // reads the secret settings from it.
 func openCredentials() {
 	CredentialsFile = filepath.Join(DataDir, "credentials.json")
+	if IsPlugin {
+		openPluginCredentials()
+		return
+	}
 	Credentials, CredentialsNote = secrets.Open(os.Getenv("AEX_CREDENTIAL_STORE"), DataDir, CredentialsFile)
 	credVars = map[string]string{}
 	for _, s := range AuthSettings {

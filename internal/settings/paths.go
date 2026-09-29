@@ -17,8 +17,10 @@ var (
 	// AppRoot holds .env and .env.private: the repo for a dev build, else the folder holding the exe.
 	AppRoot string
 	// DataDir holds app settings (.env.config), the AEXT session and output files.
-	DataDir        string
-	JiraExportDir  string
+	DataDir       string
+	JiraExportDir string
+	// OutputDir holds files tools write for the user, one folder per tool.
+	OutputDir      string
 	SharedEnvFile  string
 	PrivateEnvFile string
 	// ConfigEnvFile holds app settings: auth settings saved by configure and the prompts, and the
@@ -71,7 +73,8 @@ func Init(dataDir, embeddedEnv string) error {
 		return err
 	}
 	DataDir = abs
-	JiraExportDir = filepath.Join(DataDir, "output", "jira-export")
+	OutputDir = filepath.Join(DataDir, "output")
+	JiraExportDir = filepath.Join(OutputDir, "jira-export")
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 
 	openCredentials()

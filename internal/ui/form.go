@@ -36,6 +36,12 @@ type Field struct {
 	Placeholder string // shown faint while the answer is empty
 	Secret      bool   // input is not echoed
 	Validate    func(string) error
+	// Paste, when set, rewrites the whole answer right after text is pasted into it (not when it is
+	// typed; line prompts never rewrite). Validate and callers must still accept what it rewrites.
+	Paste func(string) string
+	// Describe, when set, gives a line shown under the box as the answer is typed ("" shows
+	// nothing). Called off the UI goroutine, once per value, so it may be slow; line prompts skip it.
+	Describe func(string) string
 }
 
 // Option is one choice of Choose.
@@ -70,7 +76,11 @@ func Input(f Field) (string, error) {
 	if f.Secret {
 		in.EchoMode(huh.EchoModePassword)
 	}
-	if err := run(in); err != nil {
+	var field huh.Field = in
+	if f.Paste != nil || f.Describe != nil {
+		field = newLiveInput(in, &value, f)
+	}
+	if err := run(field); err != nil {
 		return "", err
 	}
 	value = strings.TrimSpace(value)

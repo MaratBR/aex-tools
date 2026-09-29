@@ -76,7 +76,7 @@ redacted, so only ids, emails, dates, type and status are used.
 
 ## account
 
-`.inccount.ps1` shows who you are logged in as: AEXT (`/api/auth/me`: name, email, other profile fields,
+`.\bin\account.ps1` shows who you are logged in as: AEXT (`/api/auth/me`: name, email, other profile fields,
 server, session file) and Jira (`/rest/api/3/myself`: name, email, account id, time zone, …), plus the login
 settings and where each comes from (token masked). On a terminal it then offers actions until Done:
 
@@ -106,7 +106,42 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 
 `.\bin\plugins.ps1` manages plugins (see Plugins). Without args on a terminal it lists them and asks
 what to do; else `list` (default), `describe [<name>]` (asks to approve any not safe yet),
-`delete <name> [--yes]` (deletes the file and forgets its safe hash), `open` (opens the plugins folder).
+`delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `open` (opens
+the plugins folder).
+
+## jira-release-handoff (plugin)
+
+`.\bin\jira-release-handoff.ps1 [--epic CM-6996] [--dry-run] [--manual]` hands the epic's child tickets in
+"Ready for Production" off to QA: comments "Please test in PROD" (To: QA owner, Cc: the always-Cc people
+minus the QA owner; no Cc line when that leaves nobody), assigns the QA owner (`customfield_11215`; none
+means the default QA), then moves the ticket to In Production (transition `111`, always last). Needs Jira
+access (see Plugins).
+
+- Epic (`--epic` or asked): key (`CM-7042`), link (`https://…/browse/CM-7042`, `…?selectedIssue=CM-7042`)
+  or bare number (`7042` = default prefix + number, shown and confirmed first). A pasted link turns into
+  the key right away (typed one works too, it just stays as typed). As you type, the epic's summary
+  shows under the box once the answer is an existing epic (nothing otherwise); Enter on anything else
+  shows why it is refused (not found, not an epic).
+- Settings (`--settings`, or "Settings" in the first question when run without `--epic`): default
+  project prefix (`CM`), default QA (required), always-Cc people, excluded assignees, each excluded one set to "ask each run" or "skip
+  automatically". People are found by name or email in Jira. Kept in
+  `<data folder>\plugin-settings\jira-release-handoff.json`; first run writes the defaults (prefix CM, QA Heriberto,
+  Cc Alexander + Heriberto, Bulat excluded with ask).
+- `[Mobile]` tickets are skipped; `[MobileAPI]` counts as Web. A ticket tagged both `[Mobile]` and
+  `[Web]` / `[MobileAPI]` is asked about. Then excluded assignees' tickets are skipped or asked about
+  (default no), per their setting.
+- Release check: the epic's releases are its fix versions plus project releases named in its summary
+  (`5.12` matches "Release 5.12", not "5.12.1"). One: shown, you approve or decline checking against it.
+  Several: pick one or none. With a release that has a date, every ticket still to hand off (after all
+  other rules) whose last move to Ready for Production (changelog, in `TZ_OFFSET_HOURS`) is after the
+  release date gets a warning: allow this ticket, allow all like it, or decline (skip). Allowed ones are
+  marked in the plan, summary and report.
+- Several QA owners: asks which one. `--manual` (or yes to "Confirm each ticket?") asks per ticket.
+- All questions come first; tickets without the In Production transition available are skipped. Then the
+  plan is shown and you pick hand off, dry run or cancel. `--dry-run` changes nothing.
+- Stops at the first failure without retrying (the comment may be posted already).
+- Summary lists skipped tickets with links and why; a Markdown report goes to
+  `<data folder>\output\jira-release-handoff\<epic>-<timestamp>[-dry-run].md`.
 
 ## Usage
 
@@ -154,12 +189,21 @@ with the menu, or run `aex.exe <tool> [args]`.
 
 A plugin is a tool in its own executable in the `plugins` folder next to `aex.exe`. It shows in the menu
 after the built-in tools and runs as `aex <name> [args]`, in the same console. aex passes it the data
-folder, app root and built-in `.env` (`settings.PluginEnv`), so it sees the same settings and credentials.
+folder, app root and built-in `.env` (`settings.PluginEnv`), so it sees the same settings, but not the
+credentials: a plugin never opens the credential store and ignores secret settings (`JIRA_TOKEN`) from
+`.env` files and the environment. It gets only the credentials of the access it asks for and you grant.
 
 - Adding one in this repo: create `plugins/foo/main.go` (`package main`) calling
   `plugin.Main(tool.Tool{Name: "foo", Summary: "...", Run: run})`. The build scripts build every
   `plugins/*` into the plugins folder. Optionally copy `bin\worklog-sync.ps1` to `bin\foo.ps1`.
 - Any other executable works too if it answers `--aex-describe` with `{"summary": "..."}` on stdout.
+- Access: a plugin asks for it with `plugin.Main(t, plugin.Jira)` (`"access": ["jira"]` in the describe
+  JSON). Before running it aex asks once to allow it; the grant is saved for the file's SHA-256
+  (`plugin-access:<path>`), so a changed file asks again. aex then makes sure the settings are set
+  (prompting like any tool) and passes the secret ones as `AEX_PLUGIN_SECRET_<NAME>` env vars, which the
+  plugin takes into an in-memory store and removes from its environment. `jira` = `JIRA_EMAIL` +
+  `JIRA_TOKEN`; add kinds in `internal/plugin/access.go`. This limits honest plugins and shows what they
+  use; it is no sandbox, a plugin still runs with your rights (hence approving its file).
 - Nothing in the plugins folder runs, not even `--aex-describe`, until you approve its file. Until then
   the menu shows only its file name, size and modified time, read without running it. Running it (or
   `plugins describe`) shows its path, size and SHA-256 and asks; on yes the SHA-256 of the file's

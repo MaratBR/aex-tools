@@ -2,10 +2,11 @@
 // folder next to it. The host side (List, Discover) finds them and turns each into a tool.Tool; the
 // plugin side (Main) is what a plugin's main calls.
 //
-// Protocol: aex runs "<plugin> --aex-describe", which prints {"summary": "..."} as JSON, to list it
-// in the menu (the tool name is the file name without .exe). Running the tool runs the plugin with
-// the tool's args, in the same console, with the environment from settings.PluginEnv. No plugin
-// runs, not even for --aex-describe, until the user approves its file (trust.go).
+// Protocol: aex runs "<plugin> --aex-describe", which prints {"summary": "...", "access": [...]}
+// as JSON, to list it in the menu (the tool name is the file name without .exe). Running the tool
+// describes it again, makes sure its access is granted (access.go), then runs it with the tool's
+// args, in the same console, with the environment from settings.PluginEnv. No plugin runs, not
+// even for --aex-describe, until the user approves its file (trust.go).
 package plugin
 
 import (
@@ -34,7 +35,8 @@ const (
 )
 
 type description struct {
-	Summary string `json:"summary"`
+	Summary string   `json:"summary"`
+	Access  []Access `json:"access,omitempty"`
 }
 
 // Dir is the plugins folder: "plugins" next to the running exe.
@@ -57,9 +59,10 @@ type Info struct {
 	Modified time.Time
 	Hash     string // SHA-256 of the file's contents now
 	State    State
-	// Summary is what the plugin describes itself as, only for a safe plugin (else "");
-	// DescribeErr says why that failed.
+	// Summary and Access are what the plugin describes itself as, only for a safe plugin (else
+	// empty); DescribeErr says why that failed.
 	Summary     string
+	Access      []Access
 	DescribeErr error
 }
 
@@ -139,7 +142,9 @@ func inspect(name, path string) (Info, error) {
 		return Info{}, err
 	}
 	if p.State == Safe {
-		p.Summary, p.DescribeErr = describe(o, path)
+		var d description
+		d, p.DescribeErr = describe(o, path)
+		p.Summary, p.Access = d.Summary, d.Access
 	}
 	return p, nil
 }
@@ -151,7 +156,8 @@ func Describe(p Info) (string, error) {
 		return "", err
 	}
 	defer o.close()
-	return describe(o, p.Path)
+	d, err := describe(o, p.Path)
+	return d.Summary, err
 }
 
 // Delete deletes the plugin's file and forgets its safe hash.
@@ -162,7 +168,7 @@ func Delete(p Info) error {
 	return forget(p.Path)
 }
 
-func describe(o *openFile, path string) (string, error) {
+func describe(o *openFile, path string) (description, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), describeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, describeFlag)
@@ -173,13 +179,13 @@ func describe(o *openFile, path string) (string, error) {
 		err = cmd.Wait()
 	}
 	if err != nil {
-		return "", fmt.Errorf("%s failed: %w", describeFlag, err)
+		return description{}, fmt.Errorf("%s failed: %w", describeFlag, err)
 	}
 	var d description
 	if err := json.Unmarshal(out.Bytes(), &d); err != nil {
-		return "", fmt.Errorf("%s printed no valid JSON: %w", describeFlag, err)
+		return description{}, fmt.Errorf("%s printed no valid JSON: %w", describeFlag, err)
 	}
-	return d.Summary, nil
+	return d, nil
 }
 
 // Discover is the plugins as tools. Safe ones show their summary, the others only their file.
@@ -218,17 +224,38 @@ type ExitError struct {
 
 func (e *ExitError) Error() string { return fmt.Sprintf("%s exited with code %d", e.Name, e.Code) }
 
-// runner runs the plugin, asking for approval first unless it is safe.
+// runner runs the plugin, asking for approval first unless it is safe, and for the access it asks
+// for unless granted.
 func runner(name, path string) func(args []string) error {
 	return func(args []string) error {
 		o, err := approve(name, path)
 		if err != nil {
 			return err
 		}
+		approved := o.hash
+		d, err := describe(o, path)
+		if err != nil {
+			return err
+		}
+		pass, err := grant(name, path, approved, d.Access)
+		if err != nil {
+			return err
+		}
+		env, err := settings.PluginEnv(ui.Plain, pass)
+		if err != nil {
+			return err
+		}
+		// describe let go of the file; what runs must still be what was approved.
+		if o, err = openPlugin(path); err != nil {
+			return err
+		}
 		defer o.close()
+		if o.hash != approved {
+			return fmt.Errorf("plugin %s changed while starting, run it again", name)
+		}
 		cmd := exec.Command(path, args...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		cmd.Env = settings.PluginEnv(ui.Plain)
+		cmd.Env = env
 		err = o.start(cmd)
 		if err == nil {
 			err = cmd.Wait()
@@ -240,11 +267,11 @@ func runner(name, path string) func(args []string) error {
 	}
 }
 
-// Main runs t as a plugin: answers --aex-describe, else sets up like aex does and runs t with the
-// command-line args, exiting 1 on error.
-func Main(t tool.Tool) {
+// Main runs t as a plugin that needs access (see Access): answers --aex-describe, else sets up like
+// aex does and runs t with the command-line args, exiting 1 on error.
+func Main(t tool.Tool, access ...Access) {
 	if len(os.Args) == 2 && os.Args[1] == describeFlag {
-		if err := json.NewEncoder(os.Stdout).Encode(description{Summary: t.Summary}); err != nil {
+		if err := json.NewEncoder(os.Stdout).Encode(description{Summary: t.Summary, Access: access}); err != nil {
 			os.Exit(1)
 		}
 		return
