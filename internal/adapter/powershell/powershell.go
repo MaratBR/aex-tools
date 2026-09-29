@@ -44,6 +44,28 @@ func (powershell) Name() string { return "powershell" }
 
 func (powershell) Handles(path string) bool { return strings.EqualFold(filepath.Ext(path), ".ps1") }
 
+func (powershell) FileTypes() (string, []string) { return "PowerShell scripts", []string{"*.ps1"} }
+
+// pathHint guesses whether a parameter takes a file or folder path: by its type ([IO.FileInfo],
+// [IO.DirectoryInfo]), else, for a string, by its name (…File, …Path; …Folder, …Dir, …Directory).
+func pathHint(p adapter.Param) string {
+	t := strings.ToLower(strings.TrimPrefix(strings.TrimPrefix(p.Type, "System."), "system."))
+	name := strings.ToLower(p.Name)
+	switch {
+	case t == "io.fileinfo":
+		return adapter.PathFile
+	case t == "io.directoryinfo":
+		return adapter.PathFolder
+	case t != "string" || p.Kind != adapter.String:
+		return ""
+	case strings.HasSuffix(name, "folder") || strings.HasSuffix(name, "dir") || strings.HasSuffix(name, "directory"):
+		return adapter.PathFolder
+	case strings.HasSuffix(name, "file") || strings.HasSuffix(name, "path"):
+		return adapter.PathFile
+	}
+	return ""
+}
+
 // described is what describe.ps1 prints.
 type described struct {
 	Summary  string          `json:"summary"`
@@ -80,6 +102,7 @@ func (powershell) Describe(path string) (adapter.Description, error) {
 			if d.Params[i].Type == "" {
 				d.Params[i].Type = "object"
 			}
+			d.Params[i].Hint = pathHint(d.Params[i])
 		}
 		return adapter.Description{Summary: d.Summary, Params: d.Params, Rest: !d.HasParam, Runner: host, Notes: d.Notes}, nil
 	}

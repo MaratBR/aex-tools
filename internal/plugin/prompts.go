@@ -42,6 +42,7 @@ type promptRequest struct {
 	Describe    bool        `json:"describe,omitempty"`
 	DefaultYes  bool        `json:"defaultYes,omitempty"`
 	Options     []ui.Option `json:"options,omitempty"`
+	Hint        ui.Hint     `json:"hint,omitzero"`
 }
 
 // promptMessage is what aex sends: a call to a Field func (Call set) or the request's result.
@@ -155,7 +156,7 @@ func (s *promptServer) ask(req promptRequest, call func(name, value string) (pro
 	var err error
 	switch req.Kind {
 	case "input":
-		f := ui.Field{Title: req.Title, Description: req.Description, Placeholder: req.Placeholder, Secret: req.Secret}
+		f := ui.Field{Title: req.Title, Description: req.Description, Placeholder: req.Placeholder, Secret: req.Secret, Hint: req.Hint}
 		if req.Validate {
 			f.Validate = func(v string) error {
 				rep, ok := call("validate", v)
@@ -267,7 +268,7 @@ func (c *promptClient) ask(req promptRequest, f *ui.Field) (promptMessage, error
 
 func (c *promptClient) Input(f ui.Field) (string, error) {
 	msg, err := c.ask(promptRequest{Kind: "input", Title: f.Title, Description: f.Description, Placeholder: f.Placeholder,
-		Secret: f.Secret, Validate: f.Validate != nil, Paste: f.Paste != nil, Describe: f.Describe != nil}, &f)
+		Secret: f.Secret, Validate: f.Validate != nil, Paste: f.Paste != nil, Describe: f.Describe != nil, Hint: f.Hint}, &f)
 	return msg.Value, err
 }
 

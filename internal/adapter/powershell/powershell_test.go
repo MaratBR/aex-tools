@@ -20,6 +20,28 @@ func TestQuote(t *testing.T) {
 	}
 }
 
+func TestPathHint(t *testing.T) {
+	for _, c := range []struct {
+		name, typ string
+		kind      adapter.Kind
+		want      string
+	}{
+		{"Target", "System.IO.FileInfo", adapter.String, adapter.PathFile},
+		{"Target", "IO.DirectoryInfo", adapter.String, adapter.PathFolder},
+		{"ConfigPath", "string", adapter.String, adapter.PathFile},
+		{"OutFile", "String", adapter.String, adapter.PathFile},
+		{"RepoDir", "string", adapter.String, adapter.PathFolder},
+		{"OutputFolder", "string", adapter.String, adapter.PathFolder},
+		{"Name", "string", adapter.String, ""},
+		{"Paths", "string[]", adapter.List, ""},
+		{"MaxPath", "int", adapter.Int, ""},
+	} {
+		if got := pathHint(adapter.Param{Name: c.name, Type: c.typ, Kind: c.kind}); got != c.want {
+			t.Errorf("pathHint(%s %s) = %q, want %q", c.typ, c.name, got, c.want)
+		}
+	}
+}
+
 func TestDescribeAndRun(t *testing.T) {
 	if runtime.GOOS != "windows" && pwsh() == "" {
 		t.Skip("no PowerShell")

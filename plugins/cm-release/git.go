@@ -65,6 +65,7 @@ func askReposDir(c *config) error {
 	dir, err := ui.Input(ui.Field{
 		Title:       "Repos folder",
 		Description: "Folder holding the CM repos: " + strings.Join(c.Repos, ", "),
+		Hint:        ui.Hint{Kind: ui.HintFolder},
 		Placeholder: c.ReposDir,
 		Validate: func(s string) error {
 			if s == "" {

@@ -68,13 +68,17 @@ func Run(title string, host Host) error {
 		AssetServer:      &assetserver.Options{Assets: sub},
 		BackgroundColour: &options.RGBA{R: 24, G: 26, B: 31, A: 255},
 		OnStartup:        a.startup,
-		Bind:             []any{a},
+		// Files dropped on the window come to the page as paths (runtime.OnFileDrop), for the
+		// question that takes a path; the web view's own drop would open the file instead.
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true},
+		Bind:        []any{a},
 	})
 }
 
 // App is bound to the frontend: its exported methods are callable as window.go.webui.App.<Name>.
 type App struct {
 	host Host
+	ctx  context.Context
 	emit func(event string, data any) // to the frontend
 	out  *stream                      // stdout and stderr, nil when not captured
 
@@ -92,6 +96,7 @@ type answer struct {
 }
 
 func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
 	a.emit = func(event string, data any) { runtime.EventsEmit(ctx, event, data) }
 	ui.Remote = a
 	out, err := captureOutput(func(text string) { a.emit("output", text) })
@@ -237,6 +242,7 @@ type prompt struct {
 	Error       string      `json:"error,omitempty"` // why the last answer was rejected
 	Options     []ui.Option `json:"options,omitempty"`
 	DefaultYes  bool        `json:"defaultYes,omitempty"`
+	Hint        *ui.Hint    `json:"hint,omitempty"` // what kind of text an input takes, when not any
 }
 
 // ask sends p and waits for its answer; f, when set, is the Input field it asks for (for Describe).
@@ -266,6 +272,9 @@ var errCancelled = errors.New("cancelled")
 func (a *App) Input(f ui.Field) (string, error) {
 	p := prompt{Kind: "input", Title: f.Title, Description: f.Description, Placeholder: f.Placeholder,
 		Secret: f.Secret, Describe: f.Describe != nil}
+	if f.Hint.Kind != ui.HintText {
+		p.Hint = &f.Hint
+	}
 	for {
 		ans := a.ask(p, &f)
 		if ans.cancelled {

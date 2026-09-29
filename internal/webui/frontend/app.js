@@ -8,6 +8,8 @@ const feed = $('feed'), scroller = $('scroll'), input = $('input'), commandForm 
 let tools = [];
 let run = null;     // the run in progress: {el, body, status, out, term, started}
 let keyHandler = null;
+// dropHandler takes the paths of files dropped on the window, while a question for a path is open.
+let dropHandler = null;
 
 // Helpers ---------------------------------------------------------------------------------------
 
@@ -184,6 +186,7 @@ function finished({ status, ok, quiet }) {
 function closeQuestion() {
   if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
   keyHandler = null;
+  dropHandler = null;
   document.querySelectorAll('.question.open').forEach(q => {
     q.classList.remove('open');
     q.querySelectorAll('button, input').forEach(b => (b.disabled = true));
@@ -230,7 +233,23 @@ function onPrompt(p) {
     field.autocomplete = 'off';
     const ok = el('button', 'btn primary', 'Send');
     ok.type = 'submit';
-    form.append(field, ok, button('Cancel', 'btn quiet', cancel));
+    form.append(field);
+    // A path: a dialog to pick it, or a file dropped anywhere on the window.
+    const hint = p.hint && p.hint.kind;
+    if (hint === 'file' || hint === 'folder') {
+      const set = path => {
+        field.value = path;
+        field.dispatchEvent(new Event('input'));
+        field.focus();
+      };
+      form.append(button(hint === 'folder' ? 'Choose folder…' : 'Choose file…', 'btn', async () => {
+        const path = await api().Browse(p.id, field.value).catch(() => '');
+        if (path) set(path);
+      }));
+      if (!field.placeholder) field.placeholder = hint === 'folder' ? 'Type, choose or drop a folder' : 'Type, choose or drop a file';
+      dropHandler = paths => set(paths[0]);
+    }
+    form.append(ok, button('Cancel', 'btn quiet', cancel));
     controls.appendChild(form);
     if (p.error) controls.appendChild(el('div', 'q-error', p.error.charAt(0).toUpperCase() + p.error.slice(1) + '.'));
     if (p.describe) {
@@ -502,6 +521,7 @@ window.runtime.EventsOn('output', onOutput);
 window.runtime.EventsOn('clear', onClear);
 window.runtime.EventsOn('prompt', onPrompt);
 window.runtime.EventsOn('finished', finished);
+window.runtime.OnFileDrop((x, y, paths) => { if (dropHandler && paths && paths.length) dropHandler(paths); }, false);
 updateCommand();
 refresh().then(async () => {
   if (run) return;

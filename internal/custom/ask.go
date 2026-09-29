@@ -91,6 +91,7 @@ func askParam(p *adapter.Param) (arg adapter.Arg, ok bool, err error) {
 		Title:       title,
 		Description: adapter.DescribeParam(*p) + map[bool]string{true: ", comma-separated"}[p.Kind == adapter.List],
 		Placeholder: placeholder,
+		Hint:        ui.Hint{Kind: ui.HintKind(p.Hint)},
 		Validate: func(s string) error {
 			if s == "" {
 				if p.Required {

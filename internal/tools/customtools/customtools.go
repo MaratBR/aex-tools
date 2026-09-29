@@ -247,6 +247,7 @@ func askAdd() error {
 	path, err := ui.Input(ui.Field{
 		Title:       "Script path",
 		Description: "Adapters: " + adapterNames(),
+		Hint:        scriptHint(),
 		Validate:    func(s string) error { _, _, err := custom.CheckPath(s); return err },
 	})
 	if err != nil {
@@ -274,6 +275,16 @@ func askAdd() error {
 		name = def
 	}
 	return add(abs, name)
+}
+
+// scriptHint asks for a file some adapter runs: a dialog offers each adapter's files.
+func scriptHint() ui.Hint {
+	h := ui.Hint{Kind: ui.HintFile}
+	for _, a := range custom.Adapters {
+		name, patterns := a.FileTypes()
+		h.Filters = append(h.Filters, ui.FileFilter{Name: name, Patterns: patterns})
+	}
+	return h
 }
 
 // pick asks for a custom tool; "" is back.

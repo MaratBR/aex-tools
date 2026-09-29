@@ -18,6 +18,9 @@ type Adapter interface {
 	Name() string
 	// Handles reports whether the adapter runs the file at path (by its extension).
 	Handles(path string) bool
+	// FileTypes names the files it runs and their patterns, for file dialogs: "PowerShell scripts",
+	// ["*.ps1"].
+	FileTypes() (name string, patterns []string)
 	// Describe reads what the script is and the parameters it accepts, without running it. The
 	// caller holds the file open so it cannot change meanwhile (see plugin.Lock).
 	Describe(path string) (Description, error)
@@ -61,7 +64,16 @@ type Param struct {
 	Choices  []string `json:"choices"`
 	Help     string   `json:"help"`
 	Aliases  []string `json:"aliases"`
+	// Hint is what a String value names, so the window can offer a dialog for it: PathFile,
+	// PathFolder or "" for any text.
+	Hint string `json:"hint"`
 }
+
+// Param.Hint values.
+const (
+	PathFile   = "file"
+	PathFolder = "folder"
+)
 
 // Arg is a value given for a parameter.
 type Arg struct {

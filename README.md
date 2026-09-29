@@ -274,6 +274,11 @@ terminal:
 - Its questions (`ui.Input`, `Confirm`, `Choose`, `WaitKey`) are asked inside its run, through `ui.Remote`,
   and answered there: a text field (Esc cancels), Yes / No (y / n), a list (1-9), Continue. `Validate` runs
   in Go; a rejected answer asks again with the reason. The answer stays in the run.
+- A text question can say what kind of answer it takes with `ui.Field.Hint` (plugins' questions pass it
+  on too): `ui.HintFile` (optionally with `Filters`, e.g. `{"PowerShell scripts", ["*.ps1"]}`) or
+  `ui.HintFolder`. The window then adds "Choose file…" / "Choose folder…", opening the system dialog
+  where the answer so far points, and a file dropped anywhere on the window fills the answer with its
+  path. Terminals ignore the hint.
 - Before a question or the end of a run, the output pipe is synced (a marker written through it), so
   nothing printed before a question shows up after it.
 - The line at the bottom runs a typed command, e.g. `quota --verbose` (Tab completes tool names).
@@ -335,9 +340,13 @@ adapter for its kind of file. It shows in the window after the plugins and runs 
 Adapters so far: `powershell` (`.ps1`). A new one implements `adapter.Adapter` (`internal/adapter`) and is
 added to `custom.Adapters`:
 
-- `Handles(path)` — whether it runs this file (by extension).
+- `Handles(path)` — whether it runs this file (by extension); `FileTypes()` — its files for the file
+  dialog of `custom-tools add` (e.g. "PowerShell scripts", `*.ps1`).
 - `Describe(path)` — summary and parameters, read without running the script: name, kind (string, int,
-  number, bool, switch, list), declared type, required, default, choices, help, aliases.
+  number, bool, switch, list), declared type, required, default, choices, help, aliases, and a hint
+  when a value is a file or folder path (asked for with the window's dialog and drop, see Window).
+  PowerShell: `[IO.FileInfo]` / `[IO.DirectoryInfo]`, or a string named `…File` / `…Path` (file) or
+  `…Folder` / `…Dir` / `…Directory` (folder).
 - `Command(path, description, args, rest, console)` — the command that runs it with those values.
 
 aex does the rest the same for every adapter:

@@ -42,6 +42,31 @@ type Field struct {
 	// Describe, when set, gives a line shown under the box as the answer is typed ("" shows
 	// nothing). Called off the UI goroutine, once per value, so it may be slow; line prompts skip it.
 	Describe func(string) string
+	// Hint says what kind of text the answer is, for a UI that can help enter it: the window offers
+	// a file or folder dialog and takes a file dropped on it. Terminals ignore it.
+	Hint Hint
+}
+
+// Hint is what kind of text an Input answer is.
+type Hint struct {
+	Kind HintKind `json:"kind,omitempty"`
+	// Filters are the files a HintFile dialog offers (all files when empty).
+	Filters []FileFilter `json:"filters,omitempty"`
+}
+
+// HintKind is a kind of answer.
+type HintKind string
+
+const (
+	HintText   HintKind = ""       // any text
+	HintFile   HintKind = "file"   // a file's path
+	HintFolder HintKind = "folder" // a folder's path
+)
+
+// FileFilter is a kind of file a file dialog offers, e.g. {"PowerShell scripts", ["*.ps1"]}.
+type FileFilter struct {
+	Name     string   `json:"name"`
+	Patterns []string `json:"patterns"`
 }
 
 // Option is one choice of Choose (tagged for the window's frontend, which reads label and value).
