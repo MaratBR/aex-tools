@@ -8,8 +8,9 @@
 // each one maybe a group with its own "tools"; aex runs one as "<plugin> <sub-tool> [args]". Access
 // is the plugin's, for all its tools. Running the tool
 // describes it again, makes sure its access is granted (access.go), then runs it with the tool's
-// args, in the same console, with the environment from settings.PluginEnv. No plugin runs, not
-// even for --aex-describe, until the user approves its file (trust.go).
+// args, in the same console, with the environment from settings.PluginEnv; from the window, its
+// questions are asked there (prompts.go). No plugin runs, not even for --aex-describe, until the
+// user approves its file (trust.go).
 package plugin
 
 import (
@@ -316,6 +317,20 @@ func runner(name, path string, sub []string) func(args []string) error {
 		if err != nil {
 			return err
 		}
+		env = slices.DeleteFunc(env, func(kv string) bool {
+			name, _, _ := strings.Cut(strings.ToUpper(kv), "=")
+			return name == promptsVar || name == promptTokenVar
+		})
+		// In the window the plugin has no console: its questions come to aex (prompts.go), and
+		// its output, streamed to the window, may be styled.
+		if ui.Remote != nil {
+			prompts, promptEnv, err := servePrompts()
+			if err != nil {
+				return err
+			}
+			defer prompts.Close()
+			env = append(append(env, promptEnv...), "FORCE_COLOR=1")
+		}
 		// describe let go of the file; what runs must still be what was approved.
 		if o, err = openPlugin(path); err != nil {
 			return err
@@ -350,7 +365,12 @@ func Main(t tool.Tool, access ...Access) {
 		return
 	}
 	ui.Setup()
-	dataDir, args, err := settings.TakeGlobalArgs(os.Args[1:])
+	err := connectPrompts()
+	var dataDir string
+	var args []string
+	if err == nil {
+		dataDir, args, err = settings.TakeGlobalArgs(os.Args[1:])
+	}
 	if err == nil {
 		err = settings.InitPlugin(dataDir)
 	}
