@@ -59,7 +59,8 @@ func TestHomeSaveLoad(t *testing.T) {
 	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`"s"`)}}}); err == nil {
 		t.Fatal("settings that are not an object saved")
 	}
-	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, Settings: json.RawMessage(`{"a":1}`)}}}
+	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, Settings: json.RawMessage(`{"a":1}`)}},
+		AutoRefreshOff: true}
 	if err := a.SaveHome(saved); err != nil {
 		t.Fatal(err)
 	}

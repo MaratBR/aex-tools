@@ -13,6 +13,7 @@ let pageChosen = false; // once the user or a question picked a page, loading Ho
 const scrollTops = { home: 0, runs: 0 };
 let catalog = { widgets: [], inactive: [] }; // WidgetList
 let layout = [];        // HomeWidget: {id, widget, w, h, settings}
+let autoRefresh = true; // !HomeLayout.autoRefreshOff
 let editing = false;
 let cols = 4;
 
@@ -48,9 +49,11 @@ const widgetName = id => info(id)?.name || id.slice(id.indexOf('/') + 1);
 const newID = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const cellOf = w => grid.querySelector(`.cell[data-id="${w.id}"]`);
 
+const homeLayout = () => ({ widgets: layout, autoRefreshOff: !autoRefresh });
+
 async function save() {
   try {
-    await api().SaveHome({ widgets: layout });
+    await api().SaveHome(homeLayout());
   } catch (e) {
     showCommandError('Could not save the home page: ' + e);
   }
@@ -59,6 +62,7 @@ async function save() {
 function renderHome() {
   $('home-empty').hidden = layout.length > 0;
   $('home-edit').hidden = !layout.length;
+  syncAutoSwitch();
   if (!layout.length && editing) setEditing(false);
   const cells = new Map([...grid.children].map(c => [c.dataset.id, c]));
   for (const w of layout) {
@@ -282,7 +286,7 @@ window.addEventListener('message', async e => {
     if (JSON.stringify(s).length > maxSettings) return reply(false, undefined, `settings are over ${maxSettings >> 10} KB`);
     w.settings = s;
     try {
-      await api().SaveHome({ widgets: layout });
+      await api().SaveHome(homeLayout());
       reply(true);
     } catch (err) {
       reply(false, undefined, String(err));
@@ -300,20 +304,51 @@ new MutationObserver(() => {
 // A plugin's widget refreshes at most this often on its own: each of its calls starts the plugin.
 const pluginRefreshMs = 30000;
 
-// refreshWidgets tells every widget to load its data again (sdk.js: aex.onRefresh), after a run
-// that may have changed it; widgets that could not load (e.g. a plugin not approved) try again.
+// refreshWidget tells the widget to load its data again (sdk.js: aex.onRefresh); one that could not
+// load (e.g. a plugin not approved) tries again.
+function refreshWidget(w) {
+  const cell = cellOf(w);
+  if (!cell) return;
+  if (cell.classList.contains('broken')) return loadWidget(w, cell);
+  w.refreshed = Date.now();
+  const f = cell.querySelector('iframe');
+  if (f.contentWindow) post(f.contentWindow, { op: 'refresh' });
+}
+
+// refreshWidgets refreshes every widget after a run that may have changed their data.
 async function refreshWidgets() {
   await loadCatalog();
   for (const w of layout) {
-    const cell = cellOf(w);
-    if (!cell) continue;
-    if (cell.classList.contains('broken')) { loadWidget(w, cell); continue; }
-    if (pluginOf(w.widget) && Date.now() - (w.refreshed || 0) < pluginRefreshMs) continue;
-    w.refreshed = Date.now();
-    const f = cell.querySelector('iframe');
-    if (f.contentWindow) post(f.contentWindow, { op: 'refresh' });
+    if (pluginOf(w.widget) && !cellOf(w)?.classList.contains('broken') && Date.now() - (w.refreshed || 0) < pluginRefreshMs) continue;
+    refreshWidget(w);
   }
 }
+
+// Auto refresh: each widget that asks for it (WidgetInfo.refresh, in seconds) is refreshed that
+// often while the switch on Home is on. Paused while Home is not shown or the window is minimised
+// (the web view keeps running then); a widget that fell due meanwhile refreshes when it is back.
+async function autoRefreshTick() {
+  if (!autoRefresh || page !== 'home' || document.hidden) return;
+  const now = Date.now();
+  const due = layout.filter(w => {
+    const every = info(w.widget)?.refresh;
+    return every && now - (w.refreshed || 0) >= every * 1000;
+  });
+  if (!due.length) return;
+  try {
+    if (await window.runtime.WindowIsMinimised()) return;
+  } catch {}
+  due.forEach(refreshWidget);
+}
+setInterval(autoRefreshTick, 1000);
+
+const autoSwitch = $('home-auto-refresh');
+// The switch shows only while a widget on the page refreshes on its own.
+const syncAutoSwitch = () => ($('home-auto').hidden = !layout.some(w => info(w.widget)?.refresh));
+autoSwitch.onchange = () => {
+  autoRefresh = autoSwitch.checked;
+  save();
+};
 
 // Adding widgets --------------------------------------------------------------------------------
 
@@ -323,6 +358,7 @@ async function loadCatalog() {
   } catch (e) {
     showCommandError('Could not list the widgets: ' + e);
   }
+  syncAutoSwitch();
   fitGrid();
 }
 
@@ -386,7 +422,10 @@ document.addEventListener('keydown', e => {
 
 (async () => {
   try {
-    layout = (await api().Home()).widgets || [];
+    const home = await api().Home();
+    layout = home.widgets || [];
+    autoRefresh = !home.autoRefreshOff;
+    autoSwitch.checked = autoRefresh;
   } catch (e) {
     showCommandError('Could not load the home page: ' + e);
   }

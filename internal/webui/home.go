@@ -35,11 +35,15 @@ type WidgetInfo struct {
 	Summary string `json:"summary"`
 	W       int    `json:"w"` // size it is added with, in grid cells
 	H       int    `json:"h"`
+	// Refresh is how often, in seconds, the home page tells it to load again (sdk.js: aex.onRefresh)
+	// while auto refresh is on (HomeLayout.AutoRefreshOff); 0: only after runs.
+	Refresh int `json:"refresh,omitempty"`
 }
 
 var widgetCatalog = []WidgetInfo{
-	{ID: "quota", Name: "AEXT quota", Summary: "Hours logged this month against the quota, and last month", W: 2, H: 2},
-	{ID: "google-calendars", Name: "Google Calendar now", Summary: "What is on now in a Google calendar you pick, and when it ends", W: 2, H: 2},
+	{ID: "quota", Name: "AEXT quota", Summary: "Hours logged this month against the quota, and last month", W: 2, H: 2, Refresh: 60},
+	{ID: "google-calendars", Name: "Google Calendar now", Summary: "What is on now in a Google calendar you pick, and when it ends", W: 2, H: 2, Refresh: 60},
+	{ID: "jira-tickets", Name: "Jira tickets", Summary: "Open tickets assigned to you, or where you are in fields you pick", W: 2, H: 2, Refresh: 60},
 }
 
 // widgetAPIs are the calls widgets make with aex.call(name, args). They never prompt: a widget has
@@ -48,6 +52,9 @@ var widgetAPIs = map[string]func(args map[string]any) (any, error){
 	"quota":           quotaAPI,
 	"googleCalendars": googleCalendarsAPI,
 	"googleNow":       googleNowAPI,
+	"jiraFields":      jiraFieldsAPI,
+	"jiraTickets":     jiraTicketsAPI,
+	"jiraOpen":        jiraOpenAPI,
 }
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
@@ -57,6 +64,7 @@ const (
 	maxWidgets    = 48
 	homeFileLimit = 1 << 20
 	maxSettings   = 8 << 10 // a placement's settings, as JSON
+	minRefresh    = 5       // seconds: a plugin's widget refreshes at most this often, each call starts the plugin
 )
 
 // HomeWidget is one widget placed on the home page.
@@ -73,6 +81,8 @@ type HomeWidget struct {
 // HomeLayout is the home page: its widgets in grid order.
 type HomeLayout struct {
 	Widgets []HomeWidget `json:"widgets"`
+	// AutoRefreshOff turns off refreshing widgets on their own (WidgetInfo.Refresh), on by default.
+	AutoRefreshOff bool `json:"autoRefreshOff,omitempty"`
 }
 
 // WidgetList is what can be added to the home page.
@@ -103,8 +113,12 @@ func (a *App) Widgets() WidgetList {
 			continue
 		}
 		for _, w := range p.Widgets {
-			list.Widgets = append(list.Widgets, WidgetInfo{ID: p.Name + "/" + w.ID, Plugin: p.Name, Name: w.Name,
-				Summary: w.Summary, W: min(max(w.W, 1), maxWidgetW), H: min(max(w.H, 1), maxWidgetH)})
+			info := WidgetInfo{ID: p.Name + "/" + w.ID, Plugin: p.Name, Name: w.Name,
+				Summary: w.Summary, W: min(max(w.W, 1), maxWidgetW), H: min(max(w.H, 1), maxWidgetH)}
+			if w.Refresh > 0 {
+				info.Refresh = max(w.Refresh, minRefresh)
+			}
+			list.Widgets = append(list.Widgets, info)
 		}
 	}
 	return list
@@ -126,6 +140,7 @@ func (a *App) Home() (HomeLayout, error) {
 		return layout, fmt.Errorf("%s: %w", settings.HomeFile, err)
 	}
 	layout.Widgets = cleanWidgets(saved.Widgets)
+	layout.AutoRefreshOff = saved.AutoRefreshOff
 	return layout, nil
 }
 

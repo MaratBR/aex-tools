@@ -39,6 +39,20 @@ func New() (*Client, error) {
 	return newClient(base, email, token), nil
 }
 
+// NewQuiet is New that never prompts: ErrNotConfigured when JIRA_EMAIL or JIRA_TOKEN is not set.
+// For the window's widgets and header, which have no run to ask in.
+func NewQuiet() (*Client, error) {
+	base, err := settings.Require("JIRA_BASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	email, token := settings.Get("JIRA_EMAIL"), settings.Get("JIRA_TOKEN")
+	if email == "" || token == "" {
+		return nil, ErrNotConfigured
+	}
+	return newClient(base, email, token), nil
+}
+
 func newClient(base, email, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(base, "/"),
@@ -168,25 +182,64 @@ func (c *Client) searchIssues(jql string, fields []string) ([]issue, error) {
 
 // Search returns every issue matching jql, with fields decoded into F.
 func Search[F any](c *Client, jql string, fields []string) ([]Issue[F], error) {
+	issues, _, err := SearchMax[F](c, jql, fields, 0)
+	return issues, err
+}
+
+// SearchMax returns the first max issues matching jql (all of them when max is 0), with fields
+// decoded into F; more says there were more.
+func SearchMax[F any](c *Client, jql string, fields []string, max int) (issues []Issue[F], more bool, err error) {
 	type body struct {
 		JQL           string   `json:"jql"`
 		Fields        []string `json:"fields"`
 		MaxResults    int      `json:"maxResults"`
 		NextPageToken string   `json:"nextPageToken,omitempty"`
 	}
-	var issues []Issue[F]
 	token := ""
 	for {
-		page, err := request(c, "POST", "/rest/api/3/search/jql", nil, body{jql, fields, 100, token},
+		n := 100
+		if max > 0 {
+			n = min(n, max-len(issues))
+		}
+		page, err := request(c, "POST", "/rest/api/3/search/jql", nil, body{jql, fields, n, token},
 			func(p searchPage[F]) bool { return p.Issues != nil })
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		issues = append(issues, *page.Issues...)
-		if token = page.NextPageToken; token == "" {
-			return issues, nil
+		token = page.NextPageToken
+		if max > 0 && len(issues) >= max {
+			return issues[:max], token != "" || len(issues) > max, nil
+		}
+		if token == "" {
+			return issues, false, nil
 		}
 	}
+}
+
+// Field is an issue field, system or custom.
+type Field struct {
+	ID     string `json:"id"` // customfield_10050 for a custom one
+	Name   string `json:"name"`
+	Custom bool   `json:"custom"`
+	Schema *struct {
+		Type  string `json:"type"`  // user, or array of Items
+		Items string `json:"items"` // user for a field of several people
+	} `json:"schema"`
+}
+
+// People reports whether the field holds a person, or several.
+func (f Field) People() bool {
+	return f.Schema != nil && (f.Schema.Type == "user" || f.Schema.Type == "array" && f.Schema.Items == "user")
+}
+
+// Fields lists every issue field the current user can see.
+func (c *Client) Fields() ([]Field, error) {
+	fields, err := request(c, "GET", "/rest/api/3/field", nil, nil, func(f *[]Field) bool { return f != nil })
+	if err != nil {
+		return nil, err
+	}
+	return *fields, nil
 }
 
 func (c *Client) issueWorklogs(key string, startedAfter, startedBefore time.Time) ([]worklog, error) {

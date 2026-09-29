@@ -308,6 +308,10 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .home-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 18px; }
 .home-head h1 { flex: 1; margin: 0; font: 700 28px/1.15 var(--display); letter-spacing: -.03em; }
 .home-add { position: relative; }
+.home-auto { display: flex; align-items: center; gap: 7px; margin-right: 6px; color: var(--muted); font-size: 13px; cursor: pointer; }
+.switch.small { width: 32px; height: 20px; }
+.switch.small::before { width: 16px; height: 16px; }
+.switch.small:checked::before { transform: translateX(12px); }
 #widget-picker {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 5;
   width: 300px;

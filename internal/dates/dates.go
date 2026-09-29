@@ -167,3 +167,6 @@ func ParseRange(input, now string) (Range, error) {
 	}
 	return Range{from, to}, nil
 }
+
+// Now is the time now in the configured TZ.
+func Now() time.Time { return time.Now().In(zone()) }

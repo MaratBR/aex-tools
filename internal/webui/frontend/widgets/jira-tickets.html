@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Jira tickets</title>
+  <style>
+    body { display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
+    .head { display: flex; align-items: center; gap: 8px; }
+    .title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
+    .title .text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title .count { flex: none; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .loading #refresh svg { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Tickets assigned to you lately. */
+    .warning { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 9px; font-size: 13px; font-weight: 600;
+      color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+    .warning svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    .list { flex: 1; min-height: 0; margin: 0; padding: 0; overflow-y: auto; font-size: 13px; }
+    .list > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
+    .ticket { display: flex; align-items: center; gap: 10px; padding: 5px 6px; margin: 0 -6px; width: calc(100% + 12px);
+      border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; }
+    .ticket:hover { background: var(--hover); }
+    .ticket .what { flex: 1; min-width: 0; }
+    .ticket .summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ticket .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ticket .key { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .ticket.new .summary { font-weight: 600; }
+    .pill { flex: none; max-width: 40%; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--muted); background: var(--fill); }
+    .pill.indeterminate { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+    .pill.new { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+    .more { padding: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .nothing { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+    .nothing .big { font: 600 20px/1.2 var(--display); letter-spacing: -.02em; color: var(--ok); }
+    .nothing .muted { font-size: 13px; }
+
+    /* Choosing which tickets to show. */
+    .setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; font-size: 13px; }
+    .setup-head { color: var(--muted); }
+    .choice { width: 100%; display: block; padding: 7px 10px; border: 0; border-radius: 9px; background: var(--fill); text-align: left; cursor: pointer; }
+    .choice:hover { background: var(--hover); }
+    .choice .name { display: block; font-weight: 600; }
+    .choice .summary { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .fields { display: flex; flex-direction: column; }
+    .field { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+    .field:hover { background: var(--hover); }
+    .field input { margin: 0; accent-color: var(--accent); }
+    .field .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .field .kind { flex: none; color: var(--faint); font-size: 11px; }
+    .actions { display: flex; gap: 6px; }
+    .btn:disabled { opacity: .5; cursor: default; }
+
+    .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+
+    /* One row high: the count and the warning only. */
+    @media (max-height: 200px) {
+      body { gap: 6px; padding-top: 12px; }
+      .list, .more { display: none; }
+      .nothing .muted { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div class="title"><span class="text" id="title">Jira tickets</span><span class="count" id="count"></span></div>
+    <button class="icon-btn" id="change" type="button" title="Change which tickets" aria-label="Change which tickets" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+    </button>
+    <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+  <div id="warning" class="warning" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h0"/></svg>
+    <span id="warning-text"></span>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    // Open Jira tickets (home.go, jirawidget.go: jiraTickets), in one of two modes kept in this
+    // placement's settings, asked the first time:
+    //   {mode: 'assigned'}                          assigned to you; those assigned within the last
+    //                                               24 h (72 h on a Monday) are marked with a warning
+    //   {mode: 'field', fields: [{id, name}, ...]}  you are in one of these people fields (jiraFields)
+    const content = document.getElementById('content');
+    const titleEl = document.getElementById('title'), countEl = document.getElementById('count');
+    const warningEl = document.getElementById('warning'), warningText = document.getElementById('warning-text');
+    const changeBtn = document.getElementById('change');
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function button(cls, label, run) {
+      const b = node('button', cls, label);
+      b.type = 'button';
+      b.onclick = run;
+      return b;
+    }
+
+    const titleOf = s => (s.mode === 'assigned' ? 'Assigned to me' : (s.fields || []).map(f => f.name).join(', ') || 'Jira tickets');
+
+    function head(title, count) {
+      titleEl.textContent = title;
+      titleEl.parentElement.title = title;
+      countEl.textContent = count;
+    }
+
+    function notice(text, error, ...actions) {
+      warningEl.hidden = true;
+      content.textContent = '';
+      content.className = 'notice';
+      content.append(node('div', null, text));
+      if (error) content.append(node('div', 'error', error));
+      if (actions.length) {
+        const row = node('div', 'actions');
+        actions.forEach((a, i) => row.append(button(i ? 'btn' : 'btn primary', a.label, a.run)));
+        content.append(row);
+      }
+    }
+
+    const login = { label: 'Set Jira login', run: () => aex.run('account --login jira') };
+
+    // problem shows why a reply has nothing (no login, token rejected); false when there is none.
+    function problem(r) {
+      if (r.notConfigured) notice('No Jira login set.', '', login);
+      else if (r.needLogin) notice('Jira rejects the saved token.', '', login);
+      else return false;
+      return true;
+    }
+
+    // Tickets ---------------------------------------------------------------------------------
+
+    function ago(s) {
+      const ms = Date.now() - new Date(s);
+      if (!(ms >= 0)) return '';
+      const min = Math.floor(ms / 60000);
+      if (min < 60) return min <= 1 ? 'just now' : min + ' min ago';
+      const h = Math.floor(min / 60);
+      if (h < 24) return h + ' h ago';
+      const d = Math.floor(h / 24);
+      return d === 1 ? 'yesterday' : d + ' days ago';
+    }
+
+    function render(r) {
+      const fresh = r.tickets.filter(t => t.new);
+      warningEl.hidden = !fresh.length;
+      if (fresh.length) {
+        const n = fresh.length === 1 ? '1 ticket' : fresh.length + ' tickets';
+        const when = r.newHours === 72 ? 'in the last 72 h (since Friday)' : `in the last ${r.newHours} h`;
+        warningText.textContent = `${n} assigned to you ${when}`;
+        warningEl.title = fresh.map(t => t.key + ' ' + t.summary).join('\n');
+      }
+      countEl.textContent = r.tickets.length + (r.more ? '+' : '');
+      content.textContent = '';
+      if (!r.tickets.length) {
+        content.className = 'nothing';
+        content.append(node('div', 'big', 'No open tickets'), node('div', 'muted', 'Nothing to do here right now.'));
+        return;
+      }
+      content.className = 'list';
+      for (const t of r.tickets) {
+        const b = button('ticket' + (t.new ? ' new' : ''), null, () => open(t.key));
+        const what = node('div', 'what');
+        what.append(node('div', 'summary', t.summary || '(no summary)'));
+        const meta = node('div', 'meta');
+        meta.append(node('span', 'key', t.key));
+        const rest = [t.type, t.priority, t.updated && 'updated ' + ago(t.updated)].filter(Boolean);
+        if (rest.length) meta.append(' · ' + rest.join(' · '));
+        what.append(meta);
+        b.append(what);
+        if (t.new) b.append(node('span', 'pill new', 'New'));
+        b.append(node('span', 'pill ' + (t.category || ''), t.status));
+        b.title = `${t.key} ${t.summary}\n${t.status}${t.new ? ' · newly assigned to you' : ''}\nOpen in the browser`;
+        const li = node('div');
+        li.append(b);
+        content.append(li);
+      }
+      if (r.more) content.append(node('div', 'more', 'Only the 50 most recently updated are shown.'));
+    }
+
+    async function open(key) {
+      try {
+        await aex.call('jiraOpen', { key });
+      } catch (e) {
+        notice('Could not open ' + key + '.', e.message, { label: 'Back', run: load });
+      }
+    }
+
+    // Choosing which tickets ------------------------------------------------------------------
+
+    let seq = 0, choosing = false;
+
+    function cancelRow() {
+      if (!aex.settings.mode) return [];
+      return [button('btn', 'Cancel', () => { choosing = false; load(); })];
+    }
+
+    function choose() {
+      ++seq;
+      choosing = true;
+      changeBtn.hidden = true;
+      warningEl.hidden = true;
+      document.body.classList.remove('loading');
+      head('Jira tickets', '');
+      content.textContent = '';
+      content.className = 'setup';
+      content.append(node('div', 'setup-head', 'Which tickets to show?'));
+      const assigned = button('choice', null, () => keep({ mode: 'assigned' }));
+      assigned.append(node('span', 'name', 'Assigned to me'),
+        node('span', 'summary', 'Open tickets assigned to you, with a warning for ones assigned in the last 24 hours (72 on Mondays).'));
+      const field = button('choice', null, pickFields);
+      field.append(node('span', 'name', "Where I'm in a field"),
+        node('span', 'summary', 'Open tickets that list you in people fields you pick, such as Reviewer or QA.'));
+      content.append(assigned, field);
+      const row = node('div', 'actions');
+      row.append(...cancelRow());
+      if (row.childElementCount) content.append(row);
+    }
+
+    async function pickFields() {
+      const n = ++seq;
+      document.body.classList.add('loading');
+      notice('Loading the fields…');
+      try {
+        const r = await aex.call('jiraFields');
+        if (n !== seq) return;
+        if (problem(r)) return;
+        content.textContent = '';
+        content.className = 'setup';
+        if (!r.fields.length) {
+          content.append(node('div', 'setup-head', 'Jira has no custom fields of people.'));
+          content.append(button('btn', 'Back', choose));
+          return;
+        }
+        content.append(node('div', 'setup-head', 'Show tickets where I am in:'));
+        const current = new Set(aex.settings.mode === 'field' ? (aex.settings.fields || []).map(f => f.id) : []);
+        const list = node('div', 'fields');
+        const show = button('btn primary', 'Show', () => {
+          const fields = r.fields.filter(f => boxes.get(f.id).checked).map(f => ({ id: f.id, name: f.name }));
+          keep({ mode: 'field', fields });
+        });
+        const boxes = new Map();
+        const sync = () => (show.disabled = ![...boxes.values()].some(b => b.checked));
+        for (const f of r.fields) {
+          const label = node('label', 'field');
+          const box = node('input');
+          box.type = 'checkbox';
+          box.checked = current.has(f.id);
+          box.onchange = sync;
+          boxes.set(f.id, box);
+          label.append(box, node('span', 'name', f.name), node('span', 'kind', f.multiple ? 'people' : 'person'));
+          label.title = `${f.name} (${f.id})`;
+          list.append(label);
+        }
+        sync();
+        const row = node('div', 'actions');
+        row.append(show, button('btn', 'Back', choose));
+        content.append(list, row);
+      } catch (e) {
+        if (n !== seq) return;
+        notice('Could not list the Jira fields.', e.message, { label: 'Try again', run: pickFields }, { label: 'Back', run: choose });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    async function keep(s) {
+      try {
+        await aex.saveSettings(s);
+      } catch (e) {
+        return notice('Could not keep the choice.', e.message, { label: 'Try again', run: () => keep(s) });
+      }
+      choosing = false;
+      shown = false;
+      load();
+    }
+
+    // Loading ---------------------------------------------------------------------------------
+
+    let shown = false;
+    async function load() {
+      const s = aex.settings;
+      if (!s.mode) return choose();
+      if (choosing) return;
+      const n = ++seq;
+      document.body.classList.add('loading');
+      changeBtn.hidden = false;
+      if (!shown) {
+        head(titleOf(s), '');
+        notice('Loading…');
+      }
+      try {
+        const r = await aex.call('jiraTickets', { mode: s.mode, fields: (s.fields || []).map(f => f.id) });
+        if (n !== seq) return;
+        if (problem(r)) {
+          shown = false;
+          countEl.textContent = '';
+        } else {
+          head(titleOf(s), '');
+          render(r);
+          shown = true;
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        shown = false;
+        countEl.textContent = '';
+        notice('Could not load the tickets.', e.message, { label: 'Try again', run: load }, { label: 'Change', run: choose });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    changeBtn.onclick = choose;
+    document.getElementById('refresh').onclick = () => (choosing ? null : load());
+    aex.onRefresh(() => (choosing ? null : load()));
+    load();
+  </script>
+</body>
+</html>

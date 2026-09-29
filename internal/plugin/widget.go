@@ -28,7 +28,7 @@ import (
 //	<plugin> --aex-widget-call <id> <call>  runs one of its calls: JSON args on stdin, and on stdout
 //	                                        {"result": ...} or {"error": "..."}
 //
-// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h"}]). aex
+// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h", "refresh"}]). aex
 // runs neither flag unless the plugin is safe, and a call only with the plugin's access granted: it
 // never asks, since a widget has no run to ask in (WidgetError says what is missing).
 
@@ -51,7 +51,10 @@ type Widget struct {
 	ID      string // unique in the plugin: lowercase letters, digits, - and _
 	Name    string
 	Summary string
-	W, H    int    // the size it is added with, in grid cells (1-4)
+	W, H    int // the size it is added with, in grid cells (1-4)
+	// Refresh is how often the home page tells it to load again (aex.onRefresh) while auto refresh
+	// is on; 0: only after runs. Each of its calls starts the plugin, so the window uses 5 s at least.
+	Refresh time.Duration
 	HTML    string // its page, usually go:embed
 	// Calls are its data calls. Each gets the call's args as JSON and returns what to send back
 	// (marshalled to JSON), running in the plugin with its settings and granted access, but with no
@@ -66,6 +69,7 @@ type WidgetInfo struct {
 	Summary string `json:"summary,omitempty"`
 	W       int    `json:"w"`
 	H       int    `json:"h"`
+	Refresh int    `json:"refresh,omitempty"` // Widget.Refresh in seconds
 }
 
 var widgetID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -73,7 +77,8 @@ var widgetID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 func describeWidgets(ws []Widget) []WidgetInfo {
 	var d []WidgetInfo
 	for _, w := range ws {
-		d = append(d, WidgetInfo{ID: w.ID, Name: w.Name, Summary: w.Summary, W: w.W, H: w.H})
+		d = append(d, WidgetInfo{ID: w.ID, Name: w.Name, Summary: w.Summary, W: w.W, H: w.H,
+			Refresh: int(w.Refresh.Round(time.Second) / time.Second)})
 	}
 	return d
 }

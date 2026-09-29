@@ -7,7 +7,8 @@
 //                         plugin's calls (plugin.Widget.Calls). Rejects with an Error.
 //   aex.run(line)         runs a tool on the Runs page, as if typed on the command line; a plugin's
 //                         widget only its plugin's tools
-//   aex.onRefresh(fn)     fn runs when the data may have changed (after a run) and on aex.refresh()
+//   aex.onRefresh(fn)     fn runs when the data may have changed (after a run), on auto refresh (as
+//                         often as the widget asks: WidgetInfo.Refresh) and on aex.refresh()
 //   aex.settings          this placement's own settings (an object, {} at first): each time the
 //                         widget is added it starts with none, e.g. which calendar it shows
 //   aex.saveSettings(obj) replaces them (a JSON object, 8 KB at most), a Promise; kept in home.json

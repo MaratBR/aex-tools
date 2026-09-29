@@ -55,7 +55,8 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
 - `custom-tools.json` — the custom tools added (name, script path, adapter)
-- `home.json` — the window's home page: its widgets in order, with their sizes
+- `home.json` — the window's home page: its widgets in order, with their sizes and settings, and
+  whether auto refresh is off
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
 environment variable (real environment only). Click its path in the window's sidebar to open it.
@@ -303,6 +304,13 @@ move it earlier or later, change its width and height (1–4 cells) or remove it
 to `home.json` in the data folder (`App.SaveHome`; unknown built-in widgets are dropped and sizes
 clamped on load; plugins' widgets stay, see below).
 
+Auto refresh: a widget can ask to be refreshed on its own every so many seconds (`WidgetInfo.Refresh`
+in `widgetCatalog`, `plugin.Widget.Refresh` for a plugin's, at least 5 s; none by default). The Auto
+refresh switch on Home (shown while such a widget is on it) turns it off for all of them, saved as
+`autoRefreshOff` in `home.json`; it is on by default. Refreshes pause while Home is not shown or the
+window is minimised (`WindowIsMinimised`, since the web view keeps running then); a widget that fell
+due meanwhile refreshes as soon as Home is back.
+
 A widget is one page (its HTML, CSS and JS), from the app (`frontend/widgets/<id>.html`) or from a
 plugin (see Plugins). Each runs in a sandboxed frame (`sandbox="allow-scripts"`, an origin of its own):
 it cannot reach the window, its backend or other widgets. The window puts at the top of its `<head>` a
@@ -318,30 +326,42 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
 - `aex.settings` / `aex.saveSettings(obj)` — this placement's own settings: a JSON object (8 KB at
   most) kept with it in `home.json` (`HomeWidget.Settings`), `{}` when it is added, such as which
   calendar it shows. home.js puts them in the page as it loads it.
-- `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data); for a
-  plugin's widget at most every 30 s, since each call starts the plugin. Widgets that could not load
-  try again then.
+- `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data; for a
+  plugin's widget at most every 30 s, since each call starts the plugin) and on auto refresh. Widgets
+  that could not load try again then.
 
 A widget that leaves its page (a link, `location`) is replaced by a note. The sandbox protects the
 window from a widget; blocking the network is only a second line, since an approved plugin is trusted
 like any program.
 
 Adding a built-in one: write `frontend/widgets/foo.html`, add it to `widgetCatalog` in `home.go`
-(name, summary, the size it is added with), and any API it needs to `widgetAPIs`.
+(name, summary, the size it is added with, how often it refreshes), and any API it needs to `widgetAPIs`.
 
 Widgets so far:
 
-- `quota` — AEXT quota: this month's hours against the quota (the quota tool's numbers: behind or
+- `quota` (refreshes every minute) — AEXT quota: this month's hours against the quota (the quota tool's numbers: behind or
   ahead, due by today, hours/day to finish, working days without hours with a button to run
   worklog-sync) and whether last month is complete. One row high it shows only the numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
-- `google-calendars` — Google Calendar now: the events on now in one calendar, each with when it
+- `google-calendars` (every minute) — Google Calendar now: the events on now in one calendar, each with when it
   started and when it ends (and the time left), leaving out cancelled ones and ones you declined; free
   and tentative ones are marked. The first time it lists the account's calendars to pick one, kept in
-  its placement's settings, so each copy can show another; the calendar button changes it. It asks
-  Google again every 2 minutes and counts down in between. Without a Google login it offers to log in
-  (`account --login google`).
-- `cm-release/cm-repos-state` (cm-release plugin) — CM repos state: each repo's branch and uncommitted
+  its placement's settings, so each copy can show another; the calendar button changes it. It counts
+  down between refreshes. Without a Google login it offers to log in (`account --login google`).
+- `jira-tickets` (every minute) — Jira tickets: open tickets (status not Done, 50 most recently
+  updated, `jirawidget.go`), each with its key, summary, type, priority, when it was updated and its
+  status; clicking one opens it in the browser. When added it asks which, kept in its placement's
+  settings (the filter button changes it):
+  - Assigned to me: `assignee = currentUser()`. Tickets assigned to you in the last 24 hours (72 on a
+    Monday, in the configured TZ, to cover the weekend) are marked New with a warning above the list:
+    `assignee CHANGED TO currentUser() AFTER "-24h"`, or created since then.
+  - Where I'm in a field: you pick custom fields of people (`/rest/api/3/field`, schema `user` or an
+    array of `user`), and it shows tickets with you in any of them (`cf[<id>] = currentUser()`, which
+    matches a field of several people too).
+
+  Without a Jira login, or when Jira rejects the token, it offers `account --login jira`. One row high
+  it shows only the count and the warning.
+- `cm-release/cm-repos-state` (cm-release plugin, every 5 s) — CM repos state: each repo's branch and uncommitted
   changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
   (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
   One row high it shows only the verdict.
@@ -409,9 +429,9 @@ credentials: a plugin never opens the credential store and ignores secret settin
 - Without a terminal, a plugin that is not safe fails instead of asking.
 - Widgets: a plugin can offer widgets for Home (see Window), each with its page built into the plugin
   (so its approval covers the page too) and its data calls: `plugin.Main(t, plugin.Jira,
-  plugin.Widget{ID: "foo", Name: "...", Summary: "...", W: 2, H: 1, HTML: page, Calls:
+  plugin.Widget{ID: "foo", Name: "...", Summary: "...", W: 2, H: 1, Refresh: time.Minute, HTML: page, Calls:
   map[string]func(json.RawMessage) (any, error){...}})`, `page` being a `go:embed`ded file. They are
-  listed in `--aex-describe` (`"widgets": [{"id", "name", "summary", "w", "h"}]`) and are `<plugin>/<id>`
+  listed in `--aex-describe` (`"widgets": [{"id", "name", "summary", "w", "h", "refresh"}]`, refresh in seconds) and are `<plugin>/<id>`
   in the window. aex gets the page with `<plugin> --aex-widget <id>` (cached per file hash) and runs a
   call with `<plugin> --aex-widget-call <id> <call>`: args as JSON on stdin, `{"result": ...}` or
   `{"error": "..."}` on stdout, 20 s at most, its output never shown in a run. Neither asks anything:

@@ -70,7 +70,6 @@
     const content = document.getElementById('content');
     const titleEl = document.getElementById('title'), dotEl = document.getElementById('dot');
     const changeBtn = document.getElementById('change');
-    const reloadMs = 2 * 60 * 1000; // Google is asked again this often; the times left count down in between
 
     function node(tag, cls, text) {
       const e = document.createElement(tag);
@@ -280,14 +279,14 @@
       }
     }
 
-    // Between loads the times left count down; an event ending brings the next one sooner.
+    // Google is asked again on each refresh (auto refresh: every minute, home.go); between loads the
+    // times left count down, and an event ending brings the next one sooner.
     setInterval(() => {
       if (!reply || picking) return;
       const now = new Date();
       if (reply.events.some(e => endOf(e) <= now)) load();
       else renderNow();
     }, 30000);
-    setInterval(() => { if (!picking) load(); }, reloadMs);
 
     changeBtn.onclick = pick;
     document.getElementById('refresh').onclick = () => (picking ? pick() : load());

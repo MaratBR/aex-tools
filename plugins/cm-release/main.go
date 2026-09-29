@@ -12,6 +12,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"time"
 
 	"aex/internal/plugin"
 	"aex/internal/tool"
@@ -34,7 +35,7 @@ func main() {
 		},
 	}, plugin.Jira, plugin.Widget{
 		ID: "cm-repos-state", Name: "CM repos state", Summary: "Git state of every CM repo: clean or pending changes",
-		W: 2, H: 2, HTML: reposStatePage,
+		W: 2, H: 2, Refresh: 5 * time.Second, HTML: reposStatePage,
 		Calls: map[string]func(json.RawMessage) (any, error){"state": stateCall},
 	})
 }
