@@ -170,7 +170,7 @@ func approve(name, path string) (*openFile, error) {
 	}
 	s, err := state(path, o.hash)
 	if err == nil && s != Safe {
-		err = askApproval(name, path, o, s)
+		err = askApproval("Plugin", name, path, o, s, nil)
 	}
 	if err != nil {
 		o.close()
@@ -179,12 +179,14 @@ func approve(name, path string) (*openFile, error) {
 	return o, nil
 }
 
-func askApproval(name, path string, o *openFile, s State) error {
-	if err := ui.AssertInteractive("approving plugin " + name); err != nil {
-		return fmt.Errorf("plugin %s is %v: %w", name, s, err)
+// askApproval asks to approve the file of what ("Plugin", "Custom tool") name, listing its path,
+// size, hash and then details (label and value).
+func askApproval(what, name, path string, o *openFile, s State, details [][2]string) error {
+	if err := ui.AssertInteractive("approving " + strings.ToLower(what) + " " + name); err != nil {
+		return fmt.Errorf("%s %s is %v: %w", strings.ToLower(what), name, s, err)
 	}
 	c := ui.Err
-	fmt.Fprintf(os.Stderr, "%s Plugin %s is %v. It would run with your rights.\n", c.Bold(c.Yellow("▲")), c.Bold(name), s)
+	fmt.Fprintf(os.Stderr, "%s %s %s is %v. It would run with your rights.\n", c.Bold(c.Yellow("▲")), what, c.Bold(name), s)
 	fmt.Fprintf(os.Stderr, "  %s %s\n", c.Dim("File     "), path)
 	if stat, err := o.f.Stat(); err == nil {
 		fmt.Fprintf(os.Stderr, "  %s %s\n", c.Dim("Size     "), sizeAndTime(stat.Size(), stat.ModTime()))
@@ -195,12 +197,15 @@ func askApproval(name, path string, o *openFile, s State) error {
 			fmt.Fprintf(os.Stderr, "  %s %s\n", c.Dim("Safe hash"), safe)
 		}
 	}
+	for _, d := range details {
+		fmt.Fprintf(os.Stderr, "  %s %s\n", c.Dim(fmt.Sprintf("%-9s", d[0])), d[1])
+	}
 	yes, err := ui.Confirm("Save this hash as safe and run the file?", false)
 	if err != nil {
 		return err
 	}
 	if !yes {
-		return fmt.Errorf("plugin %s not approved", name)
+		return fmt.Errorf("%s %s not approved", strings.ToLower(what), name)
 	}
 	if err := settings.Credentials.Set(hashKey(path), o.hash); err != nil {
 		return err

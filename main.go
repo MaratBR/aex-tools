@@ -10,11 +10,13 @@ import (
 	"strconv"
 	"strings"
 
+	"aex/internal/custom"
 	"aex/internal/plugin"
 	"aex/internal/settings"
 	"aex/internal/tool"
 	"aex/internal/tools/account"
 	"aex/internal/tools/configure"
+	"aex/internal/tools/customtools"
 	"aex/internal/tools/plugins"
 	"aex/internal/tools/quota"
 	"aex/internal/tools/worklogsync"
@@ -29,20 +31,31 @@ import (
 var embeddedEnv string
 
 // Tool list order: built-in tools, each its own package under internal/tools, then plugins (see
-// internal/plugin), added by loadPlugins.
+// internal/plugin), then custom tools (see internal/custom), added by loadPlugins.
 var builtins = []tool.Tool{
 	worklogsync.Tool,
 	quota.Tool,
 	account.Tool,
 	configure.Tool,
 	plugins.Tool,
+	customtools.Tool,
 }
 
 var tools = builtins
 
-// loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder.
+func init() {
+	// A custom tool cannot take a built-in tool's or a plugin's name.
+	custom.Reserved = func(name string) bool {
+		return slices.ContainsFunc(builtins, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) }) ||
+			slices.ContainsFunc(plugin.Names(), func(n string) bool { return strings.EqualFold(n, name) })
+	}
+}
+
+// loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder and the
+// custom tools added.
 func loadPlugins() {
-	tools = append(slices.Clip(builtins), plugin.Discover(builtins)...)
+	withPlugins := append(slices.Clip(builtins), plugin.Discover(builtins)...)
+	tools = append(withPlugins, custom.Discover(withPlugins)...)
 }
 
 func help() string {
@@ -64,6 +77,7 @@ Tools:
 %s
 Plugins (tools after the built-in ones) are executables in:
   %s
+Custom tools (after the plugins) are scripts added with "aex custom-tools add <path>".
 
 Data folder (app settings .env.config, AEXT session, output), set with --data-dir <dir> or AEX_DATA_DIR:
   %s

@@ -404,7 +404,7 @@ input.addEventListener('blur', () => setTimeout(hideSuggest, 100));
 
 // Sidebar and welcome ---------------------------------------------------------------------------
 
-// toolName is a tool's name, after a warning icon when it has one (a plugin not approved).
+// toolName is a tool's name, after a warning icon when it has one (a plugin or custom tool not approved).
 function toolName(t) {
   const name = el('span', 'name');
   if (t.warn) {

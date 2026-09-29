@@ -118,7 +118,7 @@ type ToolInfo struct {
 	Warn    string     `json:"warn,omitempty"` // why it has a warning icon
 }
 
-// Tools lists the tools: built-in ones, then plugins. Hidden ones are left out.
+// Tools lists the tools: built-in ones, then plugins, then custom tools. Hidden ones are left out.
 func (a *App) Tools() []ToolInfo {
 	var list func([]tool.Tool) []ToolInfo
 	list = func(ts []tool.Tool) []ToolInfo {

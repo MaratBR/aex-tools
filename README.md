@@ -15,9 +15,15 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
   - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
     `ParseFlags` (gives `--help`)
   - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
-    `plugins`), each exporting `Tool`; `main.go` lists them in the order the window shows them
+    `plugins`, `customtools`), each exporting `Tool`; `main.go` lists them in the order the window shows them
   - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
-    a plugin's own `main`
+    a plugin's own `main`; `plugin.Lock` approves custom tools the same way
+  - `custom` — custom tools (see Custom tools): the list of scripts added, their approval, parameter
+    prompts, running them through their adapter
+  - `adapter` — the tool adapter interface and the parameter model every adapter shares (binding args,
+    `--help`); `adapter/powershell` — the PowerShell one
+  - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed
+  - `proc` — starting console programs without a console window (from the window)
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
     app settings (`.env.config`), the credential store; auth settings list, prompts for missing ones and saves
     them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
@@ -46,6 +52,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `.env.config` — app settings: auth settings saved by `configure` or prompts
 - `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
+- `custom-tools.json` — the custom tools added (name, script path, adapter)
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
 environment variable (real environment only). Click its path in the window's sidebar to open it.
@@ -139,7 +146,16 @@ what to do; else `list` (default), `describe [<name>]` (asks to approve any not 
 `delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `forget-all [--yes]` (forgets every plugin's safe hash and
 granted access, keeping the files: each asks to be approved again on its next run), `open` (opens the
 plugins folder). The credential store cannot list its keys, so approved plugin paths are also kept in
-`plugin-approved-paths`; `forget-all` clears those plus the plugins in the folder now.
+`plugin-approved-paths`; `forget-all` clears those plus the plugins in the folder now. Custom tools'
+approvals are in that list too, so `forget-all` forgets them as well.
+
+## custom-tools
+
+`.\bin\aex.ps1 custom-tools` manages custom tools (see Custom tools). Without args on a terminal (or
+from the window) it lists them and asks what to do: add a script (asks its path and a name), describe or
+remove one. Else `list` (default: file, SHA-256, state, adapter, parameters, git info), `describe <name>`
+(that plus its `--help`), `add <path> [--name <name>]` (named after the file by default, e.g.
+`Deploy App.ps1` → `Deploy-App`), `remove <name> [--yes]` (forgets its safe hash; the script is kept).
 
 ## cm-release (plugin)
 
@@ -311,6 +327,46 @@ credentials: a plugin never opens the credential store and ignores secret settin
   without write/delete sharing from hashing until the process starts, so it cannot be swapped in between.
   Elsewhere it is not locked.
 - Without a terminal, a plugin that is not safe fails instead of asking.
+
+## Custom tools
+
+A custom tool is a script anywhere on disk, added with `custom-tools add <path>`, run by the tool
+adapter for its kind of file. It shows in the window after the plugins and runs as `aex <name> [args]`.
+Adapters so far: `powershell` (`.ps1`). A new one implements `adapter.Adapter` (`internal/adapter`) and is
+added to `custom.Adapters`:
+
+- `Handles(path)` — whether it runs this file (by extension).
+- `Describe(path)` — summary and parameters, read without running the script: name, kind (string, int,
+  number, bool, switch, list), declared type, required, default, choices, help, aliases.
+- `Command(path, description, args, rest, console)` — the command that runs it with those values.
+
+aex does the rest the same for every adapter:
+
+- Args: `-Name value` or `--name value`, `-Name:value` or `--name=value`, a switch alone or `-Force:false`,
+  lists comma-separated; names ignore case and may be shortened or be an alias; positional values fill the
+  parameters not named yet, in order. Values are checked against the kind and choices before the script
+  runs. `aex <name> --help` shows the parameters (no approval needed: nothing runs).
+- Without args, every parameter is asked for (switches and bools as Yes / No, choices as a list, the rest
+  as text; empty leaves an optional one to the script's default). With args, only required ones left out
+  are asked for; without a terminal they fail instead.
+- Approval as for plugins: the script's SHA-256 is its safe hash (`plugin-safe-sha256:<path>`), asked for
+  on the first run and again whenever the file changes. The approval shows its path, size, SHA-256,
+  adapter and what runs it, its parameters and its git info. The script is held open from hashing until it
+  exits (on Windows it cannot change in between); files it dot-sources or imports are not covered.
+- Git: when the script is in a git repo, the approval, `custom-tools list` and every run show the repo
+  (top folder and origin URL, credentials removed), branch and HEAD commit, the last commit that changed the
+  script, and its changes not committed (untracked, ignored, staged or not, with +/− lines since HEAD).
+- It gets the same environment as a plugin (data folder, app root) with no secret settings.
+- In the window it has no terminal: its output goes to the run, and nothing can be read from input.
+
+PowerShell: parameters come from the `param()` block through the PowerShell parser (types,
+`[Parameter(Mandatory)]`, `HelpMessage`, `[ValidateSet]`, `[Alias]`, defaults) and comment-based help
+(`.SYNOPSIS` as the summary, `.PARAMETER`). A script without `param()` takes positional args as they are.
+It runs as `-Command "& '<path>' -Name 'value' …"` with values as quoted literals (so `$false` and arrays
+pass, which `-File` cannot), `-NoProfile -ExecutionPolicy Bypass` (the approval stands in for the execution
+policy), exiting with the script's exit code. Windows PowerShell on Windows, else `pwsh`; `pwsh` also for
+`#Requires -PSEdition Core` or a script only `pwsh` can parse. Parameter sets and dynamic parameters are
+not modelled (noted in `--help`).
 
 ## Tests
 

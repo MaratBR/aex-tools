@@ -134,6 +134,22 @@ func List() ([]Info, error) {
 	return found, nil
 }
 
+// Names are the tool names of the plugins in Dir, from their file names: nothing is opened or run.
+func Names() []string {
+	dir, err := Dir()
+	if err != nil {
+		return nil
+	}
+	entries, _ := os.ReadDir(dir)
+	var names []string
+	for _, e := range entries {
+		if name, ok := pluginName(e); ok {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // pluginName is the tool name for a plugins folder entry, if it is a plugin executable.
 func pluginName(e os.DirEntry) (string, bool) {
 	if !e.Type().IsRegular() {
