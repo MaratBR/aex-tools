@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,9 +11,11 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"aex/internal/aext"
 	"aex/internal/dates"
+	"aex/internal/google"
 	"aex/internal/plugin"
 	"aex/internal/quota"
 	"aex/internal/settings"
@@ -36,12 +39,15 @@ type WidgetInfo struct {
 
 var widgetCatalog = []WidgetInfo{
 	{ID: "quota", Name: "AEXT quota", Summary: "Hours logged this month against the quota, and last month", W: 2, H: 2},
+	{ID: "google-calendars", Name: "Google Calendar now", Summary: "What is on now in a Google calendar you pick, and when it ends", W: 2, H: 2},
 }
 
 // widgetAPIs are the calls widgets make with aex.call(name, args). They never prompt: a widget has
 // no run to ask its questions in, so one that needs a login says so instead.
 var widgetAPIs = map[string]func(args map[string]any) (any, error){
-	"quota": quotaAPI,
+	"quota":           quotaAPI,
+	"googleCalendars": googleCalendarsAPI,
+	"googleNow":       googleNowAPI,
 }
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
@@ -50,6 +56,7 @@ const (
 	maxWidgetH    = 4
 	maxWidgets    = 48
 	homeFileLimit = 1 << 20
+	maxSettings   = 8 << 10 // a placement's settings, as JSON
 )
 
 // HomeWidget is one widget placed on the home page.
@@ -58,6 +65,9 @@ type HomeWidget struct {
 	Widget string `json:"widget"` // WidgetInfo.ID
 	W      int    `json:"w"`
 	H      int    `json:"h"`
+	// Settings are this placement's own, a JSON object the widget keeps (sdk.js: aex.settings,
+	// aex.saveSettings), such as which calendar it shows.
+	Settings json.RawMessage `json:"settings,omitempty"`
 }
 
 // HomeLayout is the home page: its widgets in grid order.
@@ -128,6 +138,9 @@ func (a *App) SaveHome(layout HomeLayout) error {
 		if !placementID.MatchString(w.ID) {
 			return fmt.Errorf("bad widget id: %q", w.ID)
 		}
+		if w.Settings != nil && !validSettings(w.Settings) {
+			return fmt.Errorf("widget %s: settings must be a JSON object of at most %d KB", w.ID, maxSettings>>10)
+		}
 	}
 	if len(layout.Widgets) > maxWidgets {
 		return fmt.Errorf("at most %d widgets", maxWidgets)
@@ -157,7 +170,14 @@ func knownWidget(id string) bool {
 		pluginWidget.MatchString(id) && !strings.HasPrefix(id, ".")
 }
 
-// cleanWidgets drops unknown widgets and repeated ids, and clamps sizes to the grid.
+// validSettings reports whether s is a JSON object small enough to keep.
+func validSettings(s json.RawMessage) bool {
+	var m map[string]any
+	return len(s) <= maxSettings && json.Unmarshal(s, &m) == nil && m != nil
+}
+
+// cleanWidgets drops unknown widgets and repeated ids, clamps sizes to the grid, and compacts
+// settings, dropping those that are not a JSON object or too big.
 func cleanWidgets(list []HomeWidget) []HomeWidget {
 	out := []HomeWidget{}
 	seen := map[string]bool{}
@@ -167,6 +187,14 @@ func cleanWidgets(list []HomeWidget) []HomeWidget {
 		}
 		seen[w.ID] = true
 		w.W, w.H = min(max(w.W, 1), maxWidgetW), min(max(w.H, 1), maxWidgetH)
+		if w.Settings != nil {
+			var b bytes.Buffer
+			if !validSettings(w.Settings) || json.Compact(&b, w.Settings) != nil {
+				w.Settings = nil
+			} else {
+				w.Settings = b.Bytes()
+			}
+		}
 		out = append(out, w)
 	}
 	return out
@@ -264,4 +292,132 @@ func quotaAPI(map[string]any) (any, error) {
 		Months:      []quota.Month{quota.ComputeMonth(now, now, d), quota.ComputeMonth(dates.PrevMonthStart(now), now, d)},
 		Warnings:    d.Warnings,
 	}, nil
+}
+
+// CalendarsReply is the googleCalendars API's result.
+type CalendarsReply struct {
+	NotConfigured bool           `json:"notConfigured,omitempty"` // no OAuth client: nothing else is set
+	NeedLogin     bool           `json:"needLogin,omitempty"`     // no valid Google login: nothing else is set
+	Email         string         `json:"email,omitempty"`
+	NoCalendar    bool           `json:"noCalendar,omitempty"` // logged in without Calendar access
+	Calendars     []CalendarInfo `json:"calendars,omitempty"`
+}
+
+// CalendarInfo is a calendar as the widget shows it.
+type CalendarInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Color   string `json:"color,omitempty"`
+	Access  string `json:"access"`
+	Primary bool   `json:"primary,omitempty"`
+	Hidden  bool   `json:"hidden,omitempty"`
+}
+
+func googleCalendarsAPI(map[string]any) (any, error) {
+	c, err := google.NewQuiet()
+	if errors.Is(err, google.ErrNotConfigured) {
+		return CalendarsReply{NotConfigured: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !c.HasLogin() {
+		return CalendarsReply{NeedLogin: true}, nil
+	}
+	if !c.Granted(google.CalendarScope) {
+		return CalendarsReply{Email: c.Email(), NoCalendar: true}, nil
+	}
+	list, err := c.Calendars()
+	if errors.Is(err, google.ErrNoLogin) {
+		return CalendarsReply{NeedLogin: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	reply := CalendarsReply{Email: c.Email(), Calendars: []CalendarInfo{}}
+	for _, cal := range list {
+		reply.Calendars = append(reply.Calendars, CalendarInfo{ID: cal.ID, Name: cal.Name(), Color: cal.Color, Access: cal.AccessRole,
+			Primary: cal.Primary, Hidden: cal.Hidden})
+	}
+	return reply, nil
+}
+
+// NowReply is the googleNow API's result: what is on now in one calendar.
+type NowReply struct {
+	NotConfigured bool   `json:"notConfigured,omitempty"` // no OAuth client: nothing else is set
+	NeedLogin     bool   `json:"needLogin,omitempty"`     // no valid Google login: nothing else is set
+	Email         string `json:"email,omitempty"`
+	NoCalendar    bool   `json:"noCalendar,omitempty"` // logged in without Calendar access
+	// Missing: the calendar is not in the account's calendar list (any more).
+	Missing  bool         `json:"missing,omitempty"`
+	Calendar CalendarInfo `json:"calendar"`
+	Now      string       `json:"now,omitempty"` // RFC 3339, when the events were read
+	Events   []EventInfo  `json:"events"`
+}
+
+// EventInfo is an event on now, as the widget shows it.
+type EventInfo struct {
+	Title     string `json:"title"`
+	Start     string `json:"start"` // RFC 3339, or YYYY-MM-DD when AllDay
+	End       string `json:"end"`   // exclusive: an all-day event ends on the day after
+	AllDay    bool   `json:"allDay,omitempty"`
+	Free      bool   `json:"free,omitempty"`      // shown as free (transparent)
+	Tentative bool   `json:"tentative,omitempty"` // not confirmed yet
+}
+
+// googleNowAPI gives the events on now in args.calendar (a calendar ID from googleCalendars),
+// leaving out those the user declined.
+func googleNowAPI(args map[string]any) (any, error) {
+	id, _ := args["calendar"].(string)
+	if id == "" {
+		return nil, errors.New("no calendar given")
+	}
+	c, err := google.NewQuiet()
+	if errors.Is(err, google.ErrNotConfigured) {
+		return NowReply{NotConfigured: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !c.HasLogin() {
+		return NowReply{NeedLogin: true}, nil
+	}
+	if !c.Granted(google.CalendarScope) {
+		return NowReply{Email: c.Email(), NoCalendar: true}, nil
+	}
+	list, err := c.Calendars()
+	if errors.Is(err, google.ErrNoLogin) {
+		return NowReply{NeedLogin: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	i := slices.IndexFunc(list, func(cal google.Calendar) bool { return cal.ID == id })
+	if i < 0 {
+		return NowReply{Email: c.Email(), Missing: true, Events: []EventInfo{}}, nil
+	}
+	cal := list[i]
+	now := time.Now()
+	events, err := c.Events(id, now, now.Add(time.Second))
+	if errors.Is(err, google.ErrNoLogin) {
+		return NowReply{NeedLogin: true}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	reply := NowReply{Email: c.Email(), Now: now.Format(time.RFC3339), Events: []EventInfo{},
+		Calendar: CalendarInfo{ID: cal.ID, Name: cal.Name(), Color: cal.Color, Access: cal.AccessRole, Primary: cal.Primary, Hidden: cal.Hidden}}
+	for _, e := range events {
+		if e.Declined() {
+			continue
+		}
+		info := EventInfo{Title: e.Summary, Free: e.Transparency == "transparent", Tentative: e.Status == "tentative"}
+		if e.Start.DateTime != "" {
+			info.Start, info.End = e.Start.DateTime, e.End.DateTime
+		} else {
+			info.Start, info.End, info.AllDay = e.Start.Date, e.End.Date, true
+		}
+		reply.Events = append(reply.Events, info)
+	}
+	return reply, nil
 }

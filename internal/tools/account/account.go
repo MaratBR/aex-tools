@@ -1,4 +1,5 @@
-// Package account is the account tool: who you are logged in as in AEXT and Jira, logging in and out.
+// Package account is the account tool: who you are logged in as in AEXT, Jira and Google, logging
+// in and out.
 package account
 
 import (
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"aex/internal/aext"
+	"aex/internal/google"
 	"aex/internal/jira"
 	"aex/internal/settings"
 	"aex/internal/tool"
@@ -20,24 +22,26 @@ import (
 )
 
 func help() string {
-	return fmt.Sprintf(`Usage: account [--show | --login aext|jira | --logout aext|jira | --wipe-session]
+	return fmt.Sprintf(`Usage: account [--show | --login aext|jira|google | --logout aext|jira|google | --wipe-session]
 
-Shows who you are logged in as in AEXT and Jira, with details, then offers actions. Without a flag
-on a terminal, loops over details and actions until done; elsewhere only shows details.
+Shows who you are logged in as in AEXT, Jira and Google, with details, then offers actions. Without
+a flag on a terminal, loops over details and actions until done; elsewhere only shows details.
 
-  --show          Only show details
-  --login aext    Log in to AEXT with a new emailed code (replaces the cached session)
-  --login jira    Set JIRA_EMAIL and JIRA_TOKEN, checked against Jira before saving them
-  --logout aext   End the AEXT session on the server, then delete it locally
-  --logout jira   Delete the saved JIRA_TOKEN
-  --wipe-session  Delete the saved AEXT session without telling the server
+  --show           Only show details
+  --login aext     Log in to AEXT with a new emailed code (replaces the cached session)
+  --login jira     Set JIRA_EMAIL and JIRA_TOKEN, checked against Jira before saving them
+  --login google   Sign in to Google in the browser (replaces the saved login)
+  --logout aext    End the AEXT session on the server, then delete it locally
+  --logout jira    Delete the saved JIRA_TOKEN
+  --logout google  Revoke the Google login at Google, then delete it locally
+  --wipe-session   Delete the saved AEXT session without telling the server
 
-The AEXT session and JIRA_TOKEN are kept in %s.
+The AEXT session, JIRA_TOKEN and the Google login are kept in %s.
 Logging out, wiping the session and replacing a login ask for confirmation first.`, settings.Credentials.Name())
 }
 
 // Tool is the account tool.
-var Tool = tool.Tool{Name: "account", Summary: "Show AEXT / Jira login details; log in, log out, wipe the session", Run: run}
+var Tool = tool.Tool{Name: "account", Summary: "Show AEXT / Jira / Google login details; log in, log out, wipe the session", Run: run}
 
 func run(args []string) error {
 	fs := flag.NewFlagSet("account", flag.ContinueOnError)
@@ -85,7 +89,7 @@ func run(args []string) error {
 		return nil
 	}
 	if !slices.Contains(actionNames, action) {
-		return fmt.Errorf("unknown service in --%s (use aext or jira)", strings.Fields(action)[0])
+		return fmt.Errorf("unknown service in --%s (use aext, jira or google)", strings.Fields(action)[0])
 	}
 	if err := ui.AssertInteractive("account " + action); err != nil {
 		return err
@@ -93,11 +97,11 @@ func run(args []string) error {
 	return perform(c, action)
 }
 
-var actionNames = []string{"login aext", "logout aext", "wipe aext", "login jira", "logout jira"}
+var actionNames = []string{"login aext", "logout aext", "wipe aext", "login jira", "logout jira", "login google", "logout google"}
 
 func loop(c *aext.Client) error {
 	for {
-		a, j := printDetails(c)
+		a, j, g := printDetails(c)
 		var options []ui.Option
 		if a.me == nil {
 			options = append(options, ui.Option{Label: "Log in to AEXT", Value: "login aext"})
@@ -116,6 +120,16 @@ func loop(c *aext.Client) error {
 		}
 		if settings.Get("JIRA_TOKEN") != "" {
 			options = append(options, ui.Option{Label: "Remove Jira token", Value: "logout jira"})
+		}
+		if g.client != nil {
+			if g.email == "" {
+				options = append(options, ui.Option{Label: "Log in to Google", Value: "login google"})
+			} else {
+				options = append(options, ui.Option{Label: "Log in to Google again", Value: "login google"})
+			}
+			if g.client.HasLogin() {
+				options = append(options, ui.Option{Label: "Log out of Google", Value: "logout google"})
+			}
 		}
 		options = append(options, ui.Option{Label: "Refresh", Value: "refresh"}, ui.Option{Label: "Done", Value: "done"})
 
@@ -148,6 +162,10 @@ func perform(c *aext.Client, action string) error {
 		return loginJira()
 	case "logout jira":
 		return logoutJira()
+	case "login google":
+		return loginGoogle()
+	case "logout google":
+		return logoutGoogle()
 	}
 	return fmt.Errorf("unknown action %q", action)
 }
@@ -260,6 +278,45 @@ func loginJira() error {
 	return nil
 }
 
+func loginGoogle() error {
+	g, err := google.New()
+	if err != nil {
+		return err
+	}
+	if email, err := g.Check(timeout); err == nil && email != "" {
+		yes, err := confirm(fmt.Sprintf("Logged in to Google as %s. Replace the login?", email))
+		if err != nil || !yes {
+			return err
+		}
+	}
+	return g.Login()
+}
+
+func logoutGoogle() error {
+	g, err := google.New()
+	if err != nil {
+		return err
+	}
+	if !g.HasLogin() {
+		fmt.Println("No Google login, nothing to log out of.")
+		return nil
+	}
+	yes, err := confirm("Log out of Google? aex's access is revoked at Google and the login is deleted from " + settings.Credentials.Name() + ".")
+	if err != nil || !yes {
+		return err
+	}
+	expired, err := g.Logout()
+	if err != nil {
+		return err
+	}
+	if expired {
+		fmt.Println(ui.Out.Green("Google login had already expired or been revoked; deleted it locally."))
+	} else {
+		fmt.Println(ui.Out.Green("Logged out of Google."))
+	}
+	return nil
+}
+
 func orKeep(current string) string {
 	if current == "" {
 		return ""
@@ -303,14 +360,26 @@ type jiraStatus struct {
 	err error
 }
 
-// printDetails checks both services in parallel and prints what they say about you.
-func printDetails(c *aext.Client) (aextStatus, jiraStatus) {
+type googleStatus struct {
+	client *google.Client // nil when the OAuth client is not set (err says so)
+	email  string         // "" when not logged in or the login is rejected
+	err    error
+}
+
+// printDetails checks the services in parallel and prints what they say about you.
+func printDetails(c *aext.Client) (aextStatus, jiraStatus, googleStatus) {
 	var a aextStatus
 	var j jiraStatus
+	var g googleStatus
 	var wg sync.WaitGroup
 	wg.Go(func() { a.me, a.err = c.WhoAmI(timeout) })
 	wg.Go(func() { j.me, j.err = jira.WhoAmI(timeout) })
-	fmt.Println(ui.Out.Dim("Checking AEXT and Jira…"))
+	wg.Go(func() {
+		if g.client, g.err = google.NewQuiet(); g.err == nil {
+			g.email, g.err = g.client.Check(timeout)
+		}
+	})
+	fmt.Println(ui.Out.Dim("Checking AEXT, Jira and Google…"))
 	wg.Wait()
 
 	out := ui.Out
@@ -367,7 +436,26 @@ func printDetails(c *aext.Client) (aextStatus, jiraStatus) {
 	setting("JIRA_EMAIL")
 	setting("JIRA_TOKEN")
 	fmt.Println()
-	return a, j
+
+	fmt.Println(out.Bold("Google"))
+	switch {
+	case errors.Is(g.err, google.ErrNotConfigured):
+		field("Status", out.Yellow("OAuth client not set"))
+	case g.err != nil:
+		field("Status", out.Yellow("check failed: "+g.err.Error()))
+	case g.email != "":
+		field("Status", out.Green("logged in"))
+		field("Email", g.email)
+		if !g.client.Granted(google.CalendarScope) {
+			field("Calendar", out.Yellow("access not granted (log in again and allow it)"))
+		}
+	default:
+		field("Status", out.Yellow("not logged in"))
+	}
+	setting("GOOGLE_CLIENT_ID")
+	setting("GOOGLE_CLIENT_SECRET")
+	fmt.Println()
+	return a, j, g
 }
 
 func field(label string, value any) {
@@ -385,7 +473,7 @@ func setting(name string) {
 		field(name, ui.Out.Yellow("not set"))
 		return
 	}
-	if name == "JIRA_TOKEN" {
+	if name == "JIRA_TOKEN" || name == "GOOGLE_CLIENT_SECRET" {
 		v = settings.Mask(v)
 	}
 	field(name, v+ui.Out.Dim(" ("+settings.Source(name)+")"))

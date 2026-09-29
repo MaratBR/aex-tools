@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Google Calendar now</title>
+  <style>
+    body { display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
+    .head { display: flex; align-items: center; gap: 8px; }
+    .title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .title .text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title .muted { font-weight: 400; }
+    .loading #refresh svg { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+
+    .list { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; font-size: 13px; }
+    .list > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
+
+    /* The events on now. */
+    .event { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+    .event .what { flex: 1; min-width: 0; }
+    .event .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .event .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .event .when { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+    .event .until { font-weight: 600; }
+    .event .left { color: var(--muted); font-size: 12px; }
+    .event.free .name, .event.free .until { font-weight: 400; color: var(--muted); }
+    .event .bar { flex: none; align-self: stretch; width: 3px; border-radius: 3px; background: var(--accent); }
+    .event.tentative .bar { background: repeating-linear-gradient(var(--accent) 0 3px, transparent 3px 6px); }
+    .event.free .bar { background: var(--fill); }
+    .nothing { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+    .nothing .big { font: 600 20px/1.2 var(--display); letter-spacing: -.02em; color: var(--ok); }
+    .nothing .muted { font-size: 13px; }
+
+    /* Picking the calendar. */
+    .pick-head { font-size: 13px; color: var(--muted); }
+    .pick { width: 100%; display: flex; align-items: center; gap: 8px; padding: 4px 6px; margin: 0 -6px; border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; }
+    .pick:hover { background: var(--hover); }
+    .pick .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pick.current .name { font-weight: 600; }
+    .tag { flex: none; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+    .actions { display: flex; gap: 6px; }
+
+    .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+
+    @media (max-height: 200px) {
+      body { gap: 6px; padding-top: 12px; }
+      .event { padding: 3px 0; }
+      .event .note, .event .left { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div class="title"><span class="dot" id="dot" hidden></span><span class="text" id="title">Google Calendar</span></div>
+    <button class="icon-btn" id="change" type="button" title="Change calendar" aria-label="Change calendar" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+    </button>
+    <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    // What is on now in one Google calendar, and when each event ends (home.go: googleNowAPI). The
+    // calendar is picked the first time (home.go: googleCalendarsAPI) and kept in this placement's
+    // settings (aex.settings.calendar), so each copy of the widget can show another one.
+    const content = document.getElementById('content');
+    const titleEl = document.getElementById('title'), dotEl = document.getElementById('dot');
+    const changeBtn = document.getElementById('change');
+    const reloadMs = 2 * 60 * 1000; // Google is asked again this often; the times left count down in between
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function setTitle(name, color) {
+      titleEl.textContent = name || 'Google Calendar';
+      dotEl.hidden = !name;
+      dotEl.style.background = /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : '';
+    }
+
+    // Dates and times -------------------------------------------------------------------------
+
+    const localDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const parseDate = s => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)); // YYYY-MM-DD, local
+    const pad = n => String(n).padStart(2, '0');
+    const shortDay = d => d.toLocaleString('en', { weekday: 'short' }) + ' ' + pad(d.getMonth() + 1) + '.' + pad(d.getDate());
+    const clock = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const sameDay = (a, b) => localDay(a).getTime() === localDay(b).getTime();
+
+    // endOf is when an event ends: an all-day one at the start of its end date (the day after).
+    const endOf = e => (e.allDay ? parseDate(e.end) : new Date(e.end));
+    const startOf = e => (e.allDay ? parseDate(e.start) : new Date(e.start));
+
+    function left(ms) {
+      const min = Math.max(1, Math.ceil(ms / 60000));
+      if (min < 60) return min + ' min left';
+      const h = Math.floor(min / 60), m = min % 60;
+      if (h < 24) return h + 'h' + (m ? ' ' + m + 'm' : '') + ' left';
+      const days = Math.round(h / 24);
+      return days + (days === 1 ? ' day left' : ' days left');
+    }
+
+    // until is when the event ends, as short as it can be said.
+    function until(e, now) {
+      const end = endOf(e);
+      if (e.allDay) {
+        const last = new Date(end.getTime() - 86400000);
+        return sameDay(last, now) ? 'all day' : 'until ' + shortDay(last);
+      }
+      return 'until ' + (sameDay(end, now) ? clock(end) : shortDay(end) + ' ' + clock(end));
+    }
+
+    function since(e, now) {
+      const start = startOf(e);
+      if (e.allDay) return sameDay(start, now) ? 'today' : 'since ' + shortDay(start);
+      return 'since ' + (sameDay(start, now) ? clock(start) : shortDay(start) + ' ' + clock(start));
+    }
+
+    // Views -----------------------------------------------------------------------------------
+
+    let reply = null; // the last googleNow reply, counted down between loads
+
+    function renderNow() {
+      const now = new Date();
+      content.className = 'list';
+      content.textContent = '';
+      content.style.display = '';
+      const events = reply.events.filter(e => endOf(e) > now);
+      if (!events.length) {
+        content.className = 'nothing';
+        content.append(node('div', 'big', 'Nothing on now'), node('div', 'muted', 'No event in this calendar at the moment.'));
+        return;
+      }
+      for (const e of events) {
+        const li = node('div', 'event' + (e.free ? ' free' : '') + (e.tentative ? ' tentative' : ''));
+        const what = node('div', 'what');
+        what.append(node('div', 'name', e.title || '(no title)'));
+        const notes = [since(e, now)];
+        if (e.tentative) notes.push('tentative');
+        if (e.free) notes.push('free');
+        what.append(node('div', 'note', notes.join(' · ')));
+        const when = node('div', 'when');
+        when.append(node('div', 'until', until(e, now)));
+        if (!e.allDay) when.append(node('div', 'left', left(endOf(e) - now)));
+        li.append(node('span', 'bar'), what, when);
+        li.title = (e.title || '(no title)') + '\n' + since(e, now) + ', ' + until(e, now);
+        content.append(li);
+      }
+    }
+
+    function notice(text, error, ...actions) {
+      content.textContent = '';
+      content.style.display = '';
+      content.className = 'notice';
+      content.append(node('div', null, text));
+      if (error) content.append(node('div', 'error', error));
+      if (actions.length) {
+        const row = node('div', 'actions');
+        actions.forEach((a, i) => {
+          const b = node('button', i ? 'btn' : 'btn primary', a.label);
+          b.type = 'button';
+          b.onclick = a.run;
+          row.append(b);
+        });
+        content.append(row);
+      }
+    }
+
+    const login = { label: 'Log in', run: () => aex.run('account --login google') };
+
+    // problem shows why a reply has no events (no client, no login, no Calendar access); false when
+    // there is none.
+    function problem(r) {
+      if (r.notConfigured) notice('No Google OAuth client set.', 'Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Settings.');
+      else if (r.needLogin) notice('Not logged in to Google.', '', login);
+      else if (r.noCalendar) notice(`Logged in as ${r.email}, without Calendar access.`, '', { label: 'Log in again', run: login.run });
+      else return false;
+      return true;
+    }
+
+    // pick lists the account's calendars to choose the one to show.
+    async function pick() {
+      const n = ++seq;
+      picking = true;
+      changeBtn.hidden = true;
+      document.body.classList.add('loading');
+      notice('Loading calendars…');
+      try {
+        const r = await aex.call('googleCalendars');
+        if (n !== seq) return;
+        if (problem(r)) return;
+        const current = aex.settings.calendar;
+        content.className = 'list';
+        content.textContent = '';
+        content.append(node('div', 'pick-head', 'Pick the calendar to show (' + r.email + ')'));
+        for (const cal of r.calendars) {
+          const li = node('div');
+          const b = node('button', 'pick' + (cal.id === current ? ' current' : ''));
+          b.type = 'button';
+          const dot = node('span', 'dot');
+          if (/^#[0-9a-f]{3,8}$/i.test(cal.color || '')) dot.style.background = cal.color;
+          b.append(dot, node('span', 'name', cal.name));
+          if (cal.primary) b.append(node('span', 'tag', 'primary'));
+          b.title = cal.name;
+          b.onclick = () => choose(cal);
+          li.append(b);
+          content.append(li);
+        }
+        if (current) {
+          const li = node('div');
+          const cancel = node('button', 'btn', 'Cancel');
+          cancel.type = 'button';
+          cancel.style.marginTop = '6px';
+          cancel.onclick = () => { picking = false; load(); };
+          li.append(cancel);
+          content.append(li);
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        notice('Could not list the calendars.', e.message, { label: 'Try again', run: pick });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    async function choose(cal) {
+      try {
+        await aex.saveSettings({ ...aex.settings, calendar: cal.id, name: cal.name });
+      } catch (e) {
+        return notice('Could not keep the calendar.', e.message, { label: 'Try again', run: () => choose(cal) });
+      }
+      picking = false;
+      reply = null;
+      setTitle(cal.name, cal.color);
+      load();
+    }
+
+    // Loading ---------------------------------------------------------------------------------
+
+    let seq = 0, picking = false;
+    async function load() {
+      const id = aex.settings.calendar;
+      if (!id) return pick();
+      if (picking) return;
+      const n = ++seq;
+      document.body.classList.add('loading');
+      if (!reply) {
+        setTitle(aex.settings.name);
+        notice('Loading…');
+      }
+      try {
+        const r = await aex.call('googleNow', { calendar: id });
+        if (n !== seq) return;
+        changeBtn.hidden = false;
+        if (problem(r)) {
+          reply = null;
+        } else if (r.missing) {
+          reply = null;
+          notice(`The calendar “${aex.settings.name || id}” is no longer in ${r.email}’s calendars.`, '', { label: 'Pick another', run: pick });
+        } else {
+          reply = r;
+          setTitle(r.calendar.name, r.calendar.color);
+          if (r.calendar.name !== aex.settings.name) aex.saveSettings({ ...aex.settings, name: r.calendar.name }).catch(() => {});
+          renderNow();
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        reply = null;
+        changeBtn.hidden = false;
+        notice('Could not reach Google Calendar.', e.message, { label: 'Try again', run: load });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    // Between loads the times left count down; an event ending brings the next one sooner.
+    setInterval(() => {
+      if (!reply || picking) return;
+      const now = new Date();
+      if (reply.events.some(e => endOf(e) <= now)) load();
+      else renderNow();
+    }, 30000);
+    setInterval(() => { if (!picking) load(); }, reloadMs);
+
+    changeBtn.onclick = pick;
+    document.getElementById('refresh').onclick = () => (picking ? pick() : load());
+    aex.onRefresh(() => (picking ? null : load()));
+    load();
+  </script>
+</body>
+</html>

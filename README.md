@@ -8,8 +8,8 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
 - `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`. No tool opens the window.
 - `gui.go` — opens the window (`internal/webui`) over the tools; `gui_windows.go` closes the console
   Windows gives the exe when it is started from the Start menu or Explorer
-- `header.go` — the window's header: who is logged in to AEXT (`/api/auth/me`) and Jira
-  (`/rest/api/3/myself`), both checked in parallel and never prompting, then settings and the data folder;
+- `header.go` — the window's header: who is logged in to AEXT (`/api/auth/me`), Jira
+  (`/rest/api/3/myself`) and Google (refreshing its access token), checked in parallel and never prompting, then settings and the data folder;
   running a tool (`execTool`)
 - `internal/`
   - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
@@ -33,6 +33,7 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
     and removes it; asks once on first launch
   - `dates` — day math and range expressions
   - `jira`, `aext` — API clients
+  - `google` — Google sign-in (see Google) and the Calendar API client
   - `httpx` — on any unexpected response (status, non-JSON, wrong shape) dumps status, URL,
     relevant headers (cookie values redacted) and body (capped at 300 KB) to stderr
   - `quota` — monthly quota from AEXT working days, leaves and logged hours
@@ -93,17 +94,20 @@ redacted, so only ids, emails, dates, type and status are used.
 ## account
 
 `.\bin\account.ps1` shows who you are logged in as: AEXT (`/api/auth/me`: name, email, other profile fields,
-server, session file) and Jira (`/rest/api/3/myself`: name, email, account id, time zone, …), plus the login
-settings and where each comes from (token masked). On a terminal it then offers actions until Done:
+server, session file), Jira (`/rest/api/3/myself`: name, email, account id, time zone, …) and Google (email,
+whether Calendar access was granted), plus the login settings and where each comes from (secrets masked). On
+a terminal it then offers actions until Done:
 
 - log in to AEXT (new emailed code, replaces the cached session)
 - log out of AEXT: `POST /api/auth/logout` (expects 204), then deletes the saved session
 - wipe the AEXT session: deletes the saved session only, the server session stays valid until it expires
 - set or change the Jira login: email + API token, checked against Jira before saving to app settings
 - remove the Jira token from app settings
+- log in to Google in the browser (see Google), replacing the saved login
+- log out of Google: revokes the login at Google (`POST /revoke`), then deletes it
 
 Logout, wipe, removing the token and replacing a login ask for confirmation (default no). Flags run one
-action directly: `--show`, `--login aext|jira`, `--logout aext|jira`, `--wipe-session`.
+action directly: `--show`, `--login aext|jira|google`, `--logout aext|jira|google`, `--wipe-session`.
 
 ## configure
 
@@ -125,7 +129,7 @@ The `configure` list (or `configure --wipe-settings` / `--wipe-all`) also wipes,
 type `CONFIRM`:
 - Wipe all settings: `.env.config`, secret settings (`JIRA_TOKEN`) in the credential store and
   `plugin-settings/`. App settings get their defaults back.
-- Wipe everything: all settings, the AEXT session, and every entry of the data folder (`output/`, plugin data,
+- Wipe everything: all settings, the AEXT session, the Google login (not revoked), and every entry of the data folder (`output/`, plugin data,
   anything else). Plugins and their approvals are kept. Refused when the data folder holds the app.
 
 `.env` and environment variables are never touched and still apply as fallbacks.
@@ -311,6 +315,9 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
   AEXT ones use `aext.NewQuiet`, which fails with `aext.ErrNoSession` instead of logging in.
 - `aex.run(line)` — runs a tool on Runs, as typed on the command line; a plugin's widget only its
   plugin's tools.
+- `aex.settings` / `aex.saveSettings(obj)` — this placement's own settings: a JSON object (8 KB at
+  most) kept with it in `home.json` (`HomeWidget.Settings`), `{}` when it is added, such as which
+  calendar it shows. home.js puts them in the page as it loads it.
 - `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data); for a
   plugin's widget at most every 30 s, since each call starts the plugin. Widgets that could not load
   try again then.
@@ -328,10 +335,31 @@ Widgets so far:
   ahead, due by today, hours/day to finish, working days without hours with a button to run
   worklog-sync) and whether last month is complete. One row high it shows only the numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
+- `google-calendars` — Google Calendar now: the events on now in one calendar, each with when it
+  started and when it ends (and the time left), leaving out cancelled ones and ones you declined; free
+  and tentative ones are marked. The first time it lists the account's calendars to pick one, kept in
+  its placement's settings, so each copy can show another; the calendar button changes it. It asks
+  Google again every 2 minutes and counts down in between. Without a Google login it offers to log in
+  (`account --login google`).
 - `cm-release/cm-repos-state` (cm-release plugin) — CM repos state: each repo's branch and uncommitted
   changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
   (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
   One row high it shows only the verdict.
+
+## Google
+
+aex signs in to Google as an installed app: `account --login google` (or a tool that needs Google while
+nobody is logged in) opens Google's sign-in page in the browser, which Google sends back to
+`http://127.0.0.1:<port>/`, served by aex only for that login (PKCE and a state tie the answer to it).
+Scopes: `openid email` (the account's email, from the ID token) and `calendar.readonly`. The login (refresh
+token, email, scopes granted, the client it was granted to) is kept in the credential store
+(`aex:<data folder>:google-login`); access tokens only in memory. A login Google rejects (revoked, or
+expired: after 7 days while the Google Cloud app is in Testing) is deleted, and the next login asks again.
+Widgets and the header never log in.
+
+The OAuth client is the `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` settings, built in through `.env`. To use
+your own, create a Desktop app OAuth client in a Google Cloud project with the Calendar API enabled and set
+both in app settings (the secret goes to the credential store). A login made with another client is not used.
 
 ## Adding a tool
 
@@ -470,8 +498,8 @@ The window's header shows the current values, the settings file path, the creden
 
 ## Credentials
 
-`internal/secrets` stores the AEXT session and `JIRA_TOKEN` (settings with `Credential` set in
-`internal/settings/env.go`) behind one `Store` interface, in the OS credential store:
+`internal/secrets` stores the AEXT session, the Google login, `JIRA_TOKEN` and `GOOGLE_CLIENT_SECRET` (settings
+with `Credential` set in `internal/settings/env.go`) behind one `Store` interface, in the OS credential store:
 
 - Windows: Credential Manager (generic credentials `aex:<data folder>:aext-session` / `:jira-token`)
 - macOS: Keychain

@@ -1,8 +1,10 @@
 package webui
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"aex/internal/settings"
@@ -29,16 +31,15 @@ func TestCleanWidgets(t *testing.T) {
 		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1}, // a plugin's: kept, whether or not it is there
 		{ID: "e", Widget: "cm-release/Bad", W: 1, H: 1},            // not a plugin widget id
 		{ID: "f", Widget: "../x/y", W: 1, H: 1},
+		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
+		{ID: "h", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`[1]`)}, // not an object: dropped
 	})
 	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1}, {ID: "c", Widget: "quota", W: 2, H: 3},
-		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1}}
-	if len(got) != len(want) {
+		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1},
+		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
+		{ID: "h", Widget: "quota", W: 1, H: 1}}
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("got %+v, want %+v", got, want)
-		}
 	}
 }
 
@@ -55,12 +56,15 @@ func TestHomeSaveLoad(t *testing.T) {
 	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "nope", W: 1, H: 1}}}); err == nil {
 		t.Fatal("unknown widget saved")
 	}
-	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2}}}
+	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`"s"`)}}}); err == nil {
+		t.Fatal("settings that are not an object saved")
+	}
+	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, Settings: json.RawMessage(`{"a":1}`)}}}
 	if err := a.SaveHome(saved); err != nil {
 		t.Fatal(err)
 	}
 	l, err = a.Home()
-	if err != nil || len(l.Widgets) != 1 || l.Widgets[0] != saved.Widgets[0] {
+	if err != nil || !reflect.DeepEqual(l, saved) {
 		t.Fatalf("got %+v, %v; want %+v", l, err, saved)
 	}
 	if err := os.WriteFile(settings.HomeFile, []byte("{"), 0o600); err != nil {

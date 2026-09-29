@@ -8,13 +8,14 @@ import (
 
 	"aex/internal/aext"
 	"aex/internal/dates"
+	"aex/internal/google"
 	"aex/internal/jira"
 	"aex/internal/plugin"
 	"aex/internal/settings"
 	"aex/internal/tool"
 )
 
-// AEXT and Jira logins shown in the window's header. Checked at start and after each tool (which
+// AEXT, Jira and Google logins shown in the window's header. Checked at start and after each tool (which
 // may log in or out, or change settings), without ever prompting for a login.
 type loginState struct {
 	state   string // checking | in | out | unset | error
@@ -23,11 +24,13 @@ type loginState struct {
 	message string
 }
 
-type logins struct{ aext, jira loginState }
+type logins struct{ aext, jira, google loginState }
+
+var checking = logins{loginState{state: "checking"}, loginState{state: "checking"}, loginState{state: "checking"}}
 
 var (
 	loginMu sync.Mutex
-	login   = logins{loginState{state: "checking"}, loginState{state: "checking"}}
+	login   = checking
 )
 
 func currentLogin() logins {
@@ -36,10 +39,10 @@ func currentLogin() logins {
 	return login
 }
 
-// startLoginCheck checks both logins in parallel in the background; the channel closes when both are done.
+// startLoginCheck checks the logins in parallel in the background; the channel closes when all are done.
 func startLoginCheck() <-chan struct{} {
 	loginMu.Lock()
-	login = logins{loginState{state: "checking"}, loginState{state: "checking"}}
+	login = checking
 	loginMu.Unlock()
 	var wg sync.WaitGroup
 	check := func(field *loginState, fn func() loginState) {
@@ -52,6 +55,7 @@ func startLoginCheck() <-chan struct{} {
 	}
 	check(&login.aext, checkAEXT)
 	check(&login.jira, checkJira)
+	check(&login.google, checkGoogle)
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -92,6 +96,24 @@ func checkJira() loginState {
 		return loginState{state: "out"}
 	}
 	return loginState{state: "in", name: me.DisplayName, email: me.EmailAddress}
+}
+
+func checkGoogle() loginState {
+	c, err := google.NewQuiet()
+	if errors.Is(err, google.ErrNotConfigured) {
+		return loginState{state: "unset"}
+	}
+	if err != nil {
+		return loginState{state: "error", message: err.Error()}
+	}
+	email, err := c.Check(loginTimeout)
+	switch {
+	case err != nil:
+		return loginState{state: "error", message: err.Error()}
+	case email == "":
+		return loginState{state: "out"}
+	}
+	return loginState{state: "in", name: email}
 }
 
 // Header segment styles.
@@ -135,6 +157,7 @@ func infoLines() [][]segment {
 	return [][]segment{
 		loginLine("AEXT", l.aext, "tools log in when needed, or run account", ""),
 		loginLine("Jira", l.jira, "token rejected, run account", "run account"),
+		loginLine("Google", l.google, "run account --login google", "GOOGLE_CLIENT_ID not set"),
 		{{"Settings  ", dim}, {fmt.Sprintf("%g h/day · %s", settings.HoursPerDay(), dates.TZLabel()), plain}},
 		{{"File      ", dim}, {settings.ConfigEnvFile, plain}},
 		credentialsLine(),
@@ -142,7 +165,7 @@ func infoLines() [][]segment {
 	}
 }
 
-// credentialsLine says where the AEXT session and JIRA_TOKEN are kept, and why when it is the file fallback.
+// credentialsLine says where the AEXT session, JIRA_TOKEN and the Google login are kept, and why when it is the file fallback.
 func credentialsLine() []segment {
 	line := []segment{{"Secrets   ", dim}, {settings.Credentials.Name(), plain}}
 	if settings.CredentialsNote != "" {

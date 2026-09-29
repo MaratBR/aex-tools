@@ -24,3 +24,21 @@ func OpenFolder(dir string) error {
 	}
 	return nil
 }
+
+// OpenURL opens an http(s) URL in the default browser, without waiting for it.
+func OpenURL(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		// Not "start": cmd.exe would split the URL at its &s.
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	case "darwin":
+		cmd = exec.Command("open", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}

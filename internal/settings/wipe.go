@@ -46,24 +46,26 @@ func wipeSettings() error {
 	return errors.Join(errs...)
 }
 
-// DataToWipe lists what WipeAll removes besides the settings: the AEXT session and every entry of
-// the data folder. It fails when the data folder holds the app itself, which WipeAll would delete.
+// DataToWipe lists what WipeAll removes besides the settings: the AEXT session, the Google login and
+// every entry of the data folder. It fails when the data folder holds the app itself, which WipeAll
+// would delete.
 func DataToWipe() ([]string, error) {
 	entries, err := dataEntries()
 	if err != nil {
 		return nil, err
 	}
-	return append([]string{"AEXT session in " + Credentials.Name()}, entries...), nil
+	return append([]string{"AEXT session and Google login in " + Credentials.Name()}, entries...), nil
 }
 
-// WipeAll is WipeSettings plus the AEXT session, output files, plugin data and anything else in the
-// data folder. Plugins and their approvals (kept in the credential store) are left alone.
+// WipeAll is WipeSettings plus the AEXT session, the Google login (not revoked), output files, plugin
+// data and anything else in the data folder. Plugins and their approvals (kept in the credential
+// store) are left alone.
 func WipeAll() error {
 	entries, err := dataEntries()
 	if err != nil {
 		return err
 	}
-	errs := []error{wipeSettings(), Credentials.Delete(secrets.AEXTSession)}
+	errs := []error{wipeSettings(), Credentials.Delete(secrets.AEXTSession), Credentials.Delete(secrets.GoogleLogin)}
 	for _, e := range entries {
 		errs = append(errs, removeAll(e))
 	}

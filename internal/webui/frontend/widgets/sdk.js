@@ -8,8 +8,13 @@
 //   aex.run(line)         runs a tool on the Runs page, as if typed on the command line; a plugin's
 //                         widget only its plugin's tools
 //   aex.onRefresh(fn)     fn runs when the data may have changed (after a run) and on aex.refresh()
+//   aex.settings          this placement's own settings (an object, {} at first): each time the
+//                         widget is added it starts with none, e.g. which calendar it shows
+//   aex.saveSettings(obj) replaces them (a JSON object, 8 KB at most), a Promise; kept in home.json
 // The theme follows the window's.
 const aex = (() => {
+  // home.js puts aexSettings (this placement's settings) before this file.
+  let settings = typeof aexSettings === 'object' && aexSettings ? aexSettings : {};
   const pending = new Map();
   let seq = 0;
   addEventListener('message', e => {
@@ -37,5 +42,11 @@ const aex = (() => {
     run: line => request('run', { line }),
     onRefresh: fn => addEventListener('aex:refresh', () => fn()),
     refresh: () => dispatchEvent(new Event('aex:refresh')),
+    get settings() { return structuredClone(settings); },
+    saveSettings: async obj => {
+      const next = JSON.parse(JSON.stringify(obj ?? {}));
+      await request('settings', { settings: next });
+      settings = next;
+    },
   });
 })();

@@ -51,6 +51,8 @@ func guiMenu() error {
 					line.State = l.aext.state
 				case 1:
 					line.State = l.jira.state
+				case 2:
+					line.State = l.google.state
 				}
 				switch line.Label {
 				case "Settings":

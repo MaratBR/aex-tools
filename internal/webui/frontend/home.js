@@ -12,7 +12,7 @@ let page = 'runs';
 let pageChosen = false; // once the user or a question picked a page, loading Home keeps it
 const scrollTops = { home: 0, runs: 0 };
 let catalog = { widgets: [], inactive: [] }; // WidgetList
-let layout = [];        // HomeWidget: {id, widget, w, h}
+let layout = [];        // HomeWidget: {id, widget, w, h, settings}
 let editing = false;
 let cols = 4;
 
@@ -195,8 +195,11 @@ const widgetKit = () => (kit ??= Promise.all(['tokens.css', 'widgets/widget.css'
 // No network, inline scripts and styles only: a widget's data comes through aex.call.
 const widgetCSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
 
-// widgetDoc is a widget's page with the kit and the window's theme put in.
-function widgetDoc(html, [tokens, base, sdk]) {
+// A placement's settings (HomeWidget.settings), at most this big as JSON (home.go: maxSettings).
+const maxSettings = 8 << 10;
+
+// widgetDoc is a widget's page with the kit, its placement's settings and the window's theme put in.
+function widgetDoc(html, [tokens, base, sdk], settings) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const csp = doc.createElement('meta');
   csp.httpEquiv = 'Content-Security-Policy';
@@ -204,7 +207,8 @@ function widgetDoc(html, [tokens, base, sdk]) {
   const style = doc.createElement('style');
   style.textContent = tokens + '\n' + base;
   const script = doc.createElement('script');
-  script.textContent = sdk;
+  // No "<" in the JSON, so nothing in it can end the script.
+  script.textContent = 'const aexSettings = ' + JSON.stringify(settings || {}).replace(/</g, '\\u003c') + ';\n' + sdk;
   doc.head.prepend(csp, style, script);
   doc.documentElement.dataset.theme = document.documentElement.dataset.theme;
   return '<!doctype html>\n' + doc.documentElement.outerHTML;
@@ -231,7 +235,7 @@ async function loadWidget(w, cell) {
   try {
     const [p, k] = await Promise.all([api().WidgetPage(w.widget), widgetKit()]);
     if (p.problem) return showProblem(cell, p.problem, p.plugin);
-    page = widgetDoc(p.html, k);
+    page = widgetDoc(p.html, k, w.settings);
   } catch (e) {
     return showProblem(cell, 'could not load: ' + e);
   }
@@ -272,6 +276,17 @@ window.addEventListener('message', async e => {
     if (run) return reply(false, undefined, 'a tool is already running');
     runLine(line);
     reply(true);
+  } else if (m.op === 'settings') {
+    const s = m.settings;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return reply(false, undefined, 'settings must be an object');
+    if (JSON.stringify(s).length > maxSettings) return reply(false, undefined, `settings are over ${maxSettings >> 10} KB`);
+    w.settings = s;
+    try {
+      await api().SaveHome({ widgets: layout });
+      reply(true);
+    } catch (err) {
+      reply(false, undefined, String(err));
+    }
   }
 });
 

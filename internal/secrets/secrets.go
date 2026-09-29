@@ -1,4 +1,4 @@
-// Package secrets stores credentials (AEXT session, Jira API token) in the OS credential store:
+// Package secrets stores credentials (AEXT session, Jira API token, Google login) in the OS credential store:
 // Windows Credential Manager, macOS Keychain, or the Secret Service on Linux (GNOME Keyring,
 // KWallet). Where none is available (e.g. a headless Linux box) it falls back to a file readable
 // only by the current user.
@@ -14,8 +14,10 @@ import (
 
 // Keys of the stored credentials.
 const (
-	AEXTSession = "aext-session"
-	JiraToken   = "jira-token"
+	AEXTSession        = "aext-session"
+	JiraToken          = "jira-token"
+	GoogleLogin        = "google-login"
+	GoogleClientSecret = "google-client-secret"
 )
 
 // Store keeps credentials by key. Get returns "" for a missing key; Delete of a missing key is not an error.

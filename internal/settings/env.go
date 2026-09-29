@@ -38,6 +38,15 @@ var AuthSettings = []Setting{
 		Secret:     true,
 		Credential: secrets.JiraToken,
 	},
+	// The OAuth client aex signs in to Google with: built in through .env, set here to use your own
+	// (a "Desktop app" client of a Google Cloud project with the Calendar API enabled).
+	{Name: "GOOGLE_CLIENT_ID", Hint: "OAuth client ID aex signs in to Google with (built in; set to use your own Desktop app client)"},
+	{
+		Name:       "GOOGLE_CLIENT_SECRET",
+		Hint:       "Secret of that OAuth client (built in; set with your own GOOGLE_CLIENT_ID)",
+		Secret:     true,
+		Credential: secrets.GoogleClientSecret,
+	},
 }
 
 // AppSettings are numeric settings with defaults. An invalid value falls back to the default, with a warning.
