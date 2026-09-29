@@ -127,6 +127,16 @@ func TestChooseAndConfirm(t *testing.T) {
 	}
 }
 
+func TestClearScreenClearsTheRun(t *testing.T) {
+	a := &App{}
+	var events []string
+	a.emit = func(event string, _ any) { events = append(events, event) }
+	a.ClearScreen()
+	if len(events) != 1 || events[0] != "clear" {
+		t.Fatalf("ClearScreen sent %q, want one clear", events)
+	}
+}
+
 func TestPromptOptionsReachFrontendAsLabelAndValue(t *testing.T) {
 	data, err := json.Marshal(prompt{Kind: "choose", Options: []ui.Option{{Label: "Send all", Value: "all"}}})
 	if err != nil {

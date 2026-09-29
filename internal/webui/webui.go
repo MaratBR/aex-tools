@@ -316,5 +316,5 @@ func (a *App) choose(kind, title string, options []ui.Option) (string, error) {
 
 func (a *App) WaitKey() { a.ask(prompt{Kind: "key", Title: "Press any key to continue"}, nil) }
 
-// ClearScreen does nothing: the conversation keeps earlier runs, as a chat does.
-func (a *App) ClearScreen() {}
+// ClearScreen clears the run in progress: what it printed and asked so far. Earlier runs stay.
+func (a *App) ClearScreen() { a.send("clear", nil) }

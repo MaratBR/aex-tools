@@ -119,6 +119,14 @@ function closeOut() {
   run.out = run.term = null;
 }
 
+// onClear is the tool clearing the screen: its run starts over empty.
+function onClear() {
+  if (!run) return;
+  closeQuestion();
+  run.body.textContent = '';
+  run.out = run.term = null;
+}
+
 function onOutput(s) {
   const stick = nearBottom();
   outBlock().write(s);
@@ -475,6 +483,7 @@ $('clear').onclick = () => {
 // Wiring ----------------------------------------------------------------------------------------
 
 window.runtime.EventsOn('output', onOutput);
+window.runtime.EventsOn('clear', onClear);
 window.runtime.EventsOn('prompt', onPrompt);
 window.runtime.EventsOn('finished', finished);
 updateCommand();
