@@ -3,7 +3,7 @@
 // plugin side (Main) is what a plugin's main calls.
 //
 // Protocol: aex runs "<plugin> --aex-describe", which prints {"summary": "...", "access": [...]}
-// as JSON, to list it in the menu (the tool name is the file name without .exe). A plugin that is a
+// as JSON, to list it with the tools (the tool name is the file name without .exe). A plugin that is a
 // group of tools (see tool.Tool) also lists them: "tools": [{"name": "...", "summary": "..."}],
 // each one maybe a group with its own "tools"; aex runs one as "<plugin> <sub-tool> [args]". Access
 // is the plugin's, for all its tools. Running the tool

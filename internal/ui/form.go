@@ -12,7 +12,7 @@ import (
 	"golang.org/x/term"
 )
 
-// Brand is the logo blue, shared by the menu and the prompts.
+// Brand is the logo blue of the prompts.
 var Brand = lipgloss.Color("#039EEC")
 
 var (
@@ -67,6 +67,9 @@ func Input(f Field) (string, error) {
 		}
 		return f.Validate(strings.TrimSpace(s))
 	}
+	if Remote != nil {
+		return Remote.Input(f)
+	}
 	if !fancy() {
 		return lineInput(f, check)
 	}
@@ -98,6 +101,9 @@ func Input(f Field) (string, error) {
 // Confirm asks a yes/no question; defaultYes picks the answer Enter gives.
 func Confirm(question string, defaultYes bool) (bool, error) {
 	question = cleanTitle(question)
+	if Remote != nil {
+		return Remote.Confirm(question, defaultYes)
+	}
 	if !fancy() {
 		return lineConfirm(question, defaultYes)
 	}
@@ -112,6 +118,9 @@ func Confirm(question string, defaultYes bool) (bool, error) {
 // Choose asks to pick one of options and returns its Value; the first option is preselected.
 func Choose(title string, options []Option) (string, error) {
 	title = cleanTitle(title)
+	if Remote != nil {
+		return Remote.Choose(title, options)
+	}
 	if !fancy() {
 		return lineChoose(title, options)
 	}

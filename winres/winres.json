@@ -6,13 +6,7 @@
   },
   "RT_MANIFEST": {
     "#1": {
-      "0409": {
-        "identity": {},
-        "description": "aex tools",
-        "minimum-os": "win10",
-        "execution-level": "as invoker",
-        "long-path-aware": true
-      }
+      "0409": "aex.manifest"
     }
   },
   "RT_VERSION": {

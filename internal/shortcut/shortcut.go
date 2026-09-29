@@ -75,7 +75,7 @@ func Remove() error {
 	return remove(p)
 }
 
-// OfferOnce asks, the first time the menu opens, whether to add aex to the launcher. The answer is
+// OfferOnce asks, the first time the window opens, whether to add aex to the launcher. The answer is
 // remembered in app settings; configure adds or removes the shortcut later. Failures only warn.
 func OfferOnce() {
 	if !supported || settings.Get(askedSetting) != "" || !ui.IsInteractive() {

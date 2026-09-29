@@ -7,7 +7,8 @@ if (-not $Out) { $Out = Join-Path $root 'dist\aex.exe' }
 elseif (-not [IO.Path]::IsPathRooted($Out)) { $Out = [IO.Path]::GetFullPath((Join-Path (Get-Location) $Out)) }
 
 # -trimpath also makes it a release build: it stops looking for the source checkout.
-go build -C $root -trimpath -ldflags '-s -w' -o $Out .
+# desktop,production: the Wails build tags the window needs.
+go build -C $root -tags desktop,production -trimpath -ldflags '-s -w' -o $Out .
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 $plugins = New-Item -ItemType Directory -Force (Join-Path (Split-Path $Out) 'plugins')
 go build -C $root -trimpath -ldflags '-s -w' -o $plugins.FullName ./plugins/...

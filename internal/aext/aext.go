@@ -210,7 +210,7 @@ type Me struct {
 }
 
 // WhoAmI returns the logged-in user, or nil when there is no valid session. Never logs in or
-// prints (safe to call from the menu); fails on network/server errors.
+// prints (safe to call for the window header); fails on network/server errors.
 func (c *Client) WhoAmI(timeout time.Duration) (*Me, error) {
 	cookie := c.currentCookie()
 	if cookie == "" {

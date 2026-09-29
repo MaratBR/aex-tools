@@ -61,7 +61,8 @@ type Me struct {
 var ErrNotConfigured = errors.New("Jira login not configured")
 
 // WhoAmI returns the user the configured token belongs to, or nil when Jira rejects it. Never
-// prompts or prints (safe to call from the menu); ErrNotConfigured when the login is not set.
+// prompts or prints (safe to call for the window header); ErrNotConfigured when the login is not
+// set.
 func WhoAmI(timeout time.Duration) (*Me, error) {
 	base, err := settings.Require("JIRA_BASE_URL")
 	if err != nil {

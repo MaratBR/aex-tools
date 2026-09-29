@@ -3,14 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
-	"regexp"
-	"slices"
-	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/term"
 
 	"aex/internal/aext"
 	"aex/internal/dates"
@@ -18,11 +12,10 @@ import (
 	"aex/internal/plugin"
 	"aex/internal/settings"
 	"aex/internal/tool"
-	"aex/internal/ui"
 )
 
-// AEXT and Jira logins shown in the menu header. Checked at start and after each tool (which may
-// log in or out, or change settings), without ever prompting for a login.
+// AEXT and Jira logins shown in the window's header. Checked at start and after each tool (which
+// may log in or out, or change settings), without ever prompting for a login.
 type loginState struct {
 	state   string // checking | in | out | unset | error
 	name    string
@@ -101,7 +94,7 @@ func checkJira() loginState {
 	return loginState{state: "in", name: me.DisplayName, email: me.EmailAddress}
 }
 
-// Header segment styles, rendered by the plain menu and the TUI each in their own way.
+// Header segment styles.
 type segKind int
 
 const (
@@ -158,44 +151,8 @@ func credentialsLine() []segment {
 	return line
 }
 
-func plainSegments(segments []segment) string {
-	out := ui.Out
-	var b strings.Builder
-	for _, s := range segments {
-		switch s.kind {
-		case dim:
-			b.WriteString(out.Dim(s.text))
-		case bold:
-			b.WriteString(out.Bold(s.text))
-		case warn:
-			b.WriteString(out.Yellow(s.text))
-		default:
-			b.WriteString(s.text)
-		}
-	}
-	return b.String()
-}
-
-var argPattern = regexp.MustCompile(`"[^"]*"|\S+`)
-
-// splitArgs splits a line into args, keeping "quoted parts" together.
-func splitArgs(line string) []string {
-	args := argPattern.FindAllString(line, -1)
-	for i, a := range args {
-		if len(a) >= 2 && strings.HasPrefix(a, `"`) && strings.HasSuffix(a, `"`) {
-			args[i] = a[1 : len(a)-1]
-		}
-	}
-	return args
-}
-
-// runTool clears the screen, runs a tool, printing its errors, and returns a one-line outcome for
-// the menu. Each tool starts on a clean screen, without the output of earlier ones.
-// name is the tool's full name, with the groups it is in.
-func runTool(name string, t *tool.Tool, args []string) (status string, ok bool) {
-	ui.ClearScreen()
-	fmt.Println(toolBanner(name, args))
-	fmt.Println()
+// execTool runs a tool, printing its errors, and returns a one-line outcome.
+func execTool(name string, t *tool.Tool, args []string) (status string, ok bool) {
 	err := func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -211,97 +168,4 @@ func runTool(name string, t *tool.Tool, args []string) (status string, ok bool) 
 		return fmt.Sprintf("✖ %s failed: %v", name, err), false
 	}
 	return fmt.Sprintf("✔ %s finished", name), true
-}
-
-func printMenu() {
-	out := ui.Out
-	fmt.Println(out.Bold("aex tools"))
-	for _, line := range infoLines() {
-		fmt.Println(plainSegments(line))
-	}
-	for i, t := range tools {
-		fmt.Printf("  %s %-*s%s\n", out.Cyan(fmt.Sprintf("%d)", i+1)), nameWidth(), t.Name, out.Dim(t.Summary))
-		for j, s := range t.Sub {
-			fmt.Printf("     %s %-*s%s\n", out.Cyan(fmt.Sprintf("%d)", j+1)), nameWidth()-3, s.Name, out.Dim(s.Summary))
-		}
-	}
-	fmt.Printf("  %s quit\n", out.Cyan("q)"))
-	fmt.Println(out.Dim(`  Args may follow the choice, e.g. "1 --range yesterday" or "quota --help".`))
-	if i := slices.IndexFunc(tools, func(t tool.Tool) bool { return t.IsGroup() }); i >= 0 {
-		g := tools[i]
-		fmt.Println(out.Dim(fmt.Sprintf(`  A group's tool follows the group, e.g. "%d 1" or "%s %s --help".`, i+1, g.Name, g.Sub[0].Name)))
-	}
-}
-
-func plainMenu() error {
-	for {
-		<-startLoginCheck()
-		printMenu()
-		line, err := ui.Ask("> ")
-		if err != nil {
-			return err
-		}
-		args := splitArgs(line)
-		if len(args) == 0 {
-			continue
-		}
-		switch strings.ToLower(args[0]) {
-		case "q", "quit", "exit":
-			return nil
-		}
-		t := findTool(args[0])
-		if t == nil {
-			fmt.Printf("Unknown choice: %s\n\n", args[0])
-			continue
-		}
-		runTool(t.Name, t, args[1:])
-		fmt.Println()
-		loadPlugins()
-	}
-}
-
-func useTUI() bool {
-	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("AEX_TUI") != "0"
-}
-
-// tuiMenu shows the full-screen menu until quit. Tools run in the normal screen, cleared first.
-func tuiMenu() error {
-	path := []int{0}
-	var status string
-	var statusOK bool
-	loginDone := startLoginCheck()
-	for {
-		pick, err := selectTool(path, status, statusOK, loginDone)
-		if err != nil || pick.quit {
-			return err
-		}
-		path = pick.path
-		list, groups := menuLevel(path)
-		t := &list[path[len(path)-1]]
-		var names []string
-		for _, g := range groups {
-			names = append(names, g.Name)
-		}
-		name := strings.Join(append(names, t.Name), " ")
-
-		var args []string
-		if pick.withArgs {
-			line, err := ui.Input(ui.Field{
-				Title:       name + " arguments",
-				Description: "Space-separated; quote values with spaces. --help lists them.",
-				Placeholder: "--help",
-			})
-			if err != nil {
-				return err
-			}
-			args = splitArgs(line)
-		}
-		status, statusOK = runTool(name, t, args)
-		fmt.Fprintf(os.Stderr, "\n%s  %s", statusLine(status, statusOK), ui.Err.Dim("press any key to return to the menu"))
-		loginDone = startLoginCheck()
-		loadPlugins()
-		path = validPath(path)
-		ui.WaitKey()
-		fmt.Fprintln(os.Stderr)
-	}
 }

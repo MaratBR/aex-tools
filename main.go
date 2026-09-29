@@ -1,4 +1,4 @@
-// aex: personal work tools (Jira worklogs to AEXT, hours quota) behind one menu.
+// aex: personal work tools (Jira worklogs to AEXT, hours quota) in one window.
 package main
 
 import (
@@ -12,7 +12,6 @@ import (
 
 	"aex/internal/plugin"
 	"aex/internal/settings"
-	"aex/internal/shortcut"
 	"aex/internal/tool"
 	"aex/internal/tools/account"
 	"aex/internal/tools/configure"
@@ -30,7 +29,7 @@ import (
 //go:embed .env
 var embeddedEnv string
 
-// Menu order: built-in tools, each its own package under internal/tools, then plugins (see
+// Tool list order: built-in tools, each its own package under internal/tools, then plugins (see
 // internal/plugin), added by loadPlugins.
 var builtins = []tool.Tool{
 	worklogsync.Tool,
@@ -58,9 +57,9 @@ func help() string {
 	}
 	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [<tool> [args...]]
 
-Without a tool, opens a menu to pick and run tools until you quit: an arrow-key
-terminal UI, or a numbered list with --plain (or AEX_TUI=0, or when not on a terminal).
-With a tool name, runs that tool once with the given args (try "aex <tool> --help").
+Without a tool, opens the aex window to pick and run tools.
+With a tool name, runs that tool once in the terminal with the given args (try "aex <tool> --help");
+--plain (or AEX_TUI=0) asks its questions line by line instead of with arrow-key prompts.
 A group of tools (its tools indented below it) runs one: "aex <group> <tool> [args...]".
 
 Tools:
@@ -74,7 +73,7 @@ Data folder (app settings .env.config, AEXT session, output), set with --data-di
   %s`, list.String(), pluginDir(), settings.DataDir, settings.AppRoot)
 }
 
-// findTool takes a tool name or its number in the menu.
+// findTool takes a tool name or its number in the tool list (aex --help).
 func findTool(input string) *tool.Tool {
 	if n, err := strconv.Atoi(input); err == nil && n >= 1 && n <= len(tools) {
 		return &tools[n-1]
@@ -133,15 +132,7 @@ func run(args []string) error {
 		args = args[1:]
 	}
 	if len(args) == 0 {
-		// Dev builds are rebuilt in place and run from the repo, so only release builds offer this.
-		if !settings.IsDev {
-			shortcut.OfferOnce()
-		}
-		loadPlugins()
-		if plain || !useTUI() {
-			return plainMenu()
-		}
-		return tuiMenu()
+		return guiMenu()
 	}
 	if args[0] == "--help" || args[0] == "-h" {
 		loadPlugins()

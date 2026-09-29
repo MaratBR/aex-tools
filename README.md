@@ -1,22 +1,21 @@
 # aex-tools
 
-Personal work tooling in Go: one `aex` binary with a menu over all tools, each also runnable
-directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
+Personal work tooling in Go: one `aex` binary that opens a window with all tools, each also runnable
+directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
 
 ## Layout
 
-- `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`
-- `menu.go` — menu shared parts (AEXT / Jira login header, plain numbered list, running a tool)
-- `menu_tui.go` — full-screen arrow-key menu ([Bubble Tea](https://github.com/charmbracelet/bubbletea),
-  alternate screen). Tools themselves run in the normal screen, cleared (with its scrollback) before each tool from the menu.
-  Falls back to the numbered list with `--plain`, `AEX_TUI=0`, or when stdin/stdout is not a terminal.
-  The header shows who is logged in to AEXT (`/api/auth/me`) and Jira (`/rest/api/3/myself`), both checked
-  in parallel and never prompting, then settings and the data folder.
+- `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`. No tool opens the window.
+- `gui.go` — opens the window (`internal/webui`) over the tools; `gui_windows.go` closes the console
+  Windows gives the exe when it is started from the Start menu or Explorer
+- `header.go` — the window's header: who is logged in to AEXT (`/api/auth/me`) and Jira
+  (`/rest/api/3/myself`), both checked in parallel and never prompting, then settings and the data folder;
+  running a tool (`execTool`)
 - `internal/`
   - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
     `ParseFlags` (gives `--help`)
   - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
-    `datafolder`, `plugins`), each exporting `Tool`; `main.go` lists them in menu order
+    `datafolder`, `plugins`), each exporting `Tool`; `main.go` lists them in the order the window shows them
   - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
     a plugin's own `main`
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
@@ -31,7 +30,8 @@ directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
     relevant headers (cookie values redacted) and body (capped at 300 KB) to stderr
   - `quota` — monthly quota from AEXT working days, leaves and logged hours
   - `ui` — ANSI colors (only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces), line
-    prompts, hidden input, key press
+    prompts, hidden input, key press; `ui.Remote` answers all prompts elsewhere (the window)
+  - `webui` — the window ([Wails](https://wails.io), the system WebView2 on Windows): see Window
 - `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
 - `bin\build-exe.ps1` — builds the release `dist\aex.exe`
@@ -64,7 +64,7 @@ offers an earlier start if last month has gaps). Decline, or use `--manual`, to 
 `26.09.20`, `09.20`, `09.20-09.30`. `--range <expr>` skips the prompts.
 
 AEXT login is by emailed code. When `AEXT_EMAIL` is not set but a saved session is still valid, the email
-AEXT reports for it (`/api/auth/me`, checked by the menu header and `account`) is used and saved to app settings. The session cookie is kept in the credential store (see Credentials).
+AEXT reports for it (`/api/auth/me`, checked by the window header and `account`) is used and saved to app settings. The session cookie is kept in the credential store (see Credentials).
 Parallel requests share one login.
 
 The CSV is re-read before import, so it can be edited before confirming. After import the quota is shown.
@@ -107,7 +107,7 @@ Empty answer keeps the current value, `-` removes it from app settings (or reset
 the value is also set in a fallback source, since app settings will override it. Offers to wipe the AEXT
 session when the email changes.
 
-The menu (or `configure --wipe-settings` / `--wipe-all`) also wipes, after listing what goes and asking you to
+The `configure` list (or `configure --wipe-settings` / `--wipe-all`) also wipes, after listing what goes and asking you to
 type `CONFIRM`:
 - Wipe all settings: `.env.config`, secret settings (`JIRA_TOKEN`) in the credential store and
   `plugin-settings/`. App settings get their defaults back.
@@ -116,13 +116,13 @@ type `CONFIRM`:
 
 `.env` and environment variables are never touched and still apply as fallbacks.
 
-The menu (or `configure --add-shortcut` / `--remove-shortcut`) also adds aex to the OS app launcher, pointing at
+The `configure` list (or `configure --add-shortcut` / `--remove-shortcut`) also adds aex to the OS app launcher, pointing at
 the running exe (with `--data-dir` if it was given), or removes it:
 - Windows: `aex.lnk` in the Start menu (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`), with the exe's icon.
 - macOS: `~/Applications/aex.app`, a small bundle that opens the exe in Terminal. Only a bundle aex made is removed.
 - Linux: `aex.desktop` in `$XDG_DATA_HOME/applications` (default `~/.local/share/applications`), run in a terminal.
 
-The first time a release build opens the menu, it asks once whether to add it (skipped when it is already
+The first time a release build opens the window, it asks once whether to add it (skipped when it is already
 there); the answer is remembered as `SHORTCUT_ASKED` in app settings, so wiping settings asks again.
 
 Tools that need a missing auth setting prompt for it and offer to save it to app settings too.
@@ -208,27 +208,33 @@ means the default QA), then moves the ticket to In Production (transition `111`,
 Needs Go (see `go.mod`) for the scripts and builds; the built exe needs nothing.
 
 ```powershell
-.\bin\aex.ps1                  # menu: pick a tool, run it, back to the menu until q
-.\bin\aex.ps1 --plain          # numbered-list menu instead of the arrow-key UI (also AEX_TUI=0)
-.\bin\aex.ps1 quota            # run one tool
+.\bin\aex.ps1                  # the window: pick a tool, run it
+.\bin\aex.ps1 quota            # run one tool in the terminal
+.\bin\aex.ps1 --plain quota    # its questions line by line instead of arrow-key prompts (also AEX_TUI=0)
 .\bin\aex.ps1 --data-dir D:\aex-data
 .\bin\worklog-sync.ps1 --help
 # or
-go run . worklog-sync --help
+go run -tags desktop,production . worklog-sync --help
 ```
+
+Builds need the Wails build tags `desktop,production` (the scripts pass them); without them the window
+does not open.
 
 The scripts build a dev exe into `dist\dev\` on each run (fast when nothing changed) and run it from the
 current folder. Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
 
 ## Executable
 
-`.\bin\build-exe.ps1` builds `dist\aex.exe` (~8 MB, no runtime needed). Double-click it to open a terminal
-with the menu, or run `aex.exe <tool> [args]`.
+`.\bin\build-exe.ps1` builds `dist\aex.exe` (~19 MB; needs the WebView2 runtime, part of Windows 11).
+Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal.
 
 - `.env` is embedded at build time. A `.env` next to the exe is also read.
 - Everything else goes to the data folder. Run `configure` first, or missing settings are prompted for on first use.
 - Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` from
   the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads it from its own folder.
+- The manifest (`winres\aex.manifest`) sets `consoleAllocationPolicy` to `detached`: started from Explorer or
+  the Start menu, the exe opens no console window (Windows 11 24H2+; older Windows closes it right away);
+  started from a terminal it runs there as usual.
 - Icon and version info come from the committed `rsrc_windows_*.syso`. After changing `assets\logo.ico` or the
   version in `winres\winres.json`, run `go generate ./...` (uses [go-winres](https://github.com/tc-hib/go-winres)).
   Each plugin has its own `plugins\<name>\winres\winres.json` and `.syso`; a new plugin copies one and adds the
@@ -240,6 +246,25 @@ with the menu, or run `aex.exe <tool> [args]`.
 - `.\bin\build-exe.ps1 -Out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
   replaced then).
 
+## Window
+
+`aex` without a tool opens the window: the tools on the left (a group opens under its name), the logins
+and settings under them, and the runs on the right. Tools are the same console programs as in the
+terminal:
+
+- What a tool prints (stdout and stderr, plugins' too) goes through a pipe into its run, ANSI colors
+  included. Each run shows its command and status (running, needs your answer, done or failed in N s).
+- Its questions (`ui.Input`, `Confirm`, `Choose`, `WaitKey`) are asked inside its run, through `ui.Remote`,
+  and answered there: a text field (Esc cancels), Yes / No (y / n), a list (1-9), Continue. `Validate` runs
+  in Go; a rejected answer asks again with the reason. The answer stays in the run.
+- Before a question or the end of a run, the output pipe is synced (a marker written through it), so
+  nothing printed before a question shows up after it.
+- The line at the bottom runs a typed command, e.g. `quota --verbose` (Tab completes tool names).
+- One tool runs at a time; Clear empties the list of runs.
+
+Frontend: plain HTML, CSS and JS in `internal/webui/frontend` (no build step), embedded in the exe.
+Plugins' own questions are not answered in the window yet: a plugin sees no terminal there.
+
 ## Adding a tool
 
 1. Create package `internal/tools/foo` exporting `var Tool = tool.Tool{Name: "foo", Summary: "...", Run: run}`;
@@ -249,12 +274,11 @@ with the menu, or run `aex.exe <tool> [args]`.
 
 A tool can instead be a group of tools: `tool.Tool{Name: "foo", Summary: "...", Sub: []tool.Tool{...}}`.
 A group does nothing on its own; `aex foo <tool> [args]` (name or number) runs one of its tools, `aex foo`
-asks which on a terminal, `aex foo --help` lists them. The menu opens a group as a submenu (esc goes back);
-the plain menu lists its tools under it (`7 1 --help`). Groups may nest.
+asks which, `aex foo --help` lists them. The window lists its tools under it. Groups may nest.
 
 ## Plugins
 
-A plugin is a tool in its own executable in the `plugins` folder next to `aex.exe`. It shows in the menu
+A plugin is a tool in its own executable in the `plugins` folder next to `aex.exe`. It shows in the window
 after the built-in tools and runs as `aex <name> [args]`, in the same console. aex passes it the data
 folder, app root and built-in `.env` (`settings.PluginEnv`), so it sees the same settings, but not the
 credentials: a plugin never opens the credential store and ignores secret settings (`JIRA_TOKEN`) from
@@ -265,7 +289,7 @@ credentials: a plugin never opens the credential store and ignores secret settin
   `plugins/*` into the plugins folder. Optionally copy `bin\worklog-sync.ps1` to `bin\foo.ps1`.
 - A plugin can be a group of tools (see Adding a tool): `plugin.Main(tool.Tool{Name: "foo", Summary: "...",
   Sub: []tool.Tool{{Name: "bar", ...}}})`. Its tools are named plainly (`bar`, not `foo-bar`); aex runs
-  one as `<plugin> bar [args]`. Access is the plugin's, for all its tools. The menu shows them once the
+  one as `<plugin> bar [args]`. Access is the plugin's, for all its tools. The window shows them once the
   plugin is approved (before that it cannot be described, so it shows as one tool, which asks which of
   its tools to run).
 - Any other executable works too if it answers `--aex-describe` with `{"summary": "..."}` on stdout,
@@ -278,7 +302,7 @@ credentials: a plugin never opens the credential store and ignores secret settin
   `JIRA_TOKEN`; add kinds in `internal/plugin/access.go`. This limits honest plugins and shows what they
   use; it is no sandbox, a plugin still runs with your rights (hence approving its file).
 - Nothing in the plugins folder runs, not even `--aex-describe`, until you approve its file. Until then
-  the menu shows only its file name, size and modified time, read without running it. Running it (or
+  the window shows only its file name, size and modified time, read without running it. Running it (or
   `plugins describe`) shows its path, size and SHA-256 and asks; on yes the SHA-256 of the file's
   contents is saved as its safe hash in the credential store (`plugin-safe-sha256:<path>`).
 - Before every run, `--aex-describe` included, aex hashes the file again and asks again if it no longer
@@ -302,13 +326,13 @@ Lowest to highest priority:
 
 App settings with defaults, written to `.env.config` on first start (keeping a valid value already set in a
 fallback source). Invalid values fall back to the default with a warning. Read live, so `configure` changes
-apply in the running menu:
+apply in the open window:
 
 - `HOURS_PER_DAY` (default `8`) — working hours per day for the quota.
 - `TZ_OFFSET_HOURS` (default `7`) — UTC offset all dates are computed in (ranges, "today", worklog days,
   file timestamps); quarter hours allowed, e.g. `5.5` = UTC+5:30.
 
-The menu header shows the current values, the settings file path, the credential store in use and the data folder.
+The window's header shows the current values, the settings file path, the credential store in use and the data folder.
 
 ## Credentials
 

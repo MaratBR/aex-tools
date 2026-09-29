@@ -57,10 +57,20 @@ func Warn(format string, args ...any) {
 
 // ClearScreen clears the terminal and its scrollback, when stdout is a terminal that takes ANSI codes.
 func ClearScreen() {
+	if Remote != nil {
+		Remote.ClearScreen()
+		return
+	}
 	f := os.Stdout
 	if !term.IsTerminal(int(f.Fd())) || !enableVT(f) || os.Getenv("TERM") == "dumb" {
 		return
 	}
 	// Cursor home, clear screen, clear scrollback.
 	fmt.Fprint(f, "\x1b[H\x1b[2J\x1b[3J")
+}
+
+// ForceColor turns colors on for both streams, for output shown somewhere that renders ANSI (the GUI).
+func ForceColor() {
+	Out = Palette{on: true}
+	Err = Palette{on: true}
 }

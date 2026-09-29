@@ -18,7 +18,7 @@ import (
 // One reader for the whole process so lines typed or piped ahead of a prompt are not lost.
 var stdin = bufio.NewReader(os.Stdin)
 
-func IsInteractive() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+func IsInteractive() bool { return Remote != nil || term.IsTerminal(int(os.Stdin.Fd())) }
 
 func AssertInteractive(what string) error {
 	if !IsInteractive() {
@@ -149,6 +149,10 @@ func lineSecret(question string) (string, error) {
 
 // WaitKey returns after any key press (after Enter when stdin is not a terminal).
 func WaitKey() {
+	if Remote != nil {
+		Remote.WaitKey()
+		return
+	}
 	fd := int(os.Stdin.Fd())
 	old, err := term.MakeRaw(fd)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 	"aex/internal/ui"
 )
 
-// Tool is one menu entry, also runnable as "aex <name> [args]".
+// Tool is one entry of the tool list, also runnable as "aex <name> [args]".
 //
 // A tool with Sub is a group: it does nothing on its own (Run is unused), it only holds its
 // sub-tools, run as "aex <group> <sub-tool> [args]".

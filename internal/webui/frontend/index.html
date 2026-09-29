@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>aex tools</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="side">
+    <div class="brand"><img src="logo.svg" alt=""><span>aex</span></div>
+    <div class="section">Tools</div>
+    <nav id="tools"></nav>
+    <div id="info"></div>
+  </aside>
+
+  <main>
+    <div id="scroll">
+      <div id="page">
+        <section id="welcome">
+          <img src="logo.svg" alt="">
+          <h1>Pick a tool</h1>
+          <p>Runs show up here. When a tool needs something from you, it asks right in its run.</p>
+          <div id="starters"></div>
+        </section>
+        <button id="clear" type="button" hidden>Clear</button>
+        <div id="feed"></div>
+      </div>
+    </div>
+
+    <div id="dock">
+      <ul id="suggest" role="listbox" hidden></ul>
+      <form id="command" autocomplete="off">
+        <input id="input" spellcheck="false" aria-label="Command">
+        <button id="send" type="submit" aria-label="Run">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4l9 6-9 6z" /></svg>
+        </button>
+        <div class="progress" aria-hidden="true"></div>
+      </form>
+      <div id="command-error" hidden></div>
+    </div>
+  </main>
+
+  <script src="ansi.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
