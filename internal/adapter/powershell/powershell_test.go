@@ -79,7 +79,7 @@ func TestDescribeAndRun(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cmd, err := Adapter.Command(path, d, bound, rest, false)
+		cmd, err := Adapter.Command(path, d, bound, rest, adapter.Session{})
 		if err != nil {
 			t.Fatal(err)
 		}

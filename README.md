@@ -347,7 +347,10 @@ added to `custom.Adapters`:
   when a value is a file or folder path (asked for with the window's dialog and drop, see Window).
   PowerShell: `[IO.FileInfo]` / `[IO.DirectoryInfo]`, or a string named `…File` / `…Path` (file) or
   `…Folder` / `…Dir` / `…Directory` (folder).
-- `Command(path, description, args, rest, console)` — the command that runs it with those values.
+- `Command(path, description, args, rest, session)` — the command that runs it with those values. The
+  session says whether it has the terminal and, when not, whether its questions go to aex.
+- The description's `Interactive`: whether the script may ask questions while it runs (the adapter
+  decides; PowerShell: always).
 
 aex does the rest the same for every adapter:
 
@@ -366,7 +369,14 @@ aex does the rest the same for every adapter:
   (top folder and origin URL, credentials removed), branch and HEAD commit, the last commit that changed the
   script, and its changes not committed (untracked, ignored, staged or not, with +/− lines since HEAD).
 - It gets the same environment as a plugin (data folder, app root) with no secret settings.
-- In the window it has no terminal: its output goes to the run, and nothing can be read from input.
+- In the window it has no terminal: its output goes to the run. An interactive one asks its questions
+  there, over the connection plugins use (aex listens on a loopback port for it alone, with a token);
+  the adapter makes the script's own way of asking use it. A script that is not interactive gets no
+  input.
+- PowerShell in the window: `Read-Host` (also `-AsSecureString` / `-MaskInput`, asked hidden) is replaced
+  by a function that asks aex; cancelling it throws. Other ways of reading the console (`$Host.UI.ReadLine()`,
+  `PromptForChoice`, `Get-Credential`, `pause`, native programs reading stdin) get no input. In a terminal
+  the script has the console as usual.
 
 PowerShell: parameters come from the `param()` block through the PowerShell parser (types,
 `[Parameter(Mandatory)]`, `HelpMessage`, `[ValidateSet]`, `[Alias]`, defaults) and comment-based help

@@ -12,6 +12,7 @@ import (
 	"aex/internal/plugin"
 	"aex/internal/secrets"
 	"aex/internal/settings"
+	"aex/internal/ui"
 )
 
 func TestRun(t *testing.T) {
@@ -93,6 +94,64 @@ func TestRun(t *testing.T) {
 	}
 	if entries, _ := Load(); len(entries) != 0 {
 		t.Errorf("left %+v", entries)
+	}
+}
+
+// fakeRemote answers Input prompts as the window would, recording them.
+type fakeRemote struct{ asked []ui.Field }
+
+func (r *fakeRemote) Input(f ui.Field) (string, error) {
+	r.asked = append(r.asked, f)
+	if f.Secret {
+		return "s3cret", nil
+	}
+	return "Юля O'Brien", nil
+}
+func (r *fakeRemote) Confirm(string, bool) (bool, error)           { return false, nil }
+func (r *fakeRemote) Choose(string, []ui.Option) (string, error)   { return "", nil }
+func (r *fakeRemote) PickTool(string, []ui.Option) (string, error) { return "", nil }
+func (r *fakeRemote) WaitKey()                                     {}
+func (r *fakeRemote) ClearScreen()                                 {}
+
+func TestReadHostInWindow(t *testing.T) {
+	if _, err := exec.LookPath("powershell.exe"); err != nil {
+		t.Skip("no Windows PowerShell")
+	}
+	dir := t.TempDir()
+	settings.CustomToolsFile = filepath.Join(dir, "custom-tools.json")
+	settings.Credentials = secrets.Memory("test", nil)
+	script := filepath.Join(dir, "ask.ps1")
+	src := `$name = Read-Host 'Your name'
+$pw = Read-Host -Prompt 'Password' -AsSecureString
+$plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
+"hello $name / $plain / $([bool]$env:AEX_PROMPT_TOKEN)"
+`
+	if err := os.WriteFile(script, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e, err := Add(script, "ask")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := Inspect(e, false)
+	if !info.Desc.Interactive {
+		t.Fatal("PowerShell scripts should be interactive")
+	}
+	settings.Credentials.Set("plugin-safe-sha256:"+strings.ToLower(filepath.Clean(script)), info.Hash)
+
+	remote := &fakeRemote{}
+	ui.Remote = remote
+	defer func() { ui.Remote = nil }()
+	out := capture(t, func() {
+		if err := runner(e)(nil); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(out, "hello Юля O'Brien / s3cret / False") {
+		t.Errorf("output %q", out)
+	}
+	if len(remote.asked) != 2 || remote.asked[0].Title != "Your name" || remote.asked[0].Secret || remote.asked[1].Title != "Password" || !remote.asked[1].Secret {
+		t.Errorf("asked %+v", remote.asked)
 	}
 }
 

@@ -6,6 +6,9 @@
 // -Command "& '<path>' -Name 'value' ...": values are quoted literals, so switches and bools take
 // $false and lists are arrays, which -File cannot pass.
 //
+// Scripts are Interactive: in a terminal they have its console; in the window, Read-Host is
+// replaced (prompts.ps1) by one that asks aex, which asks in the window.
+//
 // It runs with Windows PowerShell (powershell.exe) on Windows, else PowerShell 7 (pwsh); also pwsh
 // when the script says #Requires -PSEdition Core, or when only pwsh can parse it.
 package powershell
@@ -32,6 +35,9 @@ import (
 
 //go:embed describe.ps1
 var describeScript string
+
+//go:embed prompts.ps1
+var promptsScript string
 
 const describeTimeout = 20 * time.Second
 
@@ -104,7 +110,9 @@ func (powershell) Describe(path string) (adapter.Description, error) {
 			}
 			d.Params[i].Hint = pathHint(d.Params[i])
 		}
-		return adapter.Description{Summary: d.Summary, Params: d.Params, Rest: !d.HasParam, Runner: host, Notes: d.Notes}, nil
+		return adapter.Description{Summary: d.Summary, Params: d.Params, Rest: !d.HasParam, Runner: host, Notes: d.Notes,
+			// Read-Host may be anywhere in the script or what it calls: there is no telling it will not ask.
+			Interactive: true}, nil
 	}
 	return adapter.Description{}, failed
 }
@@ -157,33 +165,38 @@ func describeWith(host, path string) (described, error) {
 	return d, nil
 }
 
-func (powershell) Command(path string, d adapter.Description, args []adapter.Arg, rest []string, console bool) (*exec.Cmd, error) {
+func (powershell) Command(path string, d adapter.Description, args []adapter.Arg, rest []string, s adapter.Session) (*exec.Cmd, error) {
 	if d.Runner == "" {
 		return nil, errors.New("no PowerShell to run it")
 	}
-	cmd := exec.Command(d.Runner, append(flags(console), "-Command", invocation(path, args, rest, console))...)
-	if !console {
+	cmd := exec.Command(d.Runner, append(flags(s), "-Command", invocation(path, args, rest, s))...)
+	if !s.Console {
 		proc.HideConsole(cmd)
 	}
 	return cmd, nil
 }
 
-func flags(console bool) []string {
+// flags are PowerShell's own options. Without a console and without aex answering its questions,
+// -NonInteractive makes a question fail instead of waiting on an input that never comes.
+func flags(s adapter.Session) []string {
 	f := []string{"-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"}
-	if !console {
+	if !s.Console && !s.Prompts {
 		f = append(f, "-NonInteractive")
 	}
 	return f
 }
 
-// invocation is the -Command text that runs the script with args and rest, one line (-Command
-// takes it from the command line) and exiting with the script's exit code. -Command rather than
-// -EncodedCommand, which writes errors to stderr as CLIXML.
-func invocation(path string, args []adapter.Arg, rest []string, console bool) string {
+// invocation is the -Command text that runs the script with args and rest, exiting with the
+// script's exit code. -Command rather than -EncodedCommand, which writes errors to stderr as
+// CLIXML. With s.Prompts, prompts.ps1 comes first: Read-Host then asks aex.
+func invocation(path string, args []adapter.Arg, rest []string, s adapter.Session) string {
 	var b strings.Builder
-	if !console {
+	if !s.Console {
 		// Output goes to a pipe, in the console code page unless told otherwise.
 		b.WriteString("[Console]::OutputEncoding = [Text.Encoding]::UTF8; ")
+	}
+	if s.Prompts {
+		b.WriteString(promptsScript + "\n")
 	}
 	b.WriteString("$global:LASTEXITCODE = 0; & " + quote(path))
 	for _, a := range args {

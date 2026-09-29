@@ -25,9 +25,19 @@ type Adapter interface {
 	// caller holds the file open so it cannot change meanwhile (see plugin.Lock).
 	Describe(path string) (Description, error)
 	// Command is the command that runs the script at path, described as d, with args (in the order
-	// of d.Params) and then rest. console is false when there is no terminal (the window): output
-	// goes to a pipe and nothing can be asked.
-	Command(path string, d Description, args []Arg, rest []string, console bool) (*exec.Cmd, error)
+	// of d.Params) and then rest, in session s.
+	Command(path string, d Description, args []Arg, rest []string, s Session) (*exec.Cmd, error)
+}
+
+// Session is where a script runs.
+type Session struct {
+	// Console is true when the script has the terminal. Else (the window) its output goes to a pipe
+	// and it has no input.
+	Console bool
+	// Prompts is true for an Interactive script without a console: its environment then has where
+	// to send its questions (plugin.ServePrompts, the protocol plugins use), and the adapter makes the
+	// script's own way of asking (e.g. Read-Host) use it.
+	Prompts bool
 }
 
 // Description is a script's help and parameters, as the adapter reads them.
@@ -38,6 +48,9 @@ type Description struct {
 	Rest bool
 	// Runner is what runs the script, e.g. "powershell.exe".
 	Runner string
+	// Interactive is true when the script may ask questions while it runs, as the adapter decides
+	// (PowerShell: always, Read-Host can be anywhere). Without a console aex answers them (Session).
+	Interactive bool
 	// Notes are things the adapter could not model, e.g. parameter sets.
 	Notes []string
 }

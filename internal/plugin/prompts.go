@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -83,6 +84,21 @@ func servePrompts() (s *promptServer, env []string, err error) {
 	s = &promptServer{ln: ln, token: hex.EncodeToString(b)}
 	go s.accept()
 	return s, []string{promptsVar + "=" + ln.Addr().String(), promptTokenVar + "=" + s.token}, nil
+}
+
+// ServePrompts answers the questions of a program aex starts from the window, other than a plugin
+// (a custom tool's script), over the plugins' protocol: env is the environment to start it with,
+// plus where to connect. Call stop once the program exits.
+func ServePrompts(env []string) (stop func(), _ []string, _ error) {
+	s, promptEnv, err := servePrompts()
+	if err != nil {
+		return nil, nil, err
+	}
+	env = slices.DeleteFunc(slices.Clip(env), func(kv string) bool {
+		name, _, _ := strings.Cut(strings.ToUpper(kv), "=")
+		return name == promptsVar || name == promptTokenVar
+	})
+	return s.Close, append(env, promptEnv...), nil
 }
 
 // Close stops listening and drops the plugin's connection.

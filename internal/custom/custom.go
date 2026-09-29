@@ -235,13 +235,25 @@ func runner(e Entry) func(args []string) error {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, ui.Err.Dim(runLine(i)))
-		cmd, err := a.Command(e.Path, i.Desc, bound, rest, ui.Remote == nil)
+		env, err := settings.PluginEnv(ui.Plain, nil)
 		if err != nil {
 			return err
 		}
-		if cmd.Env, err = settings.PluginEnv(ui.Plain, nil); err != nil {
+		// In the window the script has no console: an interactive one asks aex its questions.
+		s := adapter.Session{Console: ui.Remote == nil}
+		if !s.Console && i.Desc.Interactive {
+			stop, promptEnv, err := plugin.ServePrompts(env)
+			if err != nil {
+				return err
+			}
+			defer stop()
+			env, s.Prompts = promptEnv, true
+		}
+		cmd, err := a.Command(e.Path, i.Desc, bound, rest, s)
+		if err != nil {
 			return err
 		}
+		cmd.Env = env
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		err = cmd.Run()
 		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
