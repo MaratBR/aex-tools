@@ -13,14 +13,14 @@ import (
 )
 
 // Tool is the plugins tool.
-var Tool = tool.Tool{Name: "plugins", Summary: "List, describe and delete plugins; open the plugins folder", Run: run}
+var Tool = tool.Tool{Name: "plugins", Summary: "List, describe, delete and forget plugins; open the plugins folder", Run: run}
 
 func run(args []string) error {
 	dir, err := plugin.Dir()
 	if err != nil {
 		return err
 	}
-	usage := fmt.Sprintf(`Usage: plugins [list | describe [<name>] | delete <name> [--yes] | open]
+	usage := fmt.Sprintf(`Usage: plugins [list | describe [<name>] | delete <name> [--yes] | forget-all [--yes] | open]
 
 Plugins are tools in their own executables, in:
   %s
@@ -30,6 +30,8 @@ contents is then saved as its safe hash (credential store), and checked again be
   list             List the plugins with file, SHA-256 and state; safe ones describe themselves (default)
   describe [name]  Describe a plugin, or each one; asks to approve any that is not safe
   delete <name>    Delete a plugin's file and forget its safe hash; asks first unless --yes
+  forget-all       Forget every plugin's safe hash and granted access (files are kept): each asks
+                   to be approved again on its next run; asks first unless --yes
   open             Open the plugins folder in the file manager
 
 Without args on a terminal: lists the plugins, then asks what to do.`, dir)
@@ -63,6 +65,8 @@ Without args on a terminal: lists the plugins, then asks what to do.`, dir)
 			return errors.New("delete needs a plugin name (see --help)")
 		}
 		return remove(name, *yes)
+	case "forget-all":
+		return forgetAll(*yes)
 	case "open":
 		fmt.Println(dir)
 		return tool.OpenFolder(dir)
@@ -185,6 +189,36 @@ func remove(name string, yes bool) error {
 	return nil
 }
 
+// forgetAll forgets the safe hash and granted access of every plugin, asking first unless yes.
+func forgetAll(yes bool) error {
+	paths, err := plugin.Approved()
+	if err != nil {
+		return err
+	}
+	if len(paths) == 0 {
+		fmt.Println("No plugin approvals to forget.")
+		return nil
+	}
+	if !yes {
+		if err := ui.AssertInteractive("confirming forget-all (or pass --yes)"); err != nil {
+			return err
+		}
+		fmt.Println("Forgets the safe hash and granted access of:")
+		for _, path := range paths {
+			fmt.Println("  " + path)
+		}
+		ok, err := ui.Confirm("Forget all? Each plugin asks to be approved again on its next run.", false)
+		if err != nil || !ok {
+			return err
+		}
+	}
+	if err := plugin.ForgetAll(); err != nil {
+		return err
+	}
+	fmt.Println(ui.Out.Green(fmt.Sprintf("Forgot %d plugin approvals.", len(paths))))
+	return nil
+}
+
 // manage lists the plugins and asks what to do, until done.
 func manage(dir string) error {
 	for {
@@ -201,6 +235,7 @@ func manage(dir string) error {
 				ui.Option{Label: "Describe each plugin", Value: "describe-all"},
 				ui.Option{Label: "Delete a plugin", Value: "delete"})
 		}
+		options = append(options, ui.Option{Label: "Forget all approvals", Value: "forget-all"})
 		options = append(options, ui.Option{Label: "Open the plugins folder", Value: "open"})
 		action, err := ui.Choose("What now?", options)
 		if err != nil {
@@ -214,6 +249,8 @@ func manage(dir string) error {
 			err = tool.OpenFolder(dir)
 		case "describe-all":
 			err = describe("")
+		case "forget-all":
+			err = forgetAll(false)
 		case "describe", "delete":
 			var name string
 			if name, err = pick(plugins); err == nil && name != "" {

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"aex/internal/settings"
@@ -59,7 +60,77 @@ func state(path, hash string) (State, error) {
 
 // forget forgets the plugin's safe hash and granted access.
 func forget(path string) error {
-	return errors.Join(settings.Credentials.Delete(hashKey(path)), settings.Credentials.Delete(grantKey(path)))
+	return errors.Join(settings.Credentials.Delete(hashKey(path)), settings.Credentials.Delete(grantKey(path)),
+		setApproved(path, false))
+}
+
+// approvedKey is the credential store key listing (one per line) the paths of plugins with a safe
+// hash or granted access: the store cannot list its keys, and ForgetAll has to find them.
+const approvedKey = "plugin-approved-paths"
+
+func approvedPaths() ([]string, error) {
+	v, err := settings.Credentials.Get(approvedKey)
+	if err != nil || v == "" {
+		return nil, err
+	}
+	return strings.Split(v, "\n"), nil
+}
+
+// setApproved adds (on) or removes the plugin at path from the approvedKey list.
+func setApproved(path string, on bool) error {
+	paths, err := approvedPaths()
+	if err != nil {
+		return err
+	}
+	path = normPath(path)
+	has := slices.Contains(paths, path)
+	switch {
+	case on && !has:
+		paths = append(paths, path)
+	case !on && has:
+		paths = slices.DeleteFunc(paths, func(p string) bool { return p == path })
+	default:
+		return nil
+	}
+	if len(paths) == 0 {
+		return settings.Credentials.Delete(approvedKey)
+	}
+	return settings.Credentials.Set(approvedKey, strings.Join(paths, "\n"))
+}
+
+// Approved lists the paths ForgetAll forgets: every plugin approved (or granted access) since the
+// list was kept, plus the plugins in the plugins folder now.
+func Approved() ([]string, error) {
+	paths, err := approvedPaths()
+	if err != nil {
+		return nil, err
+	}
+	plugins, err := List()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range plugins {
+		if path := normPath(p.Path); !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	slices.Sort(paths)
+	return paths, nil
+}
+
+// ForgetAll forgets the safe hash and granted access of every plugin (see Approved): each asks to
+// be approved again on its next run. Plugin files are left alone.
+func ForgetAll() error {
+	paths, err := Approved()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, path := range paths {
+		errs = append(errs, settings.Credentials.Delete(hashKey(path)), settings.Credentials.Delete(grantKey(path)))
+	}
+	errs = append(errs, settings.Credentials.Delete(approvedKey))
+	return errors.Join(errs...)
 }
 
 // openFile is a plugin file held open, with its SHA-256. On Windows it cannot be changed, renamed
@@ -131,5 +202,8 @@ func askApproval(name, path string, o *openFile, s State) error {
 	if !yes {
 		return fmt.Errorf("plugin %s not approved", name)
 	}
-	return settings.Credentials.Set(hashKey(path), o.hash)
+	if err := settings.Credentials.Set(hashKey(path), o.hash); err != nil {
+		return err
+	}
+	return setApproved(path, true)
 }

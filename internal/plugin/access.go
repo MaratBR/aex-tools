@@ -59,6 +59,9 @@ func grant(name, path, hash string, access []Access) ([]string, error) {
 		if err := settings.Credentials.Set(grantKey(path), want); err != nil {
 			return nil, err
 		}
+		if err := setApproved(path, true); err != nil {
+			return nil, err
+		}
 	}
 
 	var pass []string

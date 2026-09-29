@@ -79,3 +79,35 @@ func TestStartWhileOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestForgetAll(t *testing.T) {
+	dir := t.TempDir()
+	settings.Credentials, _ = secrets.Open("file", dir, filepath.Join(dir, "credentials.json"))
+	a, b := filepath.Join(dir, "a.exe"), filepath.Join(dir, "b.exe")
+	for _, path := range []string{a, b} {
+		settings.Credentials.Set(hashKey(path), "hash")
+		settings.Credentials.Set(grantKey(path), "hash jira")
+		if err := setApproved(path, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setApproved(a, true) // no duplicate
+	if paths, _ := approvedPaths(); len(paths) != 2 {
+		t.Fatalf("approved paths = %q, want 2", paths)
+	}
+	if err := forget(a); err != nil {
+		t.Fatal(err)
+	}
+	if paths, _ := approvedPaths(); len(paths) != 1 || paths[0] != normPath(b) {
+		t.Fatalf("after forget: approved paths = %q", paths)
+	}
+
+	if err := ForgetAll(); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{hashKey(b), grantKey(b), approvedKey} {
+		if v, _ := settings.Credentials.Get(key); v != "" {
+			t.Errorf("ForgetAll kept %s", key)
+		}
+	}
+}
