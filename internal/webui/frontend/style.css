@@ -30,6 +30,7 @@ a:hover { text-decoration: underline; }
 aside {
   width: 264px;
   flex: none;
+  transition: margin-left .28s cubic-bezier(.3, .7, .2, 1);
   display: flex;
   flex-direction: column;
   background: var(--side);
@@ -123,7 +124,17 @@ aside {
 
 /* Title bar: the window is frameless, so this strip drags it and holds its buttons. ---------- */
 
-#titlebar { flex: none; height: 36px; display: flex; justify-content: flex-end; --wails-draggable: drag; }
+#titlebar { flex: none; height: 36px; display: flex; align-items: flex-start; justify-content: flex-end; --wails-draggable: drag; }
+
+/* Home takes the whole window: the sidebar slides away, and a button in the title bar brings it
+   back (home.js: homeSide). On Runs it is always there. */
+.side-collapsed aside { margin-left: -264px; }
+.instant aside { transition: none; }
+#side-toggle { position: relative; margin: 5px auto 0 10px; display: none; }
+[data-page="home"] #side-toggle { display: grid; }
+#side-toggle[aria-expanded="true"] { color: var(--ink); }
+#side-toggle .activity { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); display: none; }
+.side-collapsed.runs-activity #side-toggle .activity { display: block; }
 .brand button, #titlebar button { --wails-draggable: no-drag; }
 .win-controls { display: flex; }
 .win-controls button {

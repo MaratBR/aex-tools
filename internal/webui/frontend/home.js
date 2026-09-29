@@ -17,6 +17,39 @@ let autoRefresh = true; // !HomeLayout.autoRefreshOff
 let editing = false;
 let cols = 4;
 
+// On Home the sidebar is hidden unless the user opened it there (remembered in this browser); on
+// Runs it is always shown.
+let homeSide = false;
+try { homeSide = localStorage.getItem('aex.homeSide') === 'open'; } catch {}
+
+function syncSide(animate = true) {
+  const collapsed = page === 'home' && !homeSide;
+  if (!animate) {
+    document.body.classList.add('instant');
+    requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('instant')));
+  }
+  document.body.classList.toggle('side-collapsed', collapsed);
+  $('side').inert = collapsed;
+  const t = $('side-toggle');
+  t.setAttribute('aria-expanded', String(!collapsed));
+  t.title = (collapsed ? 'Show' : 'Hide') + ' sidebar (Ctrl+B)';
+  t.setAttribute('aria-label', collapsed ? 'Show sidebar' : 'Hide sidebar');
+}
+
+function toggleSide() {
+  if (page !== 'home') return;
+  homeSide = !homeSide;
+  try { localStorage.setItem('aex.homeSide', homeSide ? 'open' : 'closed'); } catch {}
+  syncSide();
+}
+$('side-toggle').onclick = toggleSide;
+document.addEventListener('keydown', e => {
+  if (page === 'home' && e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    toggleSide();
+  }
+});
+
 // showPage shows Home or Runs. auto: chosen by the window at start, not by the user.
 function showPage(name, auto = false) {
   if (!auto) pageChosen = true;
@@ -30,6 +63,7 @@ function showPage(name, auto = false) {
   if (name === 'runs') document.body.classList.remove('runs-activity');
   if (name !== 'home') closePicker();
   scroller.scrollTop = scrollTops[name];
+  syncSide(!auto);
   if (name === 'home') fitGrid();
 }
 

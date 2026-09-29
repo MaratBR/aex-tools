@@ -298,6 +298,10 @@ Colors and fonts are in `tokens.css`, shared by the window and the widgets.
 
 ### Home and widgets
 
+Home takes the whole window: the sidebar slides away there, and the button at the top left (or Ctrl+B)
+brings it back or hides it again, remembered in the web view's storage; a dot on the button says a run
+printed meanwhile. Runs always shows the sidebar.
+
 Home is a grid of widgets (4 columns, 2 or 1 when the window is narrow; rows 150 px). Add widget picks
 one (a widget can be added more than once); Edit puts a cover on each widget to drag it elsewhere,
 move it earlier or later, change its width and height (1–4 cells) or remove it. Every change is saved
