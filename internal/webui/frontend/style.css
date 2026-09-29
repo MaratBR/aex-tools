@@ -552,7 +552,7 @@ div.row { cursor: default; }
 .banner-actions { display: flex; gap: 6px; }
 
 @media (max-width: 720px) {
-  aside { display: none; }
+  aside, [data-page="home"] #side-toggle { display: none; }
   #page, #home { padding: 20px 16px; }
   #dock { padding: 0 16px 16px; }
   #welcome h1 { font-size: 30px; }
