@@ -24,6 +24,7 @@ import (
 
 type Client struct {
 	baseURL string
+	quiet   bool // never logs in or prints: see NewQuiet
 
 	mu      sync.Mutex
 	cookie  string
@@ -47,6 +48,20 @@ func New() (*Client, error) {
 		return nil, err
 	}
 	return &Client{baseURL: strings.TrimRight(base, "/"), cookie: cookie}, nil
+}
+
+// ErrNoSession is what a quiet client (NewQuiet) returns where another would log in.
+var ErrNoSession = errors.New("not logged in to AEXT")
+
+// NewQuiet is a client that never logs in or prints, for callers with nobody to ask (the window's
+// widgets): without a valid session its requests fail with ErrNoSession.
+func NewQuiet() (*Client, error) {
+	c, err := New()
+	if err != nil {
+		return nil, err
+	}
+	c.quiet = true
+	return c, nil
 }
 
 func (c *Client) currentCookie() string {
@@ -141,6 +156,10 @@ func (c *Client) ensureLogin() (string, error) {
 		defer c.mu.Unlock()
 		return c.cookie, nil
 	}
+	if c.quiet {
+		c.mu.Unlock()
+		return "", ErrNoSession
+	}
 	if p := c.pending; p != nil {
 		c.mu.Unlock()
 		<-p.done
@@ -170,7 +189,9 @@ func (c *Client) dropCookie(rejected string) {
 	if c.cookie != rejected {
 		return
 	}
-	fmt.Fprintln(os.Stderr, ui.Err.Yellow("AEXT session expired, logging in again."))
+	if !c.quiet {
+		fmt.Fprintln(os.Stderr, ui.Err.Yellow("AEXT session expired, logging in again."))
+	}
 	c.cookie = ""
 	settings.Credentials.Delete(secrets.AEXTSession)
 }

@@ -155,21 +155,21 @@ func FetchMonths(c *aext.Client, now string) (*Data, error) {
 
 // Month is the quota of one month as of now.
 type Month struct {
-	Month          string // YYYY-MM
-	WorkingDays    int
-	LeaveDays      int
-	Expected       float64
-	Logged         float64
-	Percent        float64
-	DaysDue        int // working days before today
-	ExpectedToDate float64
-	Behind         float64 // negative when ahead
-	Remaining      float64
-	DaysLeft       int      // working days from today on
-	PerDayLeft     float64  // only when DaysLeft > 0
-	Missing        []string // working days before today without hours, sorted
-	Current        bool     // the month of now
-	Today          float64  // hours logged today, when Current
+	Month          string   `json:"month"` // YYYY-MM
+	WorkingDays    int      `json:"workingDays"`
+	LeaveDays      int      `json:"leaveDays"`
+	Expected       float64  `json:"expected"`
+	Logged         float64  `json:"logged"`
+	Percent        float64  `json:"percent"`
+	DaysDue        int      `json:"daysDue"` // working days before today
+	ExpectedToDate float64  `json:"expectedToDate"`
+	Behind         float64  `json:"behind"` // negative when ahead
+	Remaining      float64  `json:"remaining"`
+	DaysLeft       int      `json:"daysLeft"`   // working days from today on
+	PerDayLeft     float64  `json:"perDayLeft"` // only when DaysLeft > 0
+	Missing        []string `json:"missing"`    // working days before today without hours, sorted
+	Current        bool     `json:"current"`    // the month of now
+	Today          float64  `json:"today"`      // hours logged today, when Current
 }
 
 func ComputeMonth(month, now string, d *Data) Month {

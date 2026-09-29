@@ -39,9 +39,10 @@ const (
 )
 
 type description struct {
-	Summary string    `json:"summary"`
-	Access  []Access  `json:"access,omitempty"`
-	Tools   []SubTool `json:"tools,omitempty"`
+	Summary string       `json:"summary"`
+	Access  []Access     `json:"access,omitempty"`
+	Tools   []SubTool    `json:"tools,omitempty"`
+	Widgets []WidgetInfo `json:"widgets,omitempty"` // widget.go
 }
 
 // SubTool is a tool of a plugin that is a group.
@@ -79,11 +80,12 @@ type Info struct {
 	Modified time.Time
 	Hash     string // SHA-256 of the file's contents now
 	State    State
-	// Summary, Access and Tools are what the plugin describes itself as, only for a safe plugin
-	// (else empty); DescribeErr says why that failed.
+	// Summary, Access, Tools and Widgets are what the plugin describes itself as, only for a safe
+	// plugin (else empty); DescribeErr says why that failed.
 	Summary     string
 	Access      []Access
 	Tools       []SubTool
+	Widgets     []WidgetInfo
 	DescribeErr error
 }
 
@@ -182,6 +184,7 @@ func inspect(name, path string) (Info, error) {
 		var d description
 		d, p.DescribeErr = describe(o, path)
 		p.Summary, p.Access, p.Tools = d.Summary, d.Access, d.Tools
+		p.Widgets = slices.DeleteFunc(d.Widgets, func(w WidgetInfo) bool { return !widgetID.MatchString(w.ID) })
 	}
 	return p, nil
 }
@@ -370,19 +373,41 @@ func runner(name, path string, sub []string) func(args []string) error {
 	}
 }
 
-// Main runs t (a tool, or a group of them) as a plugin that needs access (see Access): answers
-// --aex-describe, else sets up like aex does and runs t with the command-line args, exiting 1 on
-// error.
-func Main(t tool.Tool, access ...Access) {
+// Main runs t (a tool, or a group of them) as a plugin with opts: the access it needs (see Access)
+// and the widgets it offers (see Widget). Answers --aex-describe and the widget flags, else sets up
+// like aex does and runs t with the command-line args, exiting 1 on error.
+func Main(t tool.Tool, opts ...Option) {
+	var access []Access
+	var widgets []Widget
+	for _, o := range opts {
+		switch o := o.(type) {
+		case Access:
+			access = append(access, o)
+		case Widget:
+			widgets = append(widgets, o)
+		}
+	}
 	if len(os.Args) == 2 && os.Args[1] == describeFlag {
-		d := description{Summary: t.Summary, Access: access, Tools: describeTools(t.Sub)}
+		d := description{Summary: t.Summary, Access: access, Tools: describeTools(t.Sub), Widgets: describeWidgets(widgets)}
 		if err := json.NewEncoder(os.Stdout).Encode(d); err != nil {
 			os.Exit(1)
 		}
 		return
 	}
+	// A widget's page needs nothing set up; its calls get the settings, without questions.
+	if len(os.Args) >= 2 && os.Args[1] == widgetFlag {
+		if err := serveWidget(widgetFlag, os.Args[2:], widgets); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+	widgetCall := len(os.Args) >= 2 && os.Args[1] == widgetCallFlag
 	ui.Setup()
-	err := connectPrompts()
+	var err error
+	if !widgetCall {
+		err = connectPrompts()
+	}
 	var dataDir string
 	var args []string
 	if err == nil {
@@ -391,7 +416,9 @@ func Main(t tool.Tool, access ...Access) {
 	if err == nil {
 		err = settings.InitPlugin(dataDir)
 	}
-	if err == nil {
+	if err == nil && widgetCall {
+		err = serveWidget(widgetCallFlag, args[1:], widgets)
+	} else if err == nil {
 		err = t.Exec(args)
 	}
 	if err != nil {

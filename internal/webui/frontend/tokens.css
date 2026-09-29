@@ -1,0 +1,52 @@
+/* Colors, shadows and fonts, for the window (style.css) and the home page's widgets (widgets/widget.css). */
+:root {
+  --accent: #0071e3;
+  --accent-2: #01e1f5;
+  --on-accent: #fff;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --faint: #a1a1a6;
+  --bg: #f5f5f7;
+  --side: #ebebef;
+  --surface: #ffffff;
+  --fill: rgba(118, 118, 128, .12);
+  --fill-2: rgba(118, 118, 128, .07);
+  --hover: rgba(118, 118, 128, .14);
+  --sep: rgba(60, 60, 67, .1);
+  --ok: #248a3d;
+  --fail: #d70015;
+  --warn: #b25000;
+  --card-shadow: 0 0 0 .5px rgba(0, 0, 0, .03), 0 1px 2px rgba(0, 0, 0, .04), 0 2px 10px rgba(0, 0, 0, .035);
+  --pop-shadow: 0 0 0 .5px rgba(0, 0, 0, .05), 0 10px 40px rgba(0, 0, 0, .14);
+  --ring: 0 0 0 3.5px color-mix(in srgb, var(--accent) 30%, transparent);
+  /* ANSI 0-15 */
+  --c0: #1d1d1f; --c1: #c9252c; --c2: #1f8a3f; --c3: #9a5d06; --c4: #1d5fc4; --c5: #8b36d6; --c6: #0a7fa6; --c7: #6e6e73;
+  --c8: #8e8e93; --c9: #d63333; --c10: #1f9a4b; --c11: #b86e0b; --c12: #2466e0; --c13: #a052e6; --c14: #0891b2; --c15: #1d1d1f;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "SF Mono", ui-monospace, "Cascadia Mono", "Cascadia Code", Consolas, monospace;
+  color-scheme: light;
+}
+
+/* theme.js sets data-theme from the Theme setting, or from the system's while that is "System". */
+:root[data-theme="dark"] {
+  --accent: #0a84ff;
+  --ink: #f5f5f7;
+  --muted: #98989d;
+  --faint: #636366;
+  --bg: #1c1c1e;
+  --side: #232325;
+  --surface: #2c2c2e;
+  --fill: rgba(118, 118, 128, .24);
+  --fill-2: rgba(118, 118, 128, .14);
+  --hover: rgba(118, 118, 128, .22);
+  --sep: rgba(84, 84, 88, .45);
+  --ok: #30d158;
+  --fail: #ff453a;
+  --warn: #ff9f0a;
+  --card-shadow: none;
+  --pop-shadow: 0 0 0 .5px rgba(255, 255, 255, .08), 0 14px 48px rgba(0, 0, 0, .5);
+  --c0: #48484a; --c1: #ff6961; --c2: #6fd08f; --c3: #e9c46a; --c4: #6cb4ff; --c5: #c792ea; --c6: #5ccfe6; --c7: #aeaeb2;
+  --c8: #7c7c80; --c9: #ff8a80; --c10: #8fe0a8; --c11: #f2d38a; --c12: #8dc6ff; --c13: #d7a8f0; --c14: #7fdcee; --c15: #ffffff;
+  color-scheme: dark;
+}

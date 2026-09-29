@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AEXT quota</title>
+  <style>
+    body { display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
+    .head { display: flex; align-items: center; gap: 8px; }
+    .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .title .muted { font-weight: 400; }
+    .loading svg { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .logged { font: 700 34px/1 var(--display); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+    .of { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+    .verdict { margin-left: auto; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .verdict.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+    .verdict.bad { color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+
+    /* Logged hours filled, and a marker where the hours due by today end. */
+    .bar { position: relative; height: 8px; border-radius: 8px; background: var(--fill); }
+    .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ok); transition: width .4s ease; }
+    .bar.bad .fill { background: var(--fail); }
+    .bar .due { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--warn); }
+
+    .rows { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 13px; min-height: 0; overflow: hidden; }
+    .rows dt { color: var(--muted); white-space: nowrap; }
+    .rows dd { margin: 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+    .strong { font-weight: 600; }
+    .over { color: var(--warn); font-weight: 600; }
+    .missing { color: var(--warn); }
+
+    .last { margin-top: auto; display: flex; align-items: baseline; gap: 8px; padding-top: 10px; font-size: 13px; box-shadow: inset 0 .5px 0 var(--sep); }
+    .last .name { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .last .good { color: var(--ok); font-weight: 600; }
+    .last .bad { color: var(--fail); font-weight: 600; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+
+    /* One row high: the numbers and the bar only. */
+    @media (max-height: 200px) {
+      body { gap: 8px; padding-top: 12px; }
+      .rows, .last, .actions { display: none; }
+      .logged { font-size: 28px; }
+    }
+    @media (max-height: 330px) { .rows .extra { display: none; } }
+    @media (max-width: 300px) { .of .pct { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div class="title">AEXT quota <span class="muted" id="month"></span></div>
+    <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    // This month's AEXT hours against the quota, and last month's: the quota tool's numbers
+    // (home.go: quotaAPI), laid out for a glance.
+    const content = document.getElementById('content');
+    const epsilon = 0.05; // below this a difference is rounding, not hours to log (as in quota.go)
+
+    const h = n => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + 'h';
+    const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' });
+    const shortDay = d => {
+      const t = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+      return t.toLocaleString('en', { weekday: 'short' }) + ' ' + d.slice(5, 7) + '.' + d.slice(8, 10);
+    };
+    const plural = (n, one, many) => (n === 1 ? '1 ' + one : n + ' ' + many);
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    function verdict(q) {
+      if (q.remaining <= epsilon) return { good: true, text: 'Quota filled' };
+      if (q.behind > epsilon) return { good: false, text: h(q.behind) + ' behind' };
+      if (q.behind < -epsilon) return { good: true, text: h(-q.behind) + ' ahead' };
+      return { good: true, text: 'On track' };
+    }
+
+    function bar(q, bad) {
+      const b = node('div', 'bar' + (bad ? ' bad' : ''));
+      const pct = v => (q.expected > 0 ? Math.min(100, (v / q.expected) * 100) : 0);
+      const fill = node('div', 'fill');
+      fill.style.width = pct(q.logged) + '%';
+      b.appendChild(fill);
+      if (q.current && q.daysLeft > 0 && q.expectedToDate > q.logged) {
+        const due = node('div', 'due');
+        due.style.left = pct(q.expectedToDate) + '%';
+        due.title = h(q.expectedToDate) + ' due by today';
+        b.appendChild(due);
+      }
+      b.setAttribute('role', 'img');
+      b.setAttribute('aria-label', `${h(q.logged)} of ${h(q.expected)} logged`);
+      return b;
+    }
+
+    function row(list, label, value, cls) {
+      list.append(node('dt', cls, label));
+      const dd = node('dd', cls);
+      dd.append(...[].concat(value));
+      list.append(dd);
+      return dd;
+    }
+
+    function render(r) {
+      const [q, last] = r.months;
+      document.getElementById('month').textContent = '· ' + monthName(q.month);
+      content.textContent = '';
+      content.style.display = 'contents';
+
+      const v = verdict(q);
+      const big = node('div', 'big');
+      big.append(node('span', 'logged', h(q.logged)));
+      const of = node('span', 'of', '/ ' + h(q.expected) + ' ');
+      of.append(node('span', 'pct', `· ${Math.round(q.percent)}%`));
+      big.append(of, node('span', 'verdict ' + (v.good ? 'good' : 'bad'), v.text));
+      content.append(big, bar(q, !v.good));
+
+      const rows = node('dl', 'rows');
+      row(rows, 'Today', q.today > 0 ? h(q.today) + ' logged' : node('span', 'muted', 'nothing logged yet'));
+      row(rows, 'Due by today', [h(q.expectedToDate) + ' ', node('span', 'muted', `(${q.daysDue} of ${q.workingDays} days)`)]);
+      if (q.daysLeft > 0 && q.remaining > epsilon) {
+        const need = node('span', q.perDayLeft > r.hoursPerDay + epsilon ? 'over' : 'strong', h(q.perDayLeft) + '/day');
+        row(rows, 'To finish', [need, ` over ${plural(q.daysLeft, 'day', 'days')} left`]);
+      }
+      const missing = q.missing || [];
+      if (missing.length) {
+        const shown = missing.slice(0, 4).map(shortDay).join(', ') + (missing.length > 4 ? ` +${missing.length - 4}` : '');
+        row(rows, 'Missing', shown, 'missing').title = missing.map(shortDay).join(', ');
+      }
+      let expected = `${plural(q.workingDays, 'working day', 'working days')} × ${h(r.hoursPerDay)}`;
+      if (q.leaveDays > 0) expected += ` · ${plural(q.leaveDays, 'day', 'days')} on leave`;
+      row(rows, 'Expected', node('span', 'muted', expected), 'extra');
+      content.append(rows);
+
+      if (missing.length) {
+        const actions = node('div', 'actions');
+        const sync = node('button', 'btn primary', 'Run worklog-sync');
+        sync.type = 'button';
+        sync.onclick = () => aex.run('worklog-sync');
+        actions.append(sync);
+        content.append(actions);
+      }
+
+      const foot = node('div', 'last');
+      foot.append(node('span', 'name', monthName(last.month)));
+      if (last.remaining <= epsilon) foot.append(node('span', 'good', '✔ complete'), node('span', 'muted', `${h(last.logged)} / ${h(last.expected)}`));
+      else foot.append(node('span', 'bad', '✖ ' + h(last.remaining) + ' short'), node('span', 'muted', `${h(last.logged)} / ${h(last.expected)}`));
+      if (r.warnings && r.warnings.length) foot.title = r.warnings.join('\n');
+      content.append(foot);
+    }
+
+    function notice(text, error, action) {
+      content.textContent = '';
+      content.style.display = '';
+      content.className = 'notice';
+      content.append(node('div', null, text));
+      if (error) content.append(node('div', 'error', error));
+      if (action) {
+        const b = node('button', 'btn primary', action.label);
+        b.type = 'button';
+        b.onclick = action.run;
+        content.append(b);
+      }
+    }
+
+    let seq = 0, shown = false;
+    async function load() {
+      const n = ++seq;
+      document.body.classList.add('loading');
+      if (!shown) notice('Loading…');
+      try {
+        const r = await aex.call('quota');
+        if (n !== seq) return;
+        if (r.needLogin) {
+          shown = false;
+          document.getElementById('month').textContent = '';
+          notice('Not logged in to AEXT.', '', { label: 'Log in', run: () => aex.run('account --login aext') });
+        } else {
+          content.className = '';
+          render(r);
+          shown = true;
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        shown = false;
+        notice('Could not load the quota.', e.message, { label: 'Try again', run: load });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    document.getElementById('refresh').onclick = load;
+    aex.onRefresh(load);
+    load();
+  </script>
+</body>
+</html>

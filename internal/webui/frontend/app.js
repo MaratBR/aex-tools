@@ -130,6 +130,7 @@ function onClear() {
 }
 
 function onOutput(s) {
+  runsActivity();
   const stick = nearBottom();
   outBlock().write(s);
   if (stick) toBottom();
@@ -145,6 +146,7 @@ async function runLine(line) {
     showCommandError(`There is no tool called "${splitArgs(line)[0]}".`);
     return;
   }
+  showPage('runs');
   startRun(path, args);
   try {
     await api().Run(path, args);
@@ -179,6 +181,7 @@ function finished({ status, ok, quiet }) {
   updateCommand();
   if (nearBottom()) toBottom();
   refresh();
+  refreshWidgets();
 }
 
 // Questions -------------------------------------------------------------------------------------
@@ -203,6 +206,8 @@ function answer(p, q, value, shown, cancelled = false) {
 }
 
 function onPrompt(p) {
+  // A question needs an answer: it is asked on Runs.
+  showPage('runs');
   closeOut();
   if (!run) {
     startRun(['aex'], []);

@@ -20,7 +20,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	usage := fmt.Sprintf(`Usage: plugins [list | describe [<name>] | delete <name> [--yes] | forget-all [--yes] | open]
+	usage := fmt.Sprintf(`Usage: plugins [list | describe [<name>] | allow <name> | delete <name> [--yes] | forget-all [--yes] | open]
 
 Plugins are tools in their own executables, in:
   %s
@@ -29,6 +29,8 @@ contents is then saved as its safe hash (credential store), and checked again be
 
   list             List the plugins with file, SHA-256 and state; safe ones describe themselves (default)
   describe [name]  Describe a plugin, or each one; asks to approve any that is not safe
+  allow <name>     Approve a plugin and grant the access it asks for, without running it (for its
+                   widgets on the window's home page, which cannot ask)
   delete <name>    Delete a plugin's file and forget its safe hash; asks first unless --yes
   forget-all       Forget every plugin's safe hash and granted access (files are kept): each asks
                    to be approved again on its next run; asks first unless --yes
@@ -41,7 +43,7 @@ Without args on a terminal: lists the plugins, then asks what to do.`, dir)
 		cmd, rest = args[0], args[1:]
 	}
 	var name string
-	if (cmd == "describe" || cmd == "delete") && len(rest) > 0 && rest[0] != "" && rest[0][0] != '-' {
+	if (cmd == "describe" || cmd == "delete" || cmd == "allow") && len(rest) > 0 && rest[0] != "" && rest[0][0] != '-' {
 		name, rest = rest[0], rest[1:]
 	}
 	fs := flag.NewFlagSet("plugins", flag.ContinueOnError)
@@ -60,6 +62,11 @@ Without args on a terminal: lists the plugins, then asks what to do.`, dir)
 		return list()
 	case "describe":
 		return describe(name)
+	case "allow":
+		if name == "" {
+			return errors.New("allow needs a plugin name (see --help)")
+		}
+		return allow(name)
 	case "delete":
 		if name == "" {
 			return errors.New("delete needs a plugin name (see --help)")
@@ -166,6 +173,19 @@ func describe(name string) error {
 		fmt.Printf("%s  %s\n", ui.Out.Bold(p.Name), summary)
 	}
 	return failed
+}
+
+// allow approves the plugin called name and grants its access.
+func allow(name string) error {
+	p, err := find(name)
+	if err != nil {
+		return err
+	}
+	if err := plugin.Allow(p); err != nil {
+		return err
+	}
+	fmt.Printf("%s %s is approved and has the access it asks for.\n", ui.Out.Green("✔"), ui.Out.Bold(p.Name))
+	return nil
 }
 
 func remove(name string, yes bool) error {

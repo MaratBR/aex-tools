@@ -5,13 +5,18 @@
 //   - merge-prod (merge.go): merges release/VERSION into PROD and tags it in every CM repo.
 //   - jira-handoff (handoff.go): hands an epic's "Ready for Production" tickets over to QA.
 //
-// The git tools share git.go.
+// The git tools share git.go. Widgets for the window's home page are in widgets/.
 package main
 
 import (
+	_ "embed"
+
 	"aex/internal/plugin"
 	"aex/internal/tool"
 )
+
+//go:embed widgets/cm-repos-state.html
+var reposStatePage string
 
 //go:generate go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc --arch amd64,arm64
 
@@ -25,5 +30,8 @@ func main() {
 			{Name: "merge-prod", Summary: "Merge release/VERSION into PROD in every CM repo, tag vVERSION, push", Run: runMerge},
 			{Name: "jira-handoff", Summary: "Hand off an epic's Ready for Production tickets to QA", Run: runHandoff},
 		},
-	}, plugin.Jira)
+	}, plugin.Jira, plugin.Widget{
+		ID: "cm-repos-state", Name: "CM repos state", Summary: "The CM repos at a glance (nothing yet)",
+		W: 2, H: 1, HTML: reposStatePage,
+	})
 }

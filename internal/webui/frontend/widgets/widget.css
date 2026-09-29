@@ -1,0 +1,45 @@
+/* A widget's base styles, put in its page after the window's colors and fonts (tokens.css) by
+   home.js: its buttons, no margins. */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: transparent;
+  color: var(--ink);
+  font: 14px/1.5 var(--sans);
+  letter-spacing: -.005em;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: none; box-shadow: var(--ring); }
+
+.btn {
+  border: 0;
+  background: var(--fill);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .15s, filter .15s;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent); filter: brightness(1.08); }
+.icon-btn {
+  width: 26px; height: 26px; flex: none;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: none; color: var(--muted);
+  cursor: pointer;
+  transition: background-color .15s, color .15s;
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+.icon-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.muted { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}

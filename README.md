@@ -54,6 +54,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
 - `custom-tools.json` — the custom tools added (name, script path, adapter)
+- `home.json` — the window's home page: its widgets in order, with their sizes
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
 environment variable (real environment only). Click its path in the window's sidebar to open it.
@@ -144,6 +145,7 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 
 `.\bin\plugins.ps1` manages plugins (see Plugins). Without args on a terminal it lists them and asks
 what to do; else `list` (default), `describe [<name>]` (asks to approve any not safe yet),
+`allow <name>` (approves it and grants the access it asks for, without running it: what its widgets need),
 `delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `forget-all [--yes]` (forgets every plugin's safe hash and
 granted access, keeping the files: each asks to be approved again on its next run), `open` (opens the
 plugins folder). The credential store cannot list its keys, so approved plugin paths are also kept in
@@ -266,9 +268,10 @@ Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal
 
 ## Window
 
-`aex` without a tool opens the window: the tools on the left (a group opens under its name), the logins
-and settings under them, and the runs on the right. Tools are the same console programs as in the
-terminal:
+`aex` without a tool opens the window: the pages (Home, Runs) and the tools on the left (a group opens
+under its name), the logins and settings under them, and the page on the right. It opens on Home when
+Home has widgets, else on Runs. Running a tool, and any question asked, shows Runs; a dot on Runs says
+a run printed while Home was shown. Tools are the same console programs as in the terminal:
 
 - What a tool prints (stdout and stderr, plugins' too) goes through a pipe into its run, ANSI colors
   included. Each run shows its command and status (running, needs your answer, done or failed in N s).
@@ -286,7 +289,46 @@ terminal:
 - One tool runs at a time; Clear empties the list of runs.
 
 Frontend: plain HTML, CSS and JS in `internal/webui/frontend` (no build step), embedded in the exe.
-Plugins' own questions are not answered in the window yet: a plugin sees no terminal there.
+Colors and fonts are in `tokens.css`, shared by the window and the widgets.
+
+### Home and widgets
+
+Home is a grid of widgets (4 columns, 2 or 1 when the window is narrow; rows 150 px). Add widget picks
+one (a widget can be added more than once); Edit puts a cover on each widget to drag it elsewhere,
+move it earlier or later, change its width and height (1–4 cells) or remove it. Every change is saved
+to `home.json` in the data folder (`App.SaveHome`; unknown built-in widgets are dropped and sizes
+clamped on load; plugins' widgets stay, see below).
+
+A widget is one page (its HTML, CSS and JS), from the app (`frontend/widgets/<id>.html`) or from a
+plugin (see Plugins). Each runs in a sandboxed frame (`sandbox="allow-scripts"`, an origin of its own):
+it cannot reach the window, its backend or other widgets. The window puts at the top of its `<head>` a
+Content-Security-Policy with no network (inline scripts and styles, `data:` images and fonts), the
+window's colors (`tokens.css`), `widgets/widget.css` (base styles, buttons) and `widgets/sdk.js`; the
+theme follows the window's. `sdk.js` gives it `aex`, which works through messages to the window:
+
+- `aex.call(name, args)` — a data call. Built-in widgets call `widgetAPIs` (`internal/webui/home.go`);
+  a plugin's widget only its plugin's calls. They never prompt, since a widget has no run to ask in:
+  AEXT ones use `aext.NewQuiet`, which fails with `aext.ErrNoSession` instead of logging in.
+- `aex.run(line)` — runs a tool on Runs, as typed on the command line; a plugin's widget only its
+  plugin's tools.
+- `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data); for a
+  plugin's widget at most every 30 s, since each call starts the plugin. Widgets that could not load
+  try again then.
+
+A widget that leaves its page (a link, `location`) is replaced by a note. The sandbox protects the
+window from a widget; blocking the network is only a second line, since an approved plugin is trusted
+like any program.
+
+Adding a built-in one: write `frontend/widgets/foo.html`, add it to `widgetCatalog` in `home.go`
+(name, summary, the size it is added with), and any API it needs to `widgetAPIs`.
+
+Widgets so far:
+
+- `quota` — AEXT quota: this month's hours against the quota (the quota tool's numbers: behind or
+  ahead, due by today, hours/day to finish, working days without hours with a button to run
+  worklog-sync) and whether last month is complete. One row high it shows only the numbers and the bar.
+  Without an AEXT session it offers to log in (`account --login aext`).
+- `cm-release/cm-repos-state` (cm-release plugin) — CM repos state; a placeholder for now.
 
 ## Adding a tool
 
@@ -308,7 +350,8 @@ credentials: a plugin never opens the credential store and ignores secret settin
 `.env` files and the environment. It gets only the credentials of the access it asks for and you grant.
 
 - Adding one in this repo: create `plugins/foo/main.go` (`package main`) calling
-  `plugin.Main(tool.Tool{Name: "foo", Summary: "...", Run: run})`. The build scripts build every
+  `plugin.Main(tool.Tool{Name: "foo", Summary: "...", Run: run})` (after the tool: its access and
+  widgets). The build scripts build every
   `plugins/*` into the plugins folder. Optionally copy `bin\worklog-sync.ps1` to `bin\foo.ps1`.
 - A plugin can be a group of tools (see Adding a tool): `plugin.Main(tool.Tool{Name: "foo", Summary: "...",
   Sub: []tool.Tool{{Name: "bar", ...}}})`. Its tools are named plainly (`bar`, not `foo-bar`); aex runs
@@ -333,6 +376,18 @@ credentials: a plugin never opens the credential store and ignores secret settin
   without write/delete sharing from hashing until the process starts, so it cannot be swapped in between.
   Elsewhere it is not locked.
 - Without a terminal, a plugin that is not safe fails instead of asking.
+- Widgets: a plugin can offer widgets for Home (see Window), each with its page built into the plugin
+  (so its approval covers the page too) and its data calls: `plugin.Main(t, plugin.Jira,
+  plugin.Widget{ID: "foo", Name: "...", Summary: "...", W: 2, H: 1, HTML: page, Calls:
+  map[string]func(json.RawMessage) (any, error){...}})`, `page` being a `go:embed`ded file. They are
+  listed in `--aex-describe` (`"widgets": [{"id", "name", "summary", "w", "h"}]`) and are `<plugin>/<id>`
+  in the window. aex gets the page with `<plugin> --aex-widget <id>` (cached per file hash) and runs a
+  call with `<plugin> --aex-widget-call <id> <call>`: args as JSON on stdin, `{"result": ...}` or
+  `{"error": "..."}` on stdout, 20 s at most, its output never shown in a run. Neither asks anything:
+  the plugin must be safe and, for calls, have its access granted and its settings set; else the widget
+  says what is missing, with Review (runs `plugins allow <name>`). A call gets the plugin's settings and
+  granted secrets as a run does. Plugins not approved cannot describe themselves, so Add widget lists
+  them under "Don't see the widget you need?", each with Review.
 
 ## Custom tools
 

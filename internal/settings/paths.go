@@ -27,7 +27,9 @@ var (
 	PluginSettingsDir string
 	// CustomToolsFile lists the custom tools added (internal/custom): scripts run by a tool adapter.
 	CustomToolsFile string
-	SharedEnvFile   string
+	// HomeFile holds the window's home page: its widgets, in order, with their sizes.
+	HomeFile      string
+	SharedEnvFile string
 	// ConfigEnvFile holds app settings: auth settings saved by configure and the prompts, and the
 	// AppSettings defaults written on first start.
 	ConfigEnvFile string
@@ -82,6 +84,7 @@ func Init(dataDir, embeddedEnv string) error {
 	JiraExportDir = filepath.Join(OutputDir, "jira-export")
 	PluginSettingsDir = filepath.Join(DataDir, "plugin-settings")
 	CustomToolsFile = filepath.Join(DataDir, "custom-tools.json")
+	HomeFile = filepath.Join(DataDir, "home.json")
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 
 	openCredentials()
