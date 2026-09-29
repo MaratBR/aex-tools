@@ -115,6 +115,7 @@ type ToolInfo struct {
 	Name    string     `json:"name"`
 	Summary string     `json:"summary"`
 	Sub     []ToolInfo `json:"sub,omitempty"`
+	Warn    string     `json:"warn,omitempty"` // why it has a warning icon
 }
 
 // Tools lists the tools: built-in ones, then plugins. Hidden ones are left out.
@@ -124,7 +125,7 @@ func (a *App) Tools() []ToolInfo {
 		var out []ToolInfo
 		for _, t := range ts {
 			if !t.Hidden {
-				out = append(out, ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub)})
+				out = append(out, ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub), Warn: t.Warn})
 			}
 		}
 		return out

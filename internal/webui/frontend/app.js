@@ -404,6 +404,21 @@ input.addEventListener('blur', () => setTimeout(hideSuggest, 100));
 
 // Sidebar and welcome ---------------------------------------------------------------------------
 
+// toolName is a tool's name, after a warning icon when it has one (a plugin not approved).
+function toolName(t) {
+  const name = el('span', 'name');
+  if (t.warn) {
+    const icon = el('span', 'warn-icon');
+    icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><path class="mark" d="M8 6v3.5M8 11.6v.1"/></svg>';
+    icon.title = t.warn;
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', 'Warning: ' + t.warn);
+    name.appendChild(icon);
+  }
+  name.append(t.name);
+  return name;
+}
+
 function renderTools() {
   const nav = $('tools');
   nav.textContent = '';
@@ -412,8 +427,8 @@ function renderTools() {
       const p = [...path, t.name];
       const item = button('', 'tool' + (t.sub ? ' group' : ''));
       item.style.setProperty('--depth', depth);
-      item.title = t.summary;
-      item.append(el('span', 'name', t.name), el('span', 'summary', t.summary));
+      item.title = t.warn ? t.warn + '\n' + t.summary : t.summary;
+      item.append(toolName(t), el('span', 'summary', t.summary));
       parent.appendChild(item);
       if (t.sub) {
         const box = el('div', 'sub');
@@ -436,7 +451,8 @@ function renderTools() {
   starters.textContent = '';
   for (const t of tools) {
     const b = button('', 'starter', () => runLine(t.name));
-    b.append(el('span', 'name', t.name), el('span', 'summary', t.summary));
+    if (t.warn) b.title = t.warn;
+    b.append(toolName(t), el('span', 'summary', t.summary));
     starters.appendChild(b);
   }
 }

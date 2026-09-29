@@ -224,15 +224,16 @@ func Discover(taken []tool.Tool) []tool.Tool {
 			ui.Warn("plugins: skipped %s, a built-in tool has that name", p.Path)
 			continue
 		}
-		summary := p.Summary
+		summary, warn := p.Summary, ""
 		switch {
 		case p.State != Safe:
+			warn = fmt.Sprintf("Plugin %v: running it asks to approve it first", p.State)
 			summary = fmt.Sprintf("%s · %v, run it to review", p.FileInfo(), p.State)
 		case p.DescribeErr != nil:
 			ui.Warn("plugins: skipped %s: %v", p.Path, p.DescribeErr)
 			continue
 		}
-		tools = append(tools, tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path, nil), Sub: subTools(p, nil, p.Tools)})
+		tools = append(tools, tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path, nil), Sub: subTools(p, nil, p.Tools), Warn: warn})
 	}
 	return tools
 }
