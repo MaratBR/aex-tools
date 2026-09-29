@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -12,52 +13,67 @@ import (
 
 	"aex/internal/aext"
 	"aex/internal/dates"
+	"aex/internal/jira"
+	"aex/internal/plugin"
 	"aex/internal/settings"
+	"aex/internal/tool"
 	"aex/internal/ui"
 )
 
-// AEXT login shown in the menu header. Checked at start and after each tool (which may log in or
-// out), without ever prompting for a login.
+// AEXT and Jira logins shown in the menu header. Checked at start and after each tool (which may
+// log in or out, or change settings), without ever prompting for a login.
 type loginState struct {
-	state   string // checking | in | out | error
+	state   string // checking | in | out | unset | error
 	name    string
 	email   string
 	message string
 }
 
+type logins struct{ aext, jira loginState }
+
 var (
 	loginMu sync.Mutex
-	login   = loginState{state: "checking"}
+	login   = logins{loginState{state: "checking"}, loginState{state: "checking"}}
 )
 
-func currentLogin() loginState {
+func currentLogin() logins {
 	loginMu.Lock()
 	defer loginMu.Unlock()
 	return login
 }
 
-// startLoginCheck checks the AEXT login in the background; the channel closes when done.
+// startLoginCheck checks both logins in parallel in the background; the channel closes when both are done.
 func startLoginCheck() <-chan struct{} {
 	loginMu.Lock()
-	login = loginState{state: "checking"}
+	login = logins{loginState{state: "checking"}, loginState{state: "checking"}}
 	loginMu.Unlock()
+	var wg sync.WaitGroup
+	check := func(field *loginState, fn func() loginState) {
+		wg.Go(func() {
+			s := fn()
+			loginMu.Lock()
+			*field = s
+			loginMu.Unlock()
+		})
+	}
+	check(&login.aext, checkAEXT)
+	check(&login.jira, checkJira)
 	done := make(chan struct{})
 	go func() {
-		defer close(done)
-		s := checkLogin()
-		loginMu.Lock()
-		login = s
-		loginMu.Unlock()
+		wg.Wait()
+		close(done)
 	}()
 	return done
 }
 
-func checkLogin() loginState {
+const loginTimeout = 5 * time.Second
+
+func checkAEXT() loginState {
 	c, err := aext.New()
 	if err != nil {
 		return loginState{state: "error", message: err.Error()}
 	}
-	me, err := c.WhoAmI(5 * time.Second)
+	me, err := c.WhoAmI(loginTimeout)
 	if err != nil {
 		return loginState{state: "error", message: err.Error()}
 	}
@@ -69,6 +85,19 @@ func checkLogin() loginState {
 		name = me.UserName
 	}
 	return loginState{state: "in", name: name, email: *me.Email}
+}
+
+func checkJira() loginState {
+	me, err := jira.WhoAmI(loginTimeout)
+	switch {
+	case errors.Is(err, jira.ErrNotConfigured):
+		return loginState{state: "unset"}
+	case err != nil:
+		return loginState{state: "error", message: err.Error()}
+	case me == nil:
+		return loginState{state: "out"}
+	}
+	return loginState{state: "in", name: me.DisplayName, email: me.EmailAddress}
 }
 
 // Header segment styles, rendered by the plain menu and the TUI each in their own way.
@@ -86,25 +115,46 @@ type segment struct {
 	kind segKind
 }
 
-func infoLines() [][]segment {
-	l := currentLogin()
-	var who []segment
+// loginLine describes one service's login; out and unset are that service's hints.
+func loginLine(label string, l loginState, out, unset string) []segment {
+	head := segment{fmt.Sprintf("%-10s", label), dim}
 	switch l.state {
 	case "checking":
-		who = []segment{{"AEXT: checking login…", dim}}
+		return []segment{head, {"checking login…", dim}}
 	case "in":
-		who = []segment{{"Logged in as ", dim}, {l.name, bold}, {" <" + l.email + ">", dim}}
+		who := []segment{head, {"Logged in as ", dim}, {l.name, bold}}
+		if l.email != "" {
+			who = append(who, segment{" <" + l.email + ">", dim})
+		}
+		return who
 	case "out":
-		who = []segment{{"Not logged in to AEXT", warn}, {" (tools log in when needed)", dim}}
+		return []segment{head, {"Not logged in", warn}, {" (" + out + ")", dim}}
+	case "unset":
+		return []segment{head, {"Login not set", warn}, {" (" + unset + ")", dim}}
 	default:
-		who = []segment{{"Login check failed: ", dim}, {l.message, warn}}
+		return []segment{head, {"Login check failed: ", dim}, {l.message, warn}}
 	}
+}
+
+func infoLines() [][]segment {
+	l := currentLogin()
 	return [][]segment{
-		who,
+		loginLine("AEXT", l.aext, "tools log in when needed, or run account", ""),
+		loginLine("Jira", l.jira, "token rejected, run account", "run account"),
 		{{"Settings  ", dim}, {fmt.Sprintf("%g h/day · %s", settings.HoursPerDay(), dates.TZLabel()), plain}, {"  (configure to change)", dim}},
 		{{"File      ", dim}, {settings.ConfigEnvFile, plain}},
+		credentialsLine(),
 		{{"Data      ", dim}, {settings.DataDir, plain}},
 	}
+}
+
+// credentialsLine says where the AEXT session and JIRA_TOKEN are kept, and why when it is the file fallback.
+func credentialsLine() []segment {
+	line := []segment{{"Secrets   ", dim}, {settings.Credentials.Name(), plain}}
+	if settings.CredentialsNote != "" {
+		line = append(line, segment{"  (" + settings.CredentialsNote + ")", warn})
+	}
+	return line
 }
 
 func plainSegments(segments []segment) string {
@@ -139,8 +189,8 @@ func splitArgs(line string) []string {
 }
 
 // runTool runs a tool, printing its errors, and returns a one-line outcome for the menu.
-func runTool(t *tool, args []string) (status string, ok bool) {
-	fmt.Println(toolBanner(t.name, args))
+func runTool(t *tool.Tool, args []string) (status string, ok bool) {
+	fmt.Println(toolBanner(t.Name, args))
 	fmt.Println()
 	err := func() (err error) {
 		defer func() {
@@ -148,13 +198,15 @@ func runTool(t *tool, args []string) (status string, ok bool) {
 				err = fmt.Errorf("panic: %v", r)
 			}
 		}()
-		return t.run(args)
+		return t.Run(args)
 	}()
 	if err != nil {
-		printError(err)
-		return fmt.Sprintf("✖ %s failed: %v", t.name, err), false
+		if _, quiet := errors.AsType[*plugin.ExitError](err); !quiet {
+			printError(err)
+		}
+		return fmt.Sprintf("✖ %s failed: %v", t.Name, err), false
 	}
-	return fmt.Sprintf("✔ %s finished", t.name), true
+	return fmt.Sprintf("✔ %s finished", t.Name), true
 }
 
 func printMenu() {
@@ -164,7 +216,7 @@ func printMenu() {
 		fmt.Println(plainSegments(line))
 	}
 	for i, t := range tools {
-		fmt.Printf("  %s %-14s%s\n", out.Cyan(fmt.Sprintf("%d)", i+1)), t.name, out.Dim(t.summary))
+		fmt.Printf("  %s %-*s%s\n", out.Cyan(fmt.Sprintf("%d)", i+1)), nameWidth(), t.Name, out.Dim(t.Summary))
 	}
 	fmt.Printf("  %s quit\n", out.Cyan("q)"))
 	fmt.Println(out.Dim(`  Args may follow the choice, e.g. "1 --range yesterday" or "quota --help".`))
@@ -194,6 +246,7 @@ func plainMenu() error {
 		fmt.Println()
 		runTool(t, args[1:])
 		fmt.Println()
+		loadPlugins()
 	}
 }
 
@@ -219,7 +272,7 @@ func tuiMenu() error {
 		var args []string
 		if pick.withArgs {
 			line, err := ui.Input(ui.Field{
-				Title:       t.name + " arguments",
+				Title:       t.Name + " arguments",
 				Description: "Space-separated; quote values with spaces. --help lists them.",
 				Placeholder: "--help",
 			})
@@ -231,6 +284,8 @@ func tuiMenu() error {
 		status, statusOK = runTool(t, args)
 		fmt.Fprintf(os.Stderr, "\n%s  %s", statusLine(status, statusOK), ui.Err.Dim("press any key to return to the menu"))
 		loginDone = startLoginCheck()
+		loadPlugins()
+		index = min(index, len(tools)-1)
 		ui.WaitKey()
 		fmt.Fprintln(os.Stderr)
 	}

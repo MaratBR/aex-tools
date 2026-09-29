@@ -1,5 +1,6 @@
 // Package aext is the AEXT time-tracking API client. Auth is email + one-time code; the auth_token
-// cookie is cached in session.txt and refreshed automatically when the server rejects it.
+// cookie is kept in the credential store (settings.Credentials) and refreshed automatically when
+// the server rejects it.
 package aext
 
 import (
@@ -7,15 +8,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"aex/internal/httpx"
+	"aex/internal/secrets"
 	"aex/internal/settings"
 	"aex/internal/ui"
 )
@@ -40,11 +42,11 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Client{baseURL: strings.TrimRight(base, "/")}
-	if data, err := os.ReadFile(settings.SessionFile); err == nil {
-		c.cookie = strings.TrimSpace(string(data))
+	cookie, err := settings.Credentials.Get(secrets.AEXTSession)
+	if err != nil {
+		return nil, err
 	}
-	return c, nil
+	return &Client{baseURL: strings.TrimRight(base, "/"), cookie: cookie}, nil
 }
 
 func (c *Client) currentCookie() string {
@@ -125,13 +127,10 @@ func (c *Client) login() (string, error) {
 		return "", fmt.Errorf("%s: no auth_token cookie (details above)", label)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(settings.SessionFile), 0o755); err != nil {
+	if err := settings.Credentials.Set(secrets.AEXTSession, cookie); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(settings.SessionFile, []byte(cookie+"\n"), 0o600); err != nil {
-		return "", err
-	}
-	fmt.Fprintln(os.Stderr, ui.Err.Green("AEXT login ok, session saved."))
+	fmt.Fprintln(os.Stderr, ui.Err.Green("AEXT login ok, session saved to "+settings.Credentials.Name()+"."))
 	return cookie, nil
 }
 
@@ -173,7 +172,7 @@ func (c *Client) dropCookie(rejected string) {
 	}
 	fmt.Fprintln(os.Stderr, ui.Err.Yellow("AEXT session expired, logging in again."))
 	c.cookie = ""
-	os.Remove(settings.SessionFile)
+	settings.Credentials.Delete(secrets.AEXTSession)
 }
 
 func request[T any](c *Client, method, path string, query url.Values, body any, validate func(T) bool) (T, error) {
@@ -202,11 +201,12 @@ func request[T any](c *Client, method, path string, query url.Values, body any, 
 	return httpx.ReadJSON(fmt.Sprintf("AEXT %s %s", method, path), res, nil, validate)
 }
 
-// Me is the logged-in AEXT user.
+// Me is the logged-in AEXT user. Fields holds every top-level field of the response, for details.
 type Me struct {
-	Email       *string `json:"email"`
-	DisplayName string  `json:"display_name"`
-	UserName    string  `json:"user_name"`
+	Email       *string        `json:"email"`
+	DisplayName string         `json:"display_name"`
+	UserName    string         `json:"user_name"`
+	Fields      map[string]any `json:"-"`
 }
 
 // WhoAmI returns the logged-in user, or nil when there is no valid session. Never logs in or
@@ -233,11 +233,53 @@ func (c *Client) WhoAmI(timeout time.Duration) (*Me, error) {
 	default:
 		return nil, fmt.Errorf("AEXT GET /api/auth/me: HTTP %d", res.StatusCode)
 	}
+	body, err := io.ReadAll(res.Body)
 	var me Me
-	if err := json.NewDecoder(res.Body).Decode(&me); err != nil || me.Email == nil {
+	if err != nil || json.Unmarshal(body, &me) != nil || json.Unmarshal(body, &me.Fields) != nil || me.Email == nil {
 		return nil, errors.New("AEXT GET /api/auth/me: unexpected response")
 	}
 	return &me, nil
+}
+
+// HasSession reports whether a session cookie is cached (it may still be expired).
+func (c *Client) HasSession() bool { return c.currentCookie() != "" }
+
+// Login logs in with a new code even when a session is cached, replacing it.
+func (c *Client) Login() error {
+	c.mu.Lock()
+	c.cookie = ""
+	c.mu.Unlock()
+	_, err := c.ensureLogin()
+	return err
+}
+
+// Logout ends the session on the server (POST /api/auth/logout, 204), then wipes it locally.
+// expired is true when the server had already dropped the session.
+func (c *Client) Logout() (expired bool, err error) {
+	cookie := c.currentCookie()
+	if cookie == "" {
+		return false, errors.New("not logged in to AEXT (no session)")
+	}
+	res, err := c.send(context.Background(), "POST", "/api/auth/logout", nil, nil, cookie)
+	if err != nil {
+		return false, err
+	}
+	if res.StatusCode == 401 || res.StatusCode == 403 {
+		httpx.Discard(res)
+		expired = true
+	} else if _, err := httpx.ReadJSON[any]("AEXT POST /api/auth/logout", res, []int{204}, nil); err != nil {
+		return false, err
+	}
+	return expired, c.WipeSession()
+}
+
+// WipeSession forgets the session locally (deletes it from the credential store) without telling
+// the server.
+func (c *Client) WipeSession() error {
+	c.mu.Lock()
+	c.cookie = ""
+	c.mu.Unlock()
+	return settings.Credentials.Delete(secrets.AEXTSession)
 }
 
 // DaySummary is the hours logged on a day.

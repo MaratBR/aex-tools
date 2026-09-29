@@ -9,4 +9,8 @@ elseif (-not [IO.Path]::IsPathRooted($Out)) { $Out = [IO.Path]::GetFullPath((Joi
 # -trimpath also makes it a release build: it stops looking for the source checkout.
 go build -C $root -trimpath -ldflags '-s -w' -o $Out .
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
+$plugins = New-Item -ItemType Directory -Force (Join-Path (Split-Path $Out) 'plugins')
+go build -C $root -trimpath -ldflags '-s -w' -o $plugins.FullName ./plugins/...
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
 Write-Host "Built $Out"
+Get-ChildItem $plugins -Filter *.exe | ForEach-Object { Write-Host "Built $($_.FullName)" }

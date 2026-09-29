@@ -2,7 +2,10 @@
 package jira
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -32,10 +35,79 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newClient(base, email, token), nil
+}
+
+func newClient(base, email, token string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(base, "/"),
 		auth:    "Basic " + base64.StdEncoding.EncodeToString([]byte(email+":"+token)),
-	}, nil
+	}
+}
+
+// Me is the Jira user the API token belongs to.
+type Me struct {
+	AccountID    string `json:"accountId"`
+	DisplayName  string `json:"displayName"`
+	EmailAddress string `json:"emailAddress"` // empty when hidden by the profile's privacy settings
+	AccountType  string `json:"accountType"`
+	Active       bool   `json:"active"`
+	TimeZone     string `json:"timeZone"`
+	Locale       string `json:"locale"`
+}
+
+// ErrNotConfigured means JIRA_EMAIL or JIRA_TOKEN is not set.
+var ErrNotConfigured = errors.New("Jira login not configured")
+
+// WhoAmI returns the user the configured token belongs to, or nil when Jira rejects it. Never
+// prompts or prints (safe to call from the menu); ErrNotConfigured when the login is not set.
+func WhoAmI(timeout time.Duration) (*Me, error) {
+	base, err := settings.Require("JIRA_BASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	email, token := settings.Get("JIRA_EMAIL"), settings.Get("JIRA_TOKEN")
+	if email == "" || token == "" {
+		return nil, ErrNotConfigured
+	}
+	return Check(base, email, token, timeout)
+}
+
+// Check returns the user an email + API token belong to, or nil when Jira rejects them. Never
+// prompts or prints.
+func Check(base, email, token string, timeout time.Duration) (*Me, error) {
+	c := newClient(base, email, token)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req, err := httpx.NewRequest("GET", c.baseURL+"/rest/api/3/myself", nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	req.Header.Set("Authorization", c.auth)
+	res, err := httpx.Client.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, errors.New("not reachable (timed out)")
+		}
+		return nil, fmt.Errorf("Jira GET /rest/api/3/myself: %w", err)
+	}
+	defer httpx.Discard(res)
+	switch res.StatusCode {
+	case 401, 403:
+		return nil, nil
+	case 200:
+	default:
+		return nil, fmt.Errorf("Jira GET /rest/api/3/myself: HTTP %d", res.StatusCode)
+	}
+	var me Me
+	if err := json.NewDecoder(res.Body).Decode(&me); err != nil || me.AccountID == "" {
+		return nil, errors.New("Jira GET /rest/api/3/myself: unexpected response")
+	}
+	if me.EmailAddress == "" {
+		me.EmailAddress = email
+	}
+	return &me, nil
 }
 
 func request[T any](c *Client, method, path string, query url.Values, body any, validate func(T) bool) (T, error) {

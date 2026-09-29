@@ -1,4 +1,5 @@
-package main
+// Package quota is the quota tool: AEXT hours quota for last and this month.
+package quota
 
 import (
 	"flag"
@@ -6,7 +7,8 @@ import (
 
 	"aex/internal/aext"
 	"aex/internal/dates"
-	"aex/internal/quota"
+	quotadata "aex/internal/quota"
+	"aex/internal/tool"
 )
 
 const quotaHelp = `Usage: quota [--verbose]
@@ -18,10 +20,13 @@ without hours, hours logged today, and hours/day needed for the rest of this mon
 
 Quota settings: HOURS_PER_DAY app setting (see configure), WorkingDaysCountry in internal/settings/config.go.`
 
-func quotaTool(args []string) error {
+// Tool is the quota tool.
+var Tool = tool.Tool{Name: "quota", Summary: "Show AEXT hours quota for last and this month", Run: run}
+
+func run(args []string) error {
 	fs := flag.NewFlagSet("quota", flag.ContinueOnError)
 	verbose := fs.Bool("verbose", false, "")
-	if done, err := parseFlags(fs, args, quotaHelp); done || err != nil {
+	if done, err := tool.ParseFlags(fs, args, quotaHelp); done || err != nil {
 		return err
 	}
 	c, err := aext.New()
@@ -29,10 +34,10 @@ func quotaTool(args []string) error {
 		return err
 	}
 	now := dates.Today()
-	data, err := quota.FetchMonths(c, now)
+	data, err := quotadata.FetchMonths(c, now)
 	if err != nil {
 		return err
 	}
-	fmt.Println(quota.Format(now, data, *verbose))
+	fmt.Println(quotadata.Format(now, data, *verbose))
 	return nil
 }

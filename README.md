@@ -5,14 +5,19 @@ directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
 
 ## Layout
 
-- `main.go` — entry point: global args, tool list, dispatch; embeds `.env`
-- `menu.go` — menu shared parts (AEXT login header, plain numbered list, running a tool)
+- `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`
+- `menu.go` — menu shared parts (AEXT / Jira login header, plain numbered list, running a tool)
 - `menu_tui.go` — full-screen arrow-key menu ([Bubble Tea](https://github.com/charmbracelet/bubbletea),
   alternate screen). Tools themselves run in the normal screen, so their output stays in scrollback.
   Falls back to the numbered list with `--plain`, `AEX_TUI=0`, or when stdin/stdout is not a terminal.
-  The header shows who is logged in to AEXT (`/api/auth/me`, never prompts), settings and the data folder.
-- `tool_<name>.go` — one file per tool
+  The header shows who is logged in to AEXT (`/api/auth/me`) and Jira (`/rest/api/3/myself`), both checked
+  in parallel and never prompting, then settings and the data folder.
 - `internal/`
+  - `tool` — `Tool` type every tool exports (name, summary, run) and `ParseFlags` (gives `--help`)
+  - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
+    `datafolder`, `plugins`), each exporting `Tool`; `main.go` lists them in menu order
+  - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
+    a plugin's own `main`
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
     `.env.private`, app settings (`.env.config`); auth settings list, prompts for missing ones and saves
     them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
@@ -24,6 +29,7 @@ directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
   - `quota` — monthly quota from AEXT working days, leaves and logged hours
   - `ui` — ANSI colors (only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces), line
     prompts, hidden input, key press
+- `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
 - `bin\build-exe.ps1` — builds the release `dist\aex.exe`
 - `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
@@ -35,7 +41,7 @@ Per-user app data, by default `%APPDATA%\aex` (macOS: `~/Library/Application Sup
 Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 
 - `.env.config` — app settings: auth settings saved by `configure` or prompts
-- `session.txt` — AEXT session cookie (`AEXT_SESSION_FILE` overrides just this file)
+- `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
@@ -51,7 +57,7 @@ offers an earlier start if last month has gaps). Decline, or use `--manual`, to 
 `today`, `yesterday`, `this week`, `last week`, `this month`, `last month`, `2026.09.20`,
 `26.09.20`, `09.20`, `09.20-09.30`. `--range <expr>` skips the prompts.
 
-AEXT login is by emailed code. The session cookie is cached in `session.txt` in the data folder.
+AEXT login is by emailed code. The session cookie is kept in the credential store (see Credentials).
 Parallel requests share one login.
 
 The CSV is re-read before import, so it can be edited before confirming. After import the quota is shown.
@@ -68,6 +74,21 @@ and from gap detection in `worklog-sync`. `declined` and `cancelled` leaves are 
 a leave created by someone other than you (by email) is also reported. Leave records are mostly
 redacted, so only ids, emails, dates, type and status are used.
 
+## account
+
+`.inccount.ps1` shows who you are logged in as: AEXT (`/api/auth/me`: name, email, other profile fields,
+server, session file) and Jira (`/rest/api/3/myself`: name, email, account id, time zone, …), plus the login
+settings and where each comes from (token masked). On a terminal it then offers actions until Done:
+
+- log in to AEXT (new emailed code, replaces the cached session)
+- log out of AEXT: `POST /api/auth/logout` (expects 204), then deletes the saved session
+- wipe the AEXT session: deletes the saved session only, the server session stays valid until it expires
+- set or change the Jira login: email + API token, checked against Jira before saving to app settings
+- remove the Jira token from app settings
+
+Logout, wipe, removing the token and replacing a login ask for confirmation (default no). Flags run one
+action directly: `--show`, `--login aext|jira`, `--logout aext|jira`, `--wipe-session`.
+
 ## configure
 
 `.\bin\configure.ps1` asks for the auth settings `AEXT_EMAIL`, `JIRA_EMAIL` and `JIRA_TOKEN` (hidden input),
@@ -80,6 +101,12 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 ## data-folder
 
 `.\bin\data-folder.ps1` prints the data folder and opens it in the file manager (`--print`: only print).
+
+## plugins
+
+`.\bin\plugins.ps1` manages plugins (see Plugins). Without args on a terminal it lists them and asks
+what to do; else `list` (default), `describe [<name>]` (asks to approve any not safe yet),
+`delete <name> [--yes]` (deletes the file and forgets its safe hash), `open` (opens the plugins folder).
 
 ## Usage
 
@@ -111,14 +138,37 @@ with the menu, or run `aex.exe <tool> [args]`.
   version in `winres\winres.json`, run `go generate` (uses [go-winres](https://github.com/tc-hib/go-winres)).
   To re-render `logo.ico` from `logo.svg`, use any SVG renderer with sizes 16, 24, 32, 48, 64, 128, 256.
   Explorer caches icons per path, so an old icon may linger for `dist\aex.exe` until the cache refreshes.
+- Plugins are built to `plugins\<name>.exe` next to the exe (`dist\plugins\`, or `dist\dev\plugins\`
+  for the scripts' dev build).
 - `.\bin\build-exe.ps1 -Out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
   replaced then).
 
 ## Adding a tool
 
-1. Create `tool_foo.go` with `func foo(args []string) error`; parse args with `parseFlags` (gives `--help`).
-2. Add it to `tools` in `main.go`.
+1. Create package `internal/tools/foo` exporting `var Tool = tool.Tool{Name: "foo", Summary: "...", Run: run}`;
+   parse args with `tool.ParseFlags` (gives `--help`).
+2. Add `foo.Tool` to `builtins` in `main.go`. (Or make it a plugin: see Plugins.)
 3. Copy `bin\worklog-sync.ps1` to `bin\foo.ps1`, change the name.
+
+## Plugins
+
+A plugin is a tool in its own executable in the `plugins` folder next to `aex.exe`. It shows in the menu
+after the built-in tools and runs as `aex <name> [args]`, in the same console. aex passes it the data
+folder, app root and built-in `.env` (`settings.PluginEnv`), so it sees the same settings and credentials.
+
+- Adding one in this repo: create `plugins/foo/main.go` (`package main`) calling
+  `plugin.Main(tool.Tool{Name: "foo", Summary: "...", Run: run})`. The build scripts build every
+  `plugins/*` into the plugins folder. Optionally copy `bin\worklog-sync.ps1` to `bin\foo.ps1`.
+- Any other executable works too if it answers `--aex-describe` with `{"summary": "..."}` on stdout.
+- Nothing in the plugins folder runs, not even `--aex-describe`, until you approve its file. Until then
+  the menu shows only its file name, size and modified time, read without running it. Running it (or
+  `plugins describe`) shows its path, size and SHA-256 and asks; on yes the SHA-256 of the file's
+  contents is saved as its safe hash in the credential store (`plugin-safe-sha256:<path>`).
+- Before every run, `--aex-describe` included, aex hashes the file again and asks again if it no longer
+  matches the safe hash (e.g. after a rebuild with changed code). On Windows the file stays open
+  without write/delete sharing from hashing until the process starts, so it cannot be swapped in between.
+  Elsewhere it is not locked.
+- Without a terminal, a plugin that is not safe fails instead of asking.
 
 ## Tests
 
@@ -142,6 +192,23 @@ apply in the running menu:
 - `TZ_OFFSET_HOURS` (default `7`) — UTC offset all dates are computed in (ranges, "today", worklog days,
   file timestamps); quarter hours allowed, e.g. `5.5` = UTC+5:30.
 
-The menu header shows the current values, the settings file path and the data folder.
+The menu header shows the current values, the settings file path, the credential store in use and the data folder.
 
-`.claude/settings.json` denies Claude Code access to `.env.private`, `.env.config` and `session.txt`.
+## Credentials
+
+`internal/secrets` stores the AEXT session and `JIRA_TOKEN` (settings with `Credential` set in
+`internal/settings/env.go`) behind one `Store` interface, in the OS credential store:
+
+- Windows: Credential Manager (generic credentials `aex:<data folder>:aext-session` / `:jira-token`)
+- macOS: Keychain
+- Linux: Secret Service over D-Bus (GNOME Keyring, KWallet)
+
+Where none is available (e.g. headless Linux without a keyring daemon), or with `AEX_CREDENTIAL_STORE=file`,
+they go to `credentials.json` in the data folder (0600). Entries are scoped to the data folder, so
+`--data-dir` keeps separate logins. `account` shows which store is in use.
+
+Saving `JIRA_TOKEN` (configure, `account`, missing-setting prompt) writes the credential store and removes
+any `JIRA_TOKEN` line from `.env.config`. A token still in `.env.config` from older versions keeps working
+until saved again. An old `session.txt` is ignored: log in to AEXT again.
+
+`.claude/settings.json` denies Claude Code access to `.env.private`, `.env.config`, `session.txt` and `credentials.json`.

@@ -19,7 +19,6 @@ var (
 	// DataDir holds app settings (.env.config), the AEXT session and output files.
 	DataDir        string
 	JiraExportDir  string
-	SessionFile    string
 	SharedEnvFile  string
 	PrivateEnvFile string
 	// ConfigEnvFile holds app settings: auth settings saved by configure and the prompts, and the
@@ -73,12 +72,9 @@ func Init(dataDir, embeddedEnv string) error {
 	}
 	DataDir = abs
 	JiraExportDir = filepath.Join(DataDir, "output", "jira-export")
-	SessionFile = os.Getenv("AEXT_SESSION_FILE")
-	if SessionFile == "" {
-		SessionFile = filepath.Join(DataDir, "session.txt")
-	}
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 
+	openCredentials()
 	load(embeddedEnv)
 	return nil
 }
@@ -90,6 +86,10 @@ func appRoot() (string, bool) {
 		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
 			return root, true
 		}
+	}
+	// A release plugin (internal/plugin) runs from the plugins folder; aex tells it its own root.
+	if root := os.Getenv(pluginAppRootVar); root != "" {
+		return root, false
 	}
 	exe, err := os.Executable()
 	if err != nil {

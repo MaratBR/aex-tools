@@ -178,12 +178,12 @@ func (m menuModel) layout() menuLayout {
 		rows[frameY+len(lines)], rows[frameY+len(lines)+1] = i, i
 		if i == m.index {
 			lines = append(lines,
-				selName.Width(inner).Render(ansi.Truncate(" ▶ "+num+"  "+t.name, inner, "…")),
-				selInfo.Width(inner).Render(ansi.Truncate("      "+t.summary, inner, "…")))
+				selName.Width(inner).Render(ansi.Truncate(" ▶ "+num+"  "+t.Name, inner, "…")),
+				selInfo.Width(inner).Render(ansi.Truncate("      "+t.Summary, inner, "…")))
 		} else {
 			lines = append(lines,
-				fit("   "+faint.Render(num)+"  "+t.name),
-				fit("      "+faint.Render(t.summary)))
+				fit("   "+faint.Render(num)+"  "+t.Name),
+				fit("      "+faint.Render(t.Summary)))
 		}
 		if gaps && i < len(tools)-1 {
 			lines = append(lines, "")

@@ -1,4 +1,5 @@
-package main
+// Package configure is the configure tool: asks for settings and saves them to app settings.
+package configure
 
 import (
 	"errors"
@@ -7,7 +8,9 @@ import (
 	"os"
 	"strings"
 
+	"aex/internal/aext"
 	"aex/internal/settings"
+	"aex/internal/tool"
 	"aex/internal/ui"
 )
 
@@ -29,16 +32,11 @@ variables, which remain fallbacks. Leave an answer empty to keep the current val
 remove it from app settings (settings with a default are reset to it).`, settings.ConfigEnvFile, list.String())
 }
 
-func mask(value string) string {
-	r := []rune(value)
-	if len(r) > 8 {
-		return string(r[:4]) + "…" + string(r[len(r)-4:])
-	}
-	return "****"
-}
+// Tool is the configure tool.
+var Tool = tool.Tool{Name: "configure", Summary: "Set AEXT / Jira login, hours per day and timezone (app settings)", Run: run}
 
-func configure(args []string) error {
-	if done, err := parseFlags(flag.NewFlagSet("configure", flag.ContinueOnError), args, configureHelp()); done || err != nil {
+func run(args []string) error {
+	if done, err := tool.ParseFlags(flag.NewFlagSet("configure", flag.ContinueOnError), args, configureHelp()); done || err != nil {
 		return err
 	}
 	if err := ui.AssertInteractive("configure"); err != nil {
@@ -60,7 +58,7 @@ func configure(args []string) error {
 		if current != "" {
 			shown = current
 			if s.Secret {
-				shown = mask(current)
+				shown = settings.Mask(current)
 			}
 		}
 		removeLabel := `"-" removes it`
@@ -145,25 +143,29 @@ func configure(args []string) error {
 	for i, c := range changed {
 		names[i] = c.name
 	}
-	fmt.Println(out.Green(fmt.Sprintf("Saved %s to %s", strings.Join(names, ", "), settings.ConfigEnvFile)))
+	fmt.Println(out.Green(fmt.Sprintf("Saved %s", strings.Join(names, ", "))))
 
 	// The cached AEXT session belongs to the old email.
 	for _, c := range changed {
 		if c.name != "AEXT_EMAIL" || c.before == "" || c.before == c.after {
 			continue
 		}
-		if _, err := os.Stat(settings.SessionFile); err != nil {
-			continue
-		}
-		logout, err := ui.Confirm(fmt.Sprintf("AEXT email changed. Log out of AEXT (delete %s)?", settings.SessionFile), true)
+		client, err := aext.New()
 		if err != nil {
 			return err
 		}
-		if logout {
-			if err := os.Remove(settings.SessionFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if !client.HasSession() {
+			continue
+		}
+		wipe, err := ui.Confirm("AEXT email changed. Wipe the AEXT session of the old email?", true)
+		if err != nil {
+			return err
+		}
+		if wipe {
+			if err := client.WipeSession(); err != nil {
 				return err
 			}
-			fmt.Println("Logged out; the next AEXT tool will ask for a login code.")
+			fmt.Println("Session wiped; the next AEXT tool will ask for a login code.")
 		}
 	}
 	return nil

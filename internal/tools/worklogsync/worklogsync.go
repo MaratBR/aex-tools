@@ -1,4 +1,5 @@
-package main
+// Package worklogsync is the worklog-sync tool: Jira worklogs to CSV, then to AEXT.
+package worklogsync
 
 import (
 	"encoding/csv"
@@ -19,6 +20,7 @@ import (
 	"aex/internal/jira"
 	"aex/internal/quota"
 	"aex/internal/settings"
+	"aex/internal/tool"
 	"aex/internal/ui"
 )
 
@@ -265,11 +267,14 @@ func writeCSV(file string, rows []row) error {
 	return f.Close()
 }
 
-func worklogSync(args []string) error {
+// Tool is the worklog-sync tool.
+var Tool = tool.Tool{Name: "worklog-sync", Summary: "Export Jira worklogs to CSV, then send them to AEXT", Run: run}
+
+func run(args []string) error {
 	fs := flag.NewFlagSet("worklog-sync", flag.ContinueOnError)
 	rangeExpr := fs.String("range", "", "")
 	manual := fs.Bool("manual", false, "")
-	if done, err := parseFlags(fs, args, worklogSyncHelp()); done || err != nil {
+	if done, err := tool.ParseFlags(fs, args, worklogSyncHelp()); done || err != nil {
 		return err
 	}
 	out := ui.Out

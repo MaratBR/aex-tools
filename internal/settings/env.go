@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"aex/internal/secrets"
 	"aex/internal/ui"
 )
 
@@ -21,6 +22,9 @@ type Setting struct {
 	Default string
 	Rule    string
 	Valid   func(float64) bool
+	// Credential is the key the setting is kept under in Credentials (the OS credential store)
+	// instead of app settings.
+	Credential string
 }
 
 // AuthSettings belong in app settings; .env.private, .env and real env still work as fallbacks.
@@ -28,9 +32,10 @@ var AuthSettings = []Setting{
 	{Name: "AEXT_EMAIL", Hint: "Email you log in to AEXT with"},
 	{Name: "JIRA_EMAIL", Hint: "Email of your Atlassian (Jira) account"},
 	{
-		Name:   "JIRA_TOKEN",
-		Hint:   "Jira Cloud API token: https://id.atlassian.com/manage-profile/security/api-tokens",
-		Secret: true,
+		Name:       "JIRA_TOKEN",
+		Hint:       "Jira Cloud API token: https://id.atlassian.com/manage-profile/security/api-tokens",
+		Secret:     true,
+		Credential: secrets.JiraToken,
 	},
 }
 
@@ -69,8 +74,9 @@ type Layer struct {
 	Vars  map[string]string
 }
 
-// Layers lists where settings come from, lowest priority first. App settings (.env.config) beat
-// even real environment variables. Release builds carry the repo's .env inside.
+// Layers lists where settings come from, lowest priority first. App settings (.env.config) and the
+// credential store (secret settings) beat even real environment variables. Release builds carry
+// the repo's .env inside.
 func Layers() []Layer {
 	var layers []Layer
 	if !IsDev {
@@ -81,7 +87,28 @@ func Layers() []Layer {
 		Layer{".env.private", readEnvFile(PrivateEnvFile)},
 		Layer{"environment variables", realEnv},
 		Layer{"app settings", readEnvFile(ConfigEnvFile)},
+		credentialLayer(),
 	)
+}
+
+// userLayers is how many layers at the top of Layers the app writes: app settings, credential store.
+const userLayers = 2
+
+// Fallbacks are the layers below the ones the app writes.
+func Fallbacks() []Layer {
+	layers := Layers()
+	return layers[:len(layers)-userLayers]
+}
+
+// InAppSettings reports whether the app saved a setting (app settings or credential store).
+func InAppSettings(name string) bool {
+	layers := Layers()
+	for _, l := range layers[len(layers)-userLayers:] {
+		if _, ok := l.Vars[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func readEnvFile(file string) map[string]string {
@@ -237,8 +264,25 @@ type Change struct {
 	Value *string
 }
 
-// SaveAppSettings writes changes to app settings, keeping everything else in the file.
+// SaveAppSettings writes changes to app settings, keeping everything else in the file. Secret
+// settings go to the credential store instead.
 func SaveAppSettings(changes []Change) error {
+	var file []Change
+	for _, c := range changes {
+		key := credentialKey(c.Name)
+		if key == "" {
+			file = append(file, c)
+			continue
+		}
+		if err := saveCredential(c.Name, key, c.Value); err != nil {
+			return err
+		}
+		file = append(file, Change{Name: c.Name}) // never also in the file
+	}
+	return writeAppSettingsFile(file)
+}
+
+func writeAppSettingsFile(changes []Change) error {
 	text := appSettingsHeader
 	if data, err := os.ReadFile(ConfigEnvFile); err == nil {
 		text = string(data)
@@ -255,6 +299,43 @@ func SaveAppSettings(changes []Change) error {
 		return err
 	}
 	return os.WriteFile(ConfigEnvFile, []byte(text), 0o600)
+}
+
+// Source returns the label of the source a setting's value comes from, "" when unset.
+func Source(name string) string {
+	layers := Layers()
+	for i := len(layers) - 1; i >= 0; i-- {
+		if layers[i].Vars[name] != "" {
+			return layers[i].Label
+		}
+	}
+	return ""
+}
+
+// Mask shows only the ends of a secret.
+func Mask(value string) string {
+	r := []rune(value)
+	if len(r) > 8 {
+		return string(r[:4]) + "…" + string(r[len(r)-4:])
+	}
+	return "****"
+}
+
+// RemoveAppSetting removes a setting from app settings (or the credential store) and falls back to the next source down, as a
+// restart would. Returns that source's label, "" when none holds it.
+func RemoveAppSetting(name string) (fallback string, err error) {
+	if err := SaveAppSettings([]Change{{Name: name}}); err != nil {
+		return "", err
+	}
+	Unset(name)
+	layers := Fallbacks()
+	for i := len(layers) - 1; i >= 0; i-- {
+		if v := layers[i].Vars[name]; v != "" {
+			Set(name, v)
+			return layers[i].Label, nil
+		}
+	}
+	return "", nil
 }
 
 // First start (or a setting added since): write AppSettings to app settings, so they are there to

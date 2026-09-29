@@ -1,5 +1,6 @@
 # Shared launcher: builds aex from source (dev build, reads .env / .env.private from the repo) and
-# runs tool <Name>, forwarding args and exit code. Name "aex" opens the menu.
+# runs tool <Name>, forwarding args and exit code. Name "aex" opens the menu. Plugins (plugins\<name>)
+# are built into dist\dev\plugins.
 param(
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest
@@ -12,6 +13,9 @@ $exe = Join-Path $root 'dist\dev\aex.exe'
 Get-ChildItem "$exe.old*" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue
 if (Test-Path $exe) { Move-Item $exe "$exe.old$([DateTime]::Now.Ticks)" }
 go build -C $root -o $exe .
+if ($LASTEXITCODE) { exit $LASTEXITCODE }
+$plugins = New-Item -ItemType Directory -Force (Join-Path (Split-Path $exe) 'plugins')
+go build -C $root -o $plugins.FullName ./plugins/...
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
 if ($Name -eq 'aex') { & $exe @Rest } else { & $exe $Name @Rest }

@@ -16,7 +16,11 @@
       "Edit(./.env.config)",
       "Edit(**/.env.config)",
       "Bash(*.env.config*)",
-      "PowerShell(*.env.config*)"
+      "PowerShell(*.env.config*)",
+      "Read(**/credentials.json)",
+      "Edit(**/credentials.json)",
+      "Bash(*credentials.json*)",
+      "PowerShell(*credentials.json*)"
     ]
   }
 }
