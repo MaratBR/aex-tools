@@ -13,6 +13,8 @@ import (
 	"aex/internal/tool"
 )
 
+//go:generate go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc --arch amd64,arm64
+
 func main() {
 	plugin.Main(tool.Tool{
 		Name:    "cm-release",

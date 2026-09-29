@@ -217,7 +217,9 @@ with the menu, or run `aex.exe <tool> [args]`.
 - Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` from
   the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads it from its own folder.
 - Icon and version info come from the committed `rsrc_windows_*.syso`. After changing `assets\logo.ico` or the
-  version in `winres\winres.json`, run `go generate` (uses [go-winres](https://github.com/tc-hib/go-winres)).
+  version in `winres\winres.json`, run `go generate ./...` (uses [go-winres](https://github.com/tc-hib/go-winres)).
+  Each plugin has its own `plugins\<name>\winres\winres.json` and `.syso`; a new plugin copies one and adds the
+  `//go:generate` line. Author (Marat B, marat01q@gmail.com) is set in `CompanyName`, `LegalCopyright` and `Author`.
   To re-render `logo.ico` from `logo.svg`, use any SVG renderer with sizes 16, 24, 32, 48, 64, 128, 256.
   Explorer caches icons per path, so an old icon may linger for `dist\aex.exe` until the cache refreshes.
 - Plugins are built to `plugins\<name>.exe` next to the exe (`dist\plugins\`, or `dist\dev\plugins\`

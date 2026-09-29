@@ -1,14 +1,14 @@
 {
   "RT_GROUP_ICON": {
     "APP": {
-      "0000": "../assets/logo.ico"
+      "0000": "../../../assets/logo.ico"
     }
   },
   "RT_MANIFEST": {
     "#1": {
       "0409": {
         "identity": {},
-        "description": "aex tools",
+        "description": "aex cm-release plugin",
         "minimum-os": "win10",
         "execution-level": "as invoker",
         "long-path-aware": true
@@ -26,11 +26,11 @@
           "0409": {
             "Author": "Marat B <marat01q@gmail.com>",
             "CompanyName": "Marat B",
-            "FileDescription": "aex tools",
+            "FileDescription": "aex cm-release plugin",
             "FileVersion": "0.2.0",
-            "InternalName": "aex",
+            "InternalName": "cm-release",
             "LegalCopyright": "Copyright (c) 2026 Marat B <marat01q@gmail.com>",
-            "OriginalFilename": "aex.exe",
+            "OriginalFilename": "cm-release.exe",
             "ProductName": "aex tools",
             "ProductVersion": "0.2.0"
           }
