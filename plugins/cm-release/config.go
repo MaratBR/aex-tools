@@ -168,6 +168,19 @@ func modeLabel(mode string) string {
 	return "ask each run"
 }
 
+// runSettings is the plugin's settings (plugin.Settings), also run by jira-handoff --settings.
+func runSettings([]string) error {
+	c, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	j, err := jira.New()
+	if err != nil {
+		return err
+	}
+	return editConfig(j, c)
+}
+
 // editConfig is the settings menu; every change is saved right away.
 func editConfig(j *jira.Client, c *config) error {
 	fmt.Printf("Settings: %s\n", ui.Out.Cyan(configFile()))

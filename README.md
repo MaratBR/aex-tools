@@ -112,10 +112,12 @@ action directly: `--show`, `--login aext|jira|google`, `--logout aext|jira|googl
 
 ## configure
 
-In the window, settings are a form rather than a tool: the gear next to the logo (or the Settings line in the
-sidebar, or typing `configure`) opens it. It edits every setting below at once (checked before anything is
-saved; an empty field removes the setting, or resets it to its default), toggles the app launcher entry, and
-wipes after you type `CONFIRM`. The rest of this section is the terminal tool, `aex configure`.
+In the window, settings are a page rather than a tool: Settings in the sidebar (or the Settings line under
+the tools, or typing `configure`) opens it. Its menu has General and, under Plugins, each plugin that has
+settings. General edits every setting below at once (checked before anything is saved; an empty field
+removes the setting, or resets it to its default), picks the theme, toggles the app launcher entry, and
+wipes after you type `CONFIRM`. A plugin's entry runs its settings (see Plugins) right there, its questions
+asked on the page. The rest of this section is the terminal tool, `aex configure`.
 
 `.\bin\configure.ps1` lists the settings with their current values: the auth settings `AEXT_EMAIL`,
 `JIRA_EMAIL` and `JIRA_TOKEN` (hidden input), then `HOURS_PER_DAY` and `TZ_OFFSET_HOURS` (validated). Pick one
@@ -171,8 +173,8 @@ A group of CM release tools (`.\bin\cm-release.ps1 <tool> [args]`). Needs Jira a
 
 The git tools work on every CM repo at once: `<reposDir>\<repo>` for each of the `repos` settings
 (default `clearmechanic.frontend`, `clearmechanic.siteforappointments`, `cmos.datamigration`, `src`,
-`cmos.microservices`). The repos folder is asked for on first run; both are in the settings menu of
-`jira-handoff --settings`. Branches: `master`, `PROD`, `staging`, `release/VERSION`; tag `vVERSION`.
+`cmos.microservices`). The repos folder is asked for on first run; both are in the plugin's settings (the
+window's Settings page, or `jira-handoff --settings`). Branches: `master`, `PROD`, `staging`, `release/VERSION`; tag `vVERSION`.
 
 ### pull-all
 
@@ -207,7 +209,7 @@ means the default QA), then moves the ticket to In Production (transition `111`,
   the key right away (typed one works too, it just stays as typed). As you type, the epic's summary
   shows under the box once the answer is an existing epic (nothing otherwise); Enter on anything else
   shows why it is refused (not found, not an epic).
-- Settings (`--settings`, or "Settings" in the first question when run without `--epic`): default
+- Settings (the plugin's settings on the window's Settings page, or `--settings`): default
   project prefix (`CM`), default QA (required), always-Cc people, excluded assignees, each excluded one set to "ask each run" or "skip
   automatically". People are found by name or email in Jira. Kept in
   `<data folder>\plugin-settings\cm-release.json` (moved there from `jira-release-handoff.json` if that exists);
@@ -431,6 +433,11 @@ credentials: a plugin never opens the credential store and ignores secret settin
   without write/delete sharing from hashing until the process starts, so it cannot be swapped in between.
   Elsewhere it is not locked.
 - Without a terminal, a plugin that is not safe fails instead of asking.
+- Settings: a plugin with settings of its own says so with `plugin.Main(t, plugin.Settings{Summary: "...",
+  Run: run})` (`"settings": "<summary>"` in the describe JSON). The window lists it on its Settings page,
+  under Plugins, and runs it there as `<plugin> --aex-settings` (approval and access as for any run), its
+  questions answered on that page. Run asks for the settings and saves them where the plugin keeps them
+  (`settings.PluginSettingsDir`, which wiping settings deletes).
 - Widgets: a plugin can offer widgets for Home (see Window), each with its page built into the plugin
   (so its approval covers the page too) and its data calls: `plugin.Main(t, plugin.Jira,
   plugin.Widget{ID: "foo", Name: "...", Summary: "...", W: 2, H: 1, Refresh: time.Minute, HTML: page, Calls:

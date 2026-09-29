@@ -1,7 +1,10 @@
-// The settings form: what the configure tool asks for in a terminal, as a sheet over the window.
-// Backend: settings.go (Settings, SaveSettings, SetShortcut, WipeList, Wipe, WipeSession).
-const sheetBackdrop = $('sheet-backdrop'), sheet = $('sheet'), sheetBody = $('sheet-body');
-const saveButton = $('sheet-save'), sheetNote = $('sheet-note');
+// The Settings page: its menu has General, the form of what the configure tool asks for in a
+// terminal, and under Plugins each plugin with settings of its own, run on the page (a run like on
+// Runs, app.js, but here). Backend: settings.go (Settings, SaveSettings, SetShortcut, WipeList,
+// Wipe, WipeSession), webui.go (RunSettings).
+const settingsForm = $('settings-form'), settingsBody = $('settings-body');
+const saveButton = $('settings-save'), discardButton = $('settings-discard'), settingsNote = $('settings-note');
+const pluginPane = $('plugin-settings'), pluginRun = $('plugin-settings-run');
 
 const settingLabels = {
   AEXT_EMAIL: 'AEXT email',
@@ -12,7 +15,9 @@ const settingLabels = {
 };
 
 let fields = {};      // setting name -> {f, input, error, cleared}
-let lastFocus = null;
+let settingsSection = 'general'; // or the name of the plugin shown
+let settingsLoaded = false;
+let pluginRunning = ''; // the plugin whose settings run now, on the page
 
 // withLinks is text with its URLs opened in the browser (not in the window).
 function withLinks(text) {
@@ -30,29 +35,96 @@ function withLinks(text) {
 }
 
 function note(text, isError = false) {
-  sheetNote.textContent = text || '';
-  sheetNote.classList.toggle('error', isError);
+  settingsNote.textContent = text || '';
+  settingsNote.classList.toggle('error', isError);
 }
 
-async function openSettings() {
-  if (!sheetBackdrop.hidden) return;
-  lastFocus = document.activeElement;
+// openSettings shows the Settings page, on section when given ('general' or a plugin's name).
+function openSettings(section) {
+  showPage('settings');
+  if (section) showSection(section);
+}
+
+// onSettingsPage is showPage coming to Settings: the form is loaded again, unless it has changes.
+async function onSettingsPage() {
+  renderSettingsNav();
+  if (settingsLoaded && Object.keys(changes()).length) return;
   try {
     await loadSettings();
+    settingsLoaded = true;
   } catch (e) {
-    showCommandError(String(e));
-    return;
+    note(String(e), true);
   }
-  sheetBackdrop.hidden = false;
-  requestAnimationFrame(() => sheetBackdrop.classList.add('shown'));
-  sheetBody.scrollTop = 0;
-  sheet.querySelector('.field input')?.focus();
 }
 
-function closeSettings() {
-  sheetBackdrop.classList.remove('shown');
-  sheetBackdrop.hidden = true;
-  lastFocus?.focus?.();
+// pluginsWithSettings are the tools with settings of their own (plugins): {name, settings}.
+const pluginsWithSettings = () => tools.filter(t => t.settings);
+
+function renderSettingsNav() {
+  const nav = $('settings-nav');
+  nav.textContent = '';
+  const item = (section, name) => {
+    const b = button(name, 'settings-link', () => showSection(section, true));
+    b.dataset.section = section;
+    b.setAttribute('aria-current', String(section === settingsSection));
+    nav.appendChild(b);
+  };
+  item('general', 'General');
+  nav.appendChild(el('div', 'settings-nav-head', 'Plugins'));
+  const plugins = pluginsWithSettings();
+  for (const t of plugins) item(t.name, t.name);
+  if (!plugins.length) nav.appendChild(el('div', 'settings-nav-empty', 'No plugin has settings. One not approved yet shows here once it is.'));
+  if (settingsSection !== 'general' && !plugins.some(t => t.name === settingsSection) && pluginRunning !== settingsSection) showSection('general');
+}
+
+// showSection shows General or a plugin's settings; picked (from the menu) starts the plugin's.
+function showSection(section, picked = false) {
+  settingsSection = section;
+  document.querySelectorAll('.settings-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.section === section)));
+  settingsForm.hidden = section !== 'general';
+  pluginPane.hidden = section === 'general';
+  if (section === 'general') return;
+  const t = tools.find(t => t.name === section);
+  $('plugin-settings-name').textContent = section;
+  $('plugin-settings-summary').textContent = t?.settings || '';
+  if (pluginRunning === section) return syncPluginPane();
+  pluginRun.textContent = '';
+  syncPluginPane();
+  if (picked && !run) startPluginSettings();
+}
+
+// syncPluginPane shows whether the plugin shown can be run now.
+function syncPluginPane() {
+  const busy = !!run;
+  $('plugin-settings-open').hidden = pluginRunning === settingsSection;
+  $('plugin-settings-open').disabled = busy;
+  $('plugin-settings-open').textContent = pluginRun.children.length ? 'Change again' : 'Change settings';
+  $('plugin-settings-note').textContent = busy && pluginRunning !== settingsSection ? 'A tool is running: wait for it to finish.' : '';
+}
+
+async function startPluginSettings() {
+  if (run || settingsSection === 'general') return;
+  const name = settingsSection;
+  pluginRun.textContent = '';
+  pluginRunning = name;
+  startRun([name, 'settings'], [], pluginRun);
+  syncPluginPane();
+  try {
+    await api().RunSettings(name);
+  } catch (e) {
+    finished({ status: String(e), ok: false });
+  }
+}
+
+// pluginSettingsFinished is the plugin's settings run ending (app.js: finished).
+function pluginSettingsFinished() {
+  pluginRunning = '';
+  syncPluginPane();
+}
+
+// runChanged is a run starting or ending anywhere: the plugin pane's button follows.
+function runChanged() {
+  if (!pluginPane.hidden) syncPluginPane();
 }
 
 // group adds a titled group of rows to the form and returns where its rows go.
@@ -62,14 +134,14 @@ function group(title, foot) {
   const card = el('div', 'card');
   g.appendChild(card);
   if (foot) g.appendChild(el('p', 'group-foot', foot));
-  sheetBody.appendChild(g);
+  settingsBody.appendChild(g);
   return card;
 }
 
 async function loadSettings(message) {
   const form = await api().Settings();
   fields = {};
-  sheetBody.textContent = '';
+  settingsBody.textContent = '';
   const groups = [
     ['Accounts', f => !f.default],
     ['Work', f => !!f.default, 'Leave a field empty to go back to its default.'],
@@ -234,7 +306,11 @@ function changes() {
   return out;
 }
 
-function updateDirty() { saveButton.disabled = !Object.keys(changes()).length; }
+function updateDirty() {
+  const dirty = !!Object.keys(changes()).length;
+  saveButton.disabled = discardButton.disabled = !dirty;
+  settingsForm.classList.toggle('dirty', dirty);
+}
 
 function showOldSession() {
   const banner = el('div', 'banner');
@@ -251,10 +327,10 @@ function showOldSession() {
     }),
     button('Keep', 'btn small', () => banner.remove()));
   banner.appendChild(actions);
-  sheetBody.prepend(banner);
+  settingsBody.prepend(banner);
 }
 
-sheet.onsubmit = async e => {
+settingsForm.onsubmit = async e => {
   e.preventDefault();
   const c = changes();
   if (!Object.keys(c).length) return;
@@ -285,13 +361,5 @@ sheet.onsubmit = async e => {
   }
 };
 
-$('open-settings').onclick = openSettings;
-$('sheet-close').onclick = closeSettings;
-$('sheet-cancel').onclick = closeSettings;
-sheetBackdrop.addEventListener('mousedown', e => { if (e.target === sheetBackdrop) closeSettings(); });
-// While the sheet is open, keys are its own: a question's shortcuts (y, n, 1-9) must not fire.
-window.addEventListener('keydown', e => {
-  if (sheetBackdrop.hidden) return;
-  if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
-  e.stopPropagation();
-}, true);
+discardButton.onclick = () => loadSettings().catch(e => note(String(e), true));
+$('plugin-settings-open').onclick = startPluginSettings;

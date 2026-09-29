@@ -439,9 +439,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 
 /* The command line is for starting a tool: gone while one runs. */
 .running #dock { display: none; }
-/* Tools are started on Runs only: Home keeps the dock just for an error to show. */
-[data-page="home"] #command, [data-page="home"] #suggest { display: none; }
-[data-page="home"] #dock:has(#command-error[hidden]) { display: none; }
+/* Tools are started on Runs only: Home and Settings keep the dock just for an error to show. */
+[data-page="home"] #command, [data-page="home"] #suggest, [data-page="settings"] #command, [data-page="settings"] #suggest { display: none; }
+[data-page="home"] #dock:has(#command-error[hidden]), [data-page="settings"] #dock:has(#command-error[hidden]) { display: none; }
 @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 @keyframes blink { from { opacity: .3; } to { opacity: 1; } }
 
@@ -460,36 +460,46 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 #suggest .name { font-family: var(--mono); font-size: 13px; font-weight: 600; }
 #suggest .summary { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Settings sheet ------------------------------------------------------------------------------- */
+/* Settings page ------------------------------------------------------------------------------- */
 
-#sheet-backdrop {
-  position: fixed; inset: 0; z-index: 10;
-  display: grid; place-items: center;
-  padding: 24px 16px;
-  background: rgba(0, 0, 0, .22);
-  backdrop-filter: blur(8px);
-  opacity: 0;
-  transition: opacity .18s;
+/* Its menu on the left (General, then Plugins with settings), the section picked on the right. */
+#settings { max-width: 980px; margin: 0 auto; padding: 4px 28px 0; }
+.page-head { margin: 6px 0 14px; }
+.page-head h1 { margin: 0; font: 700 28px/1.15 var(--display); letter-spacing: -.03em; }
+.settings-layout { display: flex; align-items: flex-start; gap: 28px; }
+#settings-nav { position: sticky; top: 0; width: 190px; flex: none; display: flex; flex-direction: column; gap: 1px; padding-top: 14px; }
+.settings-link {
+  display: block;
+  width: 100%;
+  border: 0; border-radius: 8px;
+  background: none;
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color .12s;
 }
-#sheet-backdrop.shown { opacity: 1; }
-#sheet {
-  width: min(580px, 100%);
-  max-height: min(820px, 100%);
-  display: flex; flex-direction: column;
+.settings-link:hover { background: var(--hover); }
+.settings-link[aria-current="true"] { background: var(--fill); }
+.settings-nav-head { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .02em; padding: 14px 10px 4px; }
+.settings-nav-empty { color: var(--faint); font-size: 12px; padding: 2px 10px; }
+.settings-main { flex: 1; min-width: 0; max-width: 620px; }
+/* Save stays at the bottom of the window while the form scrolls. */
+.settings-foot {
+  position: sticky; bottom: 0;
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px -8px 0; padding: 12px 8px 16px;
   background: var(--bg);
-  border-radius: 16px;
-  box-shadow: var(--pop-shadow);
-  overflow: hidden;
-  transform: scale(.97) translateY(6px);
-  transition: transform .2s cubic-bezier(.2, .9, .3, 1.2);
+  box-shadow: 0 -.5px 0 var(--sep);
 }
-#sheet-backdrop.shown #sheet { transform: none; }
-.sheet-head { display: flex; align-items: center; padding: 16px 14px 6px 22px; }
-.sheet-head h2 { flex: 1; margin: 0; font: 700 22px/1.2 var(--display); letter-spacing: -.025em; }
-.sheet-body { flex: 1; overflow-y: auto; padding: 6px 22px 8px; }
-.sheet-foot { display: flex; align-items: center; gap: 8px; padding: 12px 22px 16px; }
-.sheet-note { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sheet-note.error { color: var(--fail); white-space: normal; }
+.settings-note { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-note.error { color: var(--fail); white-space: normal; }
+#plugin-settings { padding: 14px 0 24px; }
+#plugin-settings h2 { margin: 0; font: 700 20px/1.2 var(--display); letter-spacing: -.02em; }
+#plugin-settings > .dim { margin: 4px 0 14px; color: var(--muted); font-size: 13px; }
+.plugin-settings-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.plugin-settings-actions .settings-note { white-space: normal; }
+#plugin-settings-run .run { margin: 0; }
 
 .group { margin: 14px 0 0; }
 .group h3 { margin: 0 0 6px 14px; font-size: 12px; font-weight: 500; color: var(--muted); }
@@ -565,7 +575,11 @@ div.row { cursor: default; }
   #page, #home { padding: 20px 16px; }
   #dock { padding: 0 16px 16px; }
   #welcome h1 { font-size: 30px; }
-  .sheet-body, .sheet-foot { padding-left: 16px; padding-right: 16px; }
+  #settings { padding: 20px 16px 0; }
+  .settings-layout { flex-direction: column; gap: 0; }
+  #settings-nav { position: static; width: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0; }
+  .settings-link { width: auto; }
+  .settings-nav-head { padding: 0 4px 0 10px; }
 }
 /* Onboarding: takes the whole window, the title bar across all of it on top. ------------------- */
 
@@ -610,7 +624,7 @@ div.row { cursor: default; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 60% { box-shadow: 0 0 0 5px transparent; } }
 
 /* Switching pages: the page shown rises in. */
-#home:not([hidden]), #page:not([hidden]), #onboarding:not([hidden]) .ob-body { animation: rise-in .26s var(--ease-out); }
+#home:not([hidden]), #page:not([hidden]), #settings:not([hidden]), #onboarding:not([hidden]) .ob-body { animation: rise-in .26s var(--ease-out); }
 /* Popovers pop from their button: the widget picker below Add widget, suggestions above the line. */
 #widget-picker:not([hidden]) { transform-origin: top right; animation: pop-in .16s var(--ease-out); }
 #suggest:not([hidden]) { transform-origin: bottom center; animation: pop-up .14s var(--ease-out); }

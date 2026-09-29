@@ -36,7 +36,8 @@ check against; tickets that became Ready for Production after that release's dat
 about, to allow (one or all) or decline.
 
 Default project prefix, default QA, always-Cc people and excluded assignees are settings, kept in
-<data folder>/plugin-settings/cm-release.json (defaults written on first run).
+<data folder>/plugin-settings/cm-release.json (defaults written on first run). In the window they
+are on the Settings page, under Plugins.
 A Markdown report is written to <data folder>/output/cm-release/jira-handoff/.
 
   --epic      Epic key, link, or number in the default project (6996 means CM-6996 unless the
@@ -124,16 +125,6 @@ func runHandoff(args []string) error {
 	j, err := jira.New()
 	if err != nil {
 		return err
-	}
-	if !*settingsFlag && *epicFlag == "" && ui.IsInteractive() {
-		choice, err := ui.Choose("Release handoff", []ui.Option{
-			{Label: "Hand off an epic's tickets", Value: "handoff"},
-			{Label: "Settings: default QA, always Cc, excluded assignees, repos", Value: "settings"},
-		})
-		if err != nil {
-			return err
-		}
-		*settingsFlag = choice == "settings"
 	}
 	if *settingsFlag {
 		return editConfig(j, cfg)

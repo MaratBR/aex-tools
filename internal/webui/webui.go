@@ -122,6 +122,9 @@ type ToolInfo struct {
 	Summary string     `json:"summary"`
 	Sub     []ToolInfo `json:"sub,omitempty"`
 	Warn    string     `json:"warn,omitempty"` // why it has a warning icon
+	// Settings is the summary of the tool's own settings (a plugin's, tool.Tool.Settings), which the
+	// Settings page lists and runs with RunSettings; empty when it has none.
+	Settings string `json:"settings,omitempty"`
 }
 
 // Tools lists the tools: built-in ones, then plugins, then custom tools. Hidden ones are left out.
@@ -131,7 +134,11 @@ func (a *App) Tools() []ToolInfo {
 		var out []ToolInfo
 		for _, t := range ts {
 			if !t.Hidden {
-				out = append(out, ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub), Warn: t.Warn})
+				info := ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub), Warn: t.Warn}
+				if t.Settings != nil {
+					info.Settings = t.Settings.Summary
+				}
+				out = append(out, info)
 			}
 		}
 		return out
@@ -173,6 +180,20 @@ func (a *App) Run(path []string, args []string) error {
 	if t == nil {
 		return fmt.Errorf("unknown tool: %s", strings.Join(path, " "))
 	}
+	return a.start(strings.Join(path, " "), t, args)
+}
+
+// RunSettings runs the settings of the tool name (a plugin's), like Run.
+func (a *App) RunSettings(name string) error {
+	t := a.find([]string{name})
+	if t == nil || t.Settings == nil {
+		return fmt.Errorf("%s has no settings", name)
+	}
+	return a.start(name+" settings", t.Settings, nil)
+}
+
+// start runs t in the background, named name in its status, then sends "finished".
+func (a *App) start(name string, t *tool.Tool, args []string) error {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
@@ -181,7 +202,7 @@ func (a *App) Run(path []string, args []string) error {
 	a.running = true
 	a.mu.Unlock()
 	go func() {
-		status, ok := a.host.Run(strings.Join(path, " "), t, args)
+		status, ok := a.host.Run(name, t, args)
 		a.mu.Lock()
 		a.running = false
 		a.mu.Unlock()

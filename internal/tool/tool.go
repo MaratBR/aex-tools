@@ -29,6 +29,9 @@ type Tool struct {
 	// Debug marks a tool for developing aex: it exists only when aex runs with --debug
 	// (settings.Debug), then in the debug group ("aex debug <name>").
 	Debug bool
+	// Settings, when set, is the tool's own settings, changed by running it: the window shows it
+	// under Settings (a plugin's, see plugin.Settings), not in the tool list.
+	Settings *Tool
 }
 
 // IsGroup reports whether the tool is a group of sub-tools.

@@ -13,9 +13,6 @@
   <aside id="side">
     <div class="brand">
       <img src="logo.svg" alt=""><span>aex</span>
-      <button id="open-settings" class="icon-btn" type="button" title="Settings" aria-label="Settings">
-        <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-      </button>
     </div>
     <nav id="pages" aria-label="Pages">
       <button type="button" class="page-link" data-page="home">
@@ -25,6 +22,10 @@
       <button type="button" class="page-link" data-page="runs">
         <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"/></svg>
         <span>Runs</span><span class="activity" title="New output"></span>
+      </button>
+      <button type="button" class="page-link" data-page="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Settings</span>
       </button>
     </nav>
     <div class="section">Tools</div>
@@ -71,6 +72,31 @@
         </div>
         <div id="grid"></div>
       </div>
+      <div id="settings" hidden>
+        <header class="page-head"><h1>Settings</h1></header>
+        <div class="settings-layout">
+          <nav id="settings-nav" aria-label="Settings"></nav>
+          <div class="settings-main">
+            <form id="settings-form" autocomplete="off" novalidate>
+              <div id="settings-body"></div>
+              <footer class="settings-foot">
+                <span id="settings-note" class="settings-note"></span>
+                <button type="button" class="btn" id="settings-discard" disabled>Discard</button>
+                <button type="submit" class="btn primary" id="settings-save" disabled>Save</button>
+              </footer>
+            </form>
+            <section id="plugin-settings" hidden>
+              <h2 id="plugin-settings-name"></h2>
+              <p id="plugin-settings-summary" class="dim"></p>
+              <div id="plugin-settings-run"></div>
+              <div class="plugin-settings-actions">
+                <button type="button" class="btn primary" id="plugin-settings-open">Change settings</button>
+                <span id="plugin-settings-note" class="settings-note"></span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
       <div id="page">
         <section id="welcome">
           <img src="logo.svg" alt="">
@@ -107,23 +133,6 @@
       </footer>
     </div>
   </section>
-
-  <div id="sheet-backdrop" hidden>
-    <form id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" autocomplete="off" novalidate>
-      <header class="sheet-head">
-        <h2 id="sheet-title">Settings</h2>
-        <button type="button" class="icon-btn" id="sheet-close" aria-label="Close">
-          <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-        </button>
-      </header>
-      <div class="sheet-body" id="sheet-body"></div>
-      <footer class="sheet-foot">
-        <span id="sheet-note" class="sheet-note"></span>
-        <button type="button" class="btn" id="sheet-cancel">Cancel</button>
-        <button type="submit" class="btn primary" id="sheet-save" disabled>Save</button>
-      </footer>
-    </form>
-  </div>
 
   <script src="titlebar.js"></script>
   <script src="vendor/xterm.js"></script>

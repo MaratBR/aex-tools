@@ -39,11 +39,13 @@ const (
 	widgetMaxOut   = 4 << 20
 )
 
-// Option is what Main takes after the tool: the Access a plugin needs and the Widgets it offers.
+// Option is what Main takes after the tool: the Access a plugin needs, the Widgets it offers and
+// its Settings.
 type Option interface{ option() }
 
-func (Access) option() {}
-func (Widget) option() {}
+func (Access) option()   {}
+func (Widget) option()   {}
+func (Settings) option() {}
 
 // Widget is a widget a plugin offers (see Main). The window shows its page in a sandboxed frame with
 // no network: its data comes from Calls, through aex.call(name, args) (widgets/sdk.js).

@@ -57,6 +57,9 @@ func TestWidgets(t *testing.T) {
 	if err != nil || len(info.Widgets) != 1 || info.Widgets[0] != (WidgetInfo{ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1}) {
 		t.Fatalf("described widgets = %+v, %v", info.Widgets, err)
 	}
+	if info.Settings != "test settings" {
+		t.Errorf("described settings = %q, want %q", info.Settings, "test settings")
+	}
 	if page, err := WidgetPage(p, "hello"); page != "<p>hello</p>" || err != nil {
 		t.Fatalf("page = %q, %v", page, err)
 	}

@@ -37,5 +37,5 @@ func main() {
 		ID: "cm-repos-state", Name: "CM repos state", Summary: "Git state of every CM repo: clean or pending changes",
 		W: 2, H: 2, Refresh: 5 * time.Second, HTML: reposStatePage,
 		Calls: map[string]func(json.RawMessage) (any, error){"state": stateCall},
-	})
+	}, plugin.Settings{Summary: "Default project prefix, default QA, always Cc, excluded assignees, repos", Run: runSettings})
 }

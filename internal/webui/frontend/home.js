@@ -1,5 +1,5 @@
-// Pages and the home page. The window has two pages: Runs (the feed, app.js) and Home, a grid of
-// widgets. It opens on Home when that has widgets, else on Runs.
+// Pages and the home page. The window has three pages: Runs (the feed, app.js), Settings
+// (settings.js) and Home, a grid of widgets. It opens on Home when that has widgets, else on Runs.
 //
 // Each widget is a page of its own in a sandboxed frame (scripts only: no access to the window, no
 // network). Its page comes from the backend (built-in: widgets/<id>.html; a plugin's: from the
@@ -10,7 +10,7 @@ const grid = $('grid'), picker = $('widget-picker');
 
 let page = 'runs';
 let pageChosen = false; // once the user or a question picked a page, loading Home keeps it
-const scrollTops = { home: 0, runs: 0 };
+const scrollTops = { home: 0, runs: 0, settings: 0 };
 let catalog = { widgets: [], inactive: [] }; // WidgetList
 let layout = [];        // HomeWidget: {id, widget, w, h, settings}
 let autoRefresh = true; // !HomeLayout.autoRefreshOff
@@ -50,7 +50,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// showPage shows Home or Runs. auto: chosen by the window at start, not by the user.
+// showPage shows Home, Runs or Settings. auto: chosen by the window at start, not by the user.
 function showPage(name, auto = false) {
   if (!auto) pageChosen = true;
   if (name === page) return;
@@ -58,6 +58,7 @@ function showPage(name, auto = false) {
   page = name;
   $('home').hidden = name !== 'home';
   $('page').hidden = name !== 'runs';
+  $('settings').hidden = name !== 'settings';
   document.body.dataset.page = name;
   document.querySelectorAll('.page-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.page === name)));
   if (name === 'runs') document.body.classList.remove('runs-activity');
@@ -65,6 +66,7 @@ function showPage(name, auto = false) {
   scroller.scrollTop = scrollTops[name];
   syncSide(!auto);
   if (name === 'home') fitGrid();
+  if (name === 'settings') onSettingsPage();
 }
 
 // runsActivity marks Runs in the sidebar when a run prints while Home is shown.

@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 const feed = $('feed'), scroller = $('scroll'), input = $('input'), commandForm = $('command');
 
 let tools = [];
-let run = null;     // the run in progress: {el, body, status, out, term, started}
+let run = null;     // the run in progress: {el, body, status, out, term, started, page}
 let keyHandler = null;
 // dropHandler takes the paths of files dropped on the window, while a question for a path is open.
 let dropHandler = null;
@@ -75,9 +75,12 @@ function setStatus(state, text) {
   run.status.textContent = text;
 }
 
-function startRun(path, args) {
-  $('welcome').hidden = true;
-  $('clear').hidden = false;
+// startRun adds the run's block to the feed, or to where (a plugin's settings, on Settings).
+function startRun(path, args, where = feed) {
+  if (where === feed) {
+    $('welcome').hidden = true;
+    $('clear').hidden = false;
+  }
   const block = el('article', 'run');
   const head = el('header', 'run-head');
   const cmd = el('span', 'cmd');
@@ -87,11 +90,12 @@ function startRun(path, args) {
   head.append(cmd, status);
   const body = el('div', 'run-body');
   block.append(head, body);
-  feed.appendChild(block);
-  run = { el: block, body, status, out: null, term: null, started: Date.now() };
+  where.appendChild(block);
+  run = { el: block, body, status, out: null, term: null, started: Date.now(), page: where === feed ? 'runs' : 'settings' };
   setStatus('running', 'Running');
   document.body.classList.add('running');
   updateCommand();
+  runChanged();
   toBottom();
 }
 
@@ -130,7 +134,7 @@ function onClear() {
 }
 
 function onOutput(s) {
-  runsActivity();
+  if (!run || run.page === 'runs') runsActivity();
   const stick = nearBottom();
   outBlock().write(s);
   if (stick) toBottom();
@@ -139,8 +143,8 @@ function onOutput(s) {
 async function runLine(line) {
   line = line.trim();
   if (!line || run) return;
-  // configure is a form in the window, not a run.
-  if (/^(configure|settings)\b/.test(line)) { openSettings(); return; }
+  // configure is a page in the window, not a run.
+  if (/^(configure|settings)\b/.test(line)) { openSettings('general'); return; }
   const { path, args } = resolve(line);
   // So is the debug tool onboarding (onboarding.js), there only with --debug.
   if (path.join(' ') === 'debug onboarding') { openOnboarding(); return; }
@@ -159,6 +163,7 @@ async function runLine(line) {
 
 function finished({ status, ok, quiet }) {
   if (!run) return;
+  const where = run.page;
   closeOut();
   closeQuestion();
   if (quiet) {
@@ -169,6 +174,7 @@ function finished({ status, ok, quiet }) {
     run = null;
     document.body.classList.remove('running');
     updateCommand();
+    runChanged();
     return;
   }
   const took = elapsed(Date.now() - run.started);
@@ -181,10 +187,12 @@ function finished({ status, ok, quiet }) {
   run = null;
   document.body.classList.remove('running');
   updateCommand();
+  runChanged();
   if (nearBottom()) toBottom();
+  if (where === 'settings') pluginSettingsFinished();
   refresh();
   refreshWidgets();
-  resumeOnboarding(ok, status);
+  if (where === 'runs') resumeOnboarding(ok, status);
 }
 
 // Questions -------------------------------------------------------------------------------------
@@ -209,8 +217,9 @@ function answer(p, q, value, shown, cancelled = false) {
 }
 
 function onPrompt(p) {
-  // A question needs an answer: it is asked on Runs.
-  showPage('runs');
+  // A question needs an answer: it is asked where its run is (Runs, or Settings for a plugin's).
+  showPage(run ? run.page : 'runs');
+  if (run && run.page === 'settings') showSection(pluginRunning);
   closeOut();
   if (!run) {
     startRun(['aex'], []);
@@ -344,7 +353,16 @@ function onPrompt(p) {
     controls.appendChild(b);
     b.focus();
   }
-  if (keyHandler) document.addEventListener('keydown', keyHandler, true);
+  if (keyHandler) {
+    // Its keys are its own only on its page, and not while typing in another field there.
+    const keys = keyHandler;
+    keyHandler = e => {
+      if (run && run.page !== page) return;
+      if (e.target.matches?.('input, textarea') && !q.contains(e.target)) return;
+      keys(e);
+    };
+    document.addEventListener('keydown', keyHandler, true);
+  }
   toBottom();
 }
 
@@ -502,7 +520,7 @@ function renderInfo(lines) {
     } else if (l.action === 'settings') {
       row.type = 'button';
       row.title = 'Change settings';
-      row.onclick = () => openSettings();
+      row.onclick = () => openSettings('general');
     } else {
       text.title = text.textContent;
     }
@@ -513,6 +531,7 @@ function renderInfo(lines) {
 async function refresh() {
   tools = await api().Tools();
   renderTools();
+  if (page === 'settings') renderSettingsNav();
   renderInfo(await api().Header(false));
   renderInfo(await api().Header(true));
 }

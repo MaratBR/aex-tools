@@ -36,13 +36,25 @@ import (
 const (
 	describeFlag    = "--aex-describe"
 	describeTimeout = 3 * time.Second
+	// settingsFlag runs the plugin's Settings.
+	settingsFlag = "--aex-settings"
 )
+
+// Settings is a plugin's own settings (see Main): Run asks for them and saves them, like a tool.
+// The window shows them on its Settings page, under Plugins; --aex-describe lists them as
+// "settings": "<summary>".
+type Settings struct {
+	Summary string
+	Run     func(args []string) error
+}
 
 type description struct {
 	Summary string       `json:"summary"`
 	Access  []Access     `json:"access,omitempty"`
 	Tools   []SubTool    `json:"tools,omitempty"`
 	Widgets []WidgetInfo `json:"widgets,omitempty"` // widget.go
+	// Settings is the summary of the plugin's Settings, empty when it has none.
+	Settings string `json:"settings,omitempty"`
 }
 
 // SubTool is a tool of a plugin that is a group.
@@ -80,12 +92,13 @@ type Info struct {
 	Modified time.Time
 	Hash     string // SHA-256 of the file's contents now
 	State    State
-	// Summary, Access, Tools and Widgets are what the plugin describes itself as, only for a safe
-	// plugin (else empty); DescribeErr says why that failed.
+	// Summary, Access, Tools, Widgets and Settings are what the plugin describes itself as, only for
+	// a safe plugin (else empty); DescribeErr says why that failed.
 	Summary     string
 	Access      []Access
 	Tools       []SubTool
 	Widgets     []WidgetInfo
+	Settings    string
 	DescribeErr error
 }
 
@@ -183,7 +196,7 @@ func inspect(name, path string) (Info, error) {
 	if p.State == Safe {
 		var d description
 		d, p.DescribeErr = describe(o, path)
-		p.Summary, p.Access, p.Tools = d.Summary, d.Access, d.Tools
+		p.Summary, p.Access, p.Tools, p.Settings = d.Summary, d.Access, d.Tools, d.Settings
 		p.Widgets = slices.DeleteFunc(d.Widgets, func(w WidgetInfo) bool { return !widgetID.MatchString(w.ID) })
 	}
 	return p, nil
@@ -252,7 +265,11 @@ func Discover(taken []tool.Tool) []tool.Tool {
 			ui.Warn("plugins: skipped %s: %v", p.Path, p.DescribeErr)
 			continue
 		}
-		tools = append(tools, tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path, nil), Sub: subTools(p, nil, p.Tools), Warn: warn})
+		t := tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path, nil), Sub: subTools(p, nil, p.Tools), Warn: warn}
+		if p.Settings != "" {
+			t.Settings = &tool.Tool{Name: "settings", Summary: p.Settings, Run: runner(p.Name, p.Path, []string{settingsFlag})}
+		}
+		tools = append(tools, t)
 	}
 	return tools
 }
@@ -373,22 +390,29 @@ func runner(name, path string, sub []string) func(args []string) error {
 	}
 }
 
-// Main runs t (a tool, or a group of them) as a plugin with opts: the access it needs (see Access)
-// and the widgets it offers (see Widget). Answers --aex-describe and the widget flags, else sets up
-// like aex does and runs t with the command-line args, exiting 1 on error.
+// Main runs t (a tool, or a group of them) as a plugin with opts: the access it needs (see Access),
+// the widgets it offers (see Widget) and its settings (see Settings). Answers --aex-describe and the
+// widget flags, else sets up like aex does and runs t (or, for --aex-settings, the settings) with the
+// command-line args, exiting 1 on error.
 func Main(t tool.Tool, opts ...Option) {
 	var access []Access
 	var widgets []Widget
+	var own *Settings
 	for _, o := range opts {
 		switch o := o.(type) {
 		case Access:
 			access = append(access, o)
 		case Widget:
 			widgets = append(widgets, o)
+		case Settings:
+			own = &o
 		}
 	}
 	if len(os.Args) == 2 && os.Args[1] == describeFlag {
 		d := description{Summary: t.Summary, Access: access, Tools: describeTools(t.Sub), Widgets: describeWidgets(widgets)}
+		if own != nil {
+			d.Settings = own.Summary
+		}
 		if err := json.NewEncoder(os.Stdout).Encode(d); err != nil {
 			os.Exit(1)
 		}
@@ -416,9 +440,17 @@ func Main(t tool.Tool, opts ...Option) {
 	if err == nil {
 		err = settings.InitPlugin(dataDir)
 	}
-	if err == nil && widgetCall {
+	switch {
+	case err != nil:
+	case widgetCall:
 		err = serveWidget(widgetCallFlag, args[1:], widgets)
-	} else if err == nil {
+	case len(args) >= 1 && args[0] == settingsFlag:
+		if own == nil {
+			err = errors.New("this plugin has no settings")
+		} else {
+			err = own.Run(args[1:])
+		}
+	default:
 		err = t.Exec(args)
 	}
 	if err != nil {

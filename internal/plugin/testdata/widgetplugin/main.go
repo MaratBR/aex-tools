@@ -1,4 +1,4 @@
-// A plugin with a widget, for widget_test.go.
+// A plugin with a widget and settings, for widget_test.go.
 package main
 
 import (
@@ -22,5 +22,5 @@ func main() {
 				"echo": func(args json.RawMessage) (any, error) { return args, nil },
 				"fail": func(json.RawMessage) (any, error) { return nil, errors.New("it failed") },
 			},
-		})...)
+		}, plugin.Settings{Summary: "test settings", Run: func([]string) error { return nil }})...)
 }
