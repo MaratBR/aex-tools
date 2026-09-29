@@ -17,7 +17,9 @@
       color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
     .warning svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-    .list { flex: 1; min-height: 0; margin: 0; padding: 0; overflow-y: auto; font-size: 13px; }
+    /* The list reaches 6px past the text on each side, for the rows' hover backgrounds: rows wider
+       than it would scroll it sideways. */
+    .list { flex: 1; min-height: 0; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; }
     .list > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
     .ticket { display: flex; align-items: center; gap: 10px; padding: 5px 6px; margin: 0 -6px; width: calc(100% + 12px);
       border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; }
@@ -37,7 +39,7 @@
     .nothing .muted { font-size: 13px; }
 
     /* Choosing which tickets to show. */
-    .setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; font-size: 13px; }
+    .setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; }
     .setup-head { color: var(--muted); }
     .choice { width: 100%; display: block; padding: 7px 10px; border: 0; border-radius: 9px; background: var(--fill); text-align: left; cursor: pointer; }
     .choice:hover { background: var(--hover); }

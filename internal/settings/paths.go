@@ -14,6 +14,9 @@ var (
 	// IsDev is true for a build that knows its source checkout (go build without -trimpath, as
 	// bin\*.ps1 do); release builds (bin\build-exe.ps1) use -trimpath.
 	IsDev bool
+	// Debug is set by --debug (binex.ps1 passes it): tools and widgets for developing aex
+	// (tool.Tool.Debug, the window's debug widgets) can be used only then.
+	Debug bool
 	// AppRoot holds .env: the repo for a dev build, else the folder holding the exe.
 	AppRoot string
 	// DataDir holds app settings (.env.config), the AEXT session and output files.
@@ -28,7 +31,10 @@ var (
 	// CustomToolsFile lists the custom tools added (internal/custom): scripts run by a tool adapter.
 	CustomToolsFile string
 	// HomeFile holds the window's home page: its widgets, in order, with their sizes.
-	HomeFile      string
+	HomeFile string
+	// OnboardedFile is there once the window's onboarding (logging in to each service) was done or
+	// skipped: the window opens it on first start only.
+	OnboardedFile string
 	SharedEnvFile string
 	// ConfigEnvFile holds app settings: auth settings saved by configure and the prompts, and the
 	// AppSettings defaults written on first start.
@@ -85,6 +91,7 @@ func Init(dataDir, embeddedEnv string) error {
 	PluginSettingsDir = filepath.Join(DataDir, "plugin-settings")
 	CustomToolsFile = filepath.Join(DataDir, "custom-tools.json")
 	HomeFile = filepath.Join(DataDir, "home.json")
+	OnboardedFile = filepath.Join(DataDir, "onboarded")
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 
 	openCredentials()

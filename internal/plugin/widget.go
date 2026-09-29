@@ -28,7 +28,7 @@ import (
 //	<plugin> --aex-widget-call <id> <call>  runs one of its calls: JSON args on stdin, and on stdout
 //	                                        {"result": ...} or {"error": "..."}
 //
-// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h", "refresh"}]). aex
+// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h", "refresh", "debug"}]). aex
 // runs neither flag unless the plugin is safe, and a call only with the plugin's access granted: it
 // never asks, since a widget has no run to ask in (WidgetError says what is missing).
 
@@ -55,7 +55,10 @@ type Widget struct {
 	// Refresh is how often the home page tells it to load again (aex.onRefresh) while auto refresh
 	// is on; 0: only after runs. Each of its calls starts the plugin, so the window uses 5 s at least.
 	Refresh time.Duration
-	HTML    string // its page, usually go:embed
+	// Debug marks a widget for developing the plugin: the window offers it, and runs its calls,
+	// only when aex runs with --debug.
+	Debug bool
+	HTML  string // its page, usually go:embed
 	// Calls are its data calls. Each gets the call's args as JSON and returns what to send back
 	// (marshalled to JSON), running in the plugin with its settings and granted access, but with no
 	// way to ask questions.
@@ -70,6 +73,7 @@ type WidgetInfo struct {
 	W       int    `json:"w"`
 	H       int    `json:"h"`
 	Refresh int    `json:"refresh,omitempty"` // Widget.Refresh in seconds
+	Debug   bool   `json:"debug,omitempty"`
 }
 
 var widgetID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -78,7 +82,7 @@ func describeWidgets(ws []Widget) []WidgetInfo {
 	var d []WidgetInfo
 	for _, w := range ws {
 		d = append(d, WidgetInfo{ID: w.ID, Name: w.Name, Summary: w.Summary, W: w.W, H: w.H,
-			Refresh: int(w.Refresh.Round(time.Second) / time.Second)})
+			Refresh: int(w.Refresh.Round(time.Second) / time.Second), Debug: w.Debug})
 	}
 	return d
 }
@@ -221,6 +225,9 @@ func WidgetCall(p Info, id, call string, args []byte) (json.RawMessage, error) {
 		if o.hash != approved {
 			return nil, &WidgetError{p.Name, "changed while starting"}
 		}
+	}
+	if !settings.Debug && slices.ContainsFunc(d.Widgets, func(w WidgetInfo) bool { return w.ID == id && w.Debug }) {
+		return nil, ErrDebugWidget
 	}
 	pass, err := granted(p.Name, p.Path, approved, d.Access)
 	if err != nil {
@@ -382,3 +389,6 @@ func Find(name string) (Info, error) {
 
 // ErrNoPlugin is Find's error for a plugin not in the plugins folder.
 var ErrNoPlugin = errors.New("no such plugin")
+
+// ErrDebugWidget is why a debug widget (Widget.Debug) cannot be used: aex runs without --debug.
+var ErrDebugWidget = errors.New("a debug widget, only usable when aex runs with --debug")

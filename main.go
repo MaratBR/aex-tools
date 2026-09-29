@@ -17,6 +17,7 @@ import (
 	"aex/internal/tools/account"
 	"aex/internal/tools/configure"
 	"aex/internal/tools/customtools"
+	"aex/internal/tools/onboarding"
 	"aex/internal/tools/plugins"
 	"aex/internal/tools/quota"
 	"aex/internal/tools/worklogsync"
@@ -39,14 +40,19 @@ var builtins = []tool.Tool{
 	configure.Tool,
 	plugins.Tool,
 	customtools.Tool,
+	onboarding.Tool,
 }
 
-var tools = builtins
+// debugGroup holds the debug tools (tool.Tool.Debug), only with --debug.
+const debugGroup = "debug"
+
+var tools = withDebug(builtins)
 
 func init() {
 	// A custom tool cannot take a built-in tool's or a plugin's name.
 	custom.Reserved = func(name string) bool {
-		return slices.ContainsFunc(builtins, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) }) ||
+		return strings.EqualFold(name, debugGroup) ||
+			slices.ContainsFunc(builtins, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) }) ||
 			slices.ContainsFunc(plugin.Names(), func(n string) bool { return strings.EqualFold(n, name) })
 	}
 }
@@ -54,8 +60,26 @@ func init() {
 // loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder and the
 // custom tools added.
 func loadPlugins() {
-	withPlugins := append(slices.Clip(builtins), plugin.Discover(builtins)...)
+	base := withDebug(builtins)
+	withPlugins := append(slices.Clip(base), plugin.Discover(base)...)
 	tools = append(withPlugins, custom.Discover(withPlugins)...)
+}
+
+// withDebug takes the debug tools out of list, and with --debug puts them in the debug group at
+// its end.
+func withDebug(list []tool.Tool) []tool.Tool {
+	var out, debug []tool.Tool
+	for _, t := range list {
+		if t.Debug {
+			debug = append(debug, t)
+		} else {
+			out = append(out, t)
+		}
+	}
+	if settings.Debug && len(debug) > 0 {
+		out = append(out, tool.Tool{Name: debugGroup, Summary: "Tools for developing aex (--debug)", Sub: debug})
+	}
+	return out
 }
 
 func help() string {
@@ -66,11 +90,12 @@ func help() string {
 			fmt.Fprintf(&list, "    %-*s%s\n", nameWidth()-2, s.Name, s.Summary)
 		}
 	}
-	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [<tool> [args...]]
+	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [--debug] [<tool> [args...]]
 
 Without a tool, opens the aex window to pick and run tools.
 With a tool name, runs that tool once in the terminal with the given args (try "aex <tool> --help");
 --plain (or AEX_TUI=0) asks its questions line by line instead of with arrow-key prompts.
+--debug adds the tools and widgets for developing aex (the debug group); binex.ps1 passes it.
 A group of tools (its tools indented below it) runs one: "aex <group> <tool> [args...]".
 
 Tools:
@@ -138,11 +163,15 @@ func pluginDir() string {
 }
 
 func run(args []string) error {
-	plain := len(args) > 0 && args[0] == "--plain"
-	if plain {
-		ui.Plain = true
+	for len(args) > 0 && (args[0] == "--plain" || args[0] == "--debug") {
+		if args[0] == "--plain" {
+			ui.Plain = true
+		} else {
+			settings.Debug = true
+		}
 		args = args[1:]
 	}
+	tools = withDebug(builtins)
 	if len(args) == 0 {
 		return guiMenu()
 	}

@@ -142,6 +142,8 @@ async function runLine(line) {
   // configure is a form in the window, not a run.
   if (/^(configure|settings)\b/.test(line)) { openSettings(); return; }
   const { path, args } = resolve(line);
+  // So is the debug tool onboarding (onboarding.js), there only with --debug.
+  if (path.join(' ') === 'debug onboarding') { openOnboarding(); return; }
   if (!path.length) {
     showCommandError(`There is no tool called "${splitArgs(line)[0]}".`);
     return;
@@ -182,6 +184,7 @@ function finished({ status, ok, quiet }) {
   if (nearBottom()) toBottom();
   refresh();
   refreshWidgets();
+  resumeOnboarding(ok, status);
 }
 
 // Questions -------------------------------------------------------------------------------------
@@ -475,6 +478,7 @@ function renderTools() {
   starters.textContent = '';
   for (const t of tools) {
     const b = button('', 'starter', () => runLine(t.name));
+    b.style.setProperty('--i', starters.childElementCount);
     if (t.warn) b.title = t.warn;
     b.append(toolName(t), el('span', 'summary', t.summary));
     starters.appendChild(b);
@@ -530,8 +534,18 @@ window.runtime.OnFileDrop((x, y, paths) => { if (dropHandler && paths && paths.l
 updateCommand();
 refresh().then(async () => {
   if (run) return;
+  // First start: onboarding before the start-up questions.
+  if (await api().NeedsOnboarding().catch(() => false)) await openOnboarding();
+  if (run) return;
   // Its block goes up first: its output may arrive before Ready returns.
   startRun(['aex'], []);
   run.el.classList.add('orphan');
   if (!(await api().Ready())) finished({ quiet: true, ok: true });
+});
+
+// Entrance animations (style.css: Motion) play once: an element shown again with its page would
+// replay them.
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.addEventListener('animationend', e => {
+  if (e.target.matches?.('.run, .question, .banner, .cell, .starter')) e.target.style.animation = 'none';
 });

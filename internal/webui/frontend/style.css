@@ -125,6 +125,12 @@ aside {
 /* Title bar: the window is frameless, so this strip drags it and holds its buttons. ---------- */
 
 #titlebar { flex: none; height: 36px; display: flex; align-items: flex-start; justify-content: flex-end; --wails-draggable: drag; }
+/* The bar is see-through until the pointer comes near, then shows more the nearer it is
+   (titlebar.js: --near, 0 far to 1 at the top). */
+#titlebar {
+  background: color-mix(in srgb, var(--side) calc(var(--near, 0) * 100%), transparent);
+  box-shadow: inset 0 -.5px 0 color-mix(in srgb, var(--sep) calc(var(--near, 0) * 100%), transparent);
+}
 
 /* Home takes the whole window: the sidebar slides away, and a button in the title bar brings it
    back (home.js: homeSide). On Runs it is always there. */
@@ -433,6 +439,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 
 /* The command line is for starting a tool: gone while one runs. */
 .running #dock { display: none; }
+/* Tools are started on Runs only: Home keeps the dock just for an error to show. */
+[data-page="home"] #command, [data-page="home"] #suggest { display: none; }
+[data-page="home"] #dock:has(#command-error[hidden]) { display: none; }
 @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 @keyframes blink { from { opacity: .3; } to { opacity: 1; } }
 
@@ -558,8 +567,76 @@ div.row { cursor: default; }
   #welcome h1 { font-size: 30px; }
   .sheet-body, .sheet-foot { padding-left: 16px; padding-right: 16px; }
 }
+/* Onboarding: takes the whole window, the title bar across all of it on top. ------------------- */
+
+#onboarding { position: fixed; inset: 0; z-index: 20; overflow-y: auto; background: var(--bg); }
+.onboarding #titlebar { position: fixed; inset: 0 0 auto; z-index: 21; }
+.onboarding #side-toggle { visibility: hidden; }
+.ob-body { max-width: 560px; margin: 0 auto; padding: 12vh 28px 32px; }
+.ob-body img { width: 48px; height: 48px; }
+.ob-body h1 { font: 700 34px/1.1 var(--display); letter-spacing: -.035em; margin: 20px 0 8px; }
+.ob-body > p { color: var(--muted); margin: 0 0 26px; font-size: 15px; }
+#ob-services { display: flex; flex-direction: column; gap: 10px; }
+.ob-service { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; background: var(--surface); box-shadow: var(--card-shadow); }
+.ob-service .what { flex: 1; min-width: 0; }
+.ob-service .name { font-weight: 600; }
+.ob-service .name::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--faint); vertical-align: 1px; }
+.ob-service.in .name::before { background: var(--ok); }
+.ob-service.out .name::before, .ob-service.unset .name::before { background: var(--warn); }
+.ob-service.error .name::before { background: var(--fail); }
+.ob-service.checking .name::before { animation: blink 1s infinite alternate; }
+.ob-service .about { color: var(--muted); font-size: 13px; }
+.ob-service .state { font-size: 13px; overflow-wrap: anywhere; }
+.ob-service .state .dim { color: var(--muted); }
+.ob-service .state .bold { font-weight: 600; }
+.ob-service .state .warn { color: var(--warn); }
+.ob-service .note { color: var(--fail); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.ob-service .btn { flex: none; }
+.ob-foot { display: flex; align-items: center; gap: 12px; margin-top: 26px; }
+.ob-foot .dim { flex: 1; color: var(--muted); font-size: 13px; }
+@media (max-width: 720px) { .ob-body { padding: 10vh 16px 24px; } .ob-body h1 { font-size: 28px; } }
+
+/* Motion ---------------------------------------------------------------------------------------
+   Short and eased out: things that appear rise in or pop from where they come from; nothing moves
+   on its own except what shows work going on. Reduced motion turns all of it off (below). */
+
+:root { --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.3, 1.3, .5, 1); }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(.96) translateY(-4px); } }
+@keyframes pop-up { from { opacity: 0; transform: scale(.97) translateY(6px); } }
+@keyframes cell-in { from { opacity: 0; transform: scale(.94); } }
+@keyframes open-down { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 60% { box-shadow: 0 0 0 5px transparent; } }
+
+/* Switching pages: the page shown rises in. */
+#home:not([hidden]), #page:not([hidden]), #onboarding:not([hidden]) .ob-body { animation: rise-in .26s var(--ease-out); }
+/* Popovers pop from their button: the widget picker below Add widget, suggestions above the line. */
+#widget-picker:not([hidden]) { transform-origin: top right; animation: pop-in .16s var(--ease-out); }
+#suggest:not([hidden]) { transform-origin: bottom center; animation: pop-up .14s var(--ease-out); }
+#command-error:not([hidden]) { animation: fade-in .2s; }
+/* A new run, and each question or answer in it, rises in at the bottom of the feed. */
+.run, .question, .banner { animation: rise-in .28s var(--ease-out); }
+/* The welcome's tools come in one after another. */
+#welcome:not([hidden]) .starter { animation: rise-in .34s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 35ms); }
+/* A tool group opens downward. */
+#tools .sub:not([hidden]) { animation: open-down .18s var(--ease-out); }
+/* Something printed on Runs while it is not shown: the dot pulses a few times. */
+.runs-activity .page-link .activity, .side-collapsed.runs-activity #side-toggle .activity { animation: pulse 1.6s ease-out 3; }
+.info-row.login .label::before { transition: background-color .3s; }
+
+/* Widgets: added ones grow in (staggered when Home loads) and edit mode's covers fade in. Moves,
+   resizes and removals glide (home.js: glide). */
+.cell { animation: cell-in .32s var(--ease-spring) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
+.home-editing .cell-edit { animation: fade-in .16s; }
+.home-editing .cell-tools { animation: rise-in .2s var(--ease-out); }
+.cell-problem:not([hidden]) { animation: fade-in .2s; }
+.btn:active:not(:disabled), .icon-btn:active, .step:active { transform: scale(.95); }
+.btn, .step { transition: background-color .15s, filter .15s, opacity .15s, transform .12s; }
+.icon-btn { transition: background-color .15s, color .15s, transform .12s; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 /* ANSI styles ---------------------------------------------------------------------------------- */

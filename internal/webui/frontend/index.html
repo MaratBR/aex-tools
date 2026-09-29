@@ -95,6 +95,19 @@
     </div>
   </main>
 
+  <section id="onboarding" role="dialog" aria-modal="true" aria-labelledby="ob-title" hidden>
+    <div class="ob-body">
+      <img src="logo.svg" alt="">
+      <h1 id="ob-title">Welcome to aex</h1>
+      <p>Log in to the services aex works with. Already logged in? Keep it as it is, or log in again.</p>
+      <div id="ob-services"></div>
+      <footer class="ob-foot">
+        <span class="dim">You can log in later with the account tool.</span>
+        <button id="ob-done" class="btn primary" type="button">Continue</button>
+      </footer>
+    </div>
+  </section>
+
   <div id="sheet-backdrop" hidden>
     <form id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" autocomplete="off" novalidate>
       <header class="sheet-head">
@@ -120,5 +133,6 @@
   <script src="term.js"></script>
   <script src="settings.js"></script>
   <script src="home.js"></script>
+  <script src="onboarding.js"></script>
 </body>
 </html>

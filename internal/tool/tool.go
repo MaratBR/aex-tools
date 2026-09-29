@@ -26,6 +26,9 @@ type Tool struct {
 	Hidden bool
 	// Warn, when set, is why the window marks the tool with a warning icon (a plugin not approved).
 	Warn string
+	// Debug marks a tool for developing aex: it exists only when aex runs with --debug
+	// (settings.Debug), then in the debug group ("aex debug <name>").
+	Debug bool
 }
 
 // IsGroup reports whether the tool is a group of sub-tools.

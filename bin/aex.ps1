@@ -1,2 +1,2 @@
-& "$PSScriptRoot\_invoke.ps1" aex @args
+& "$PSScriptRoot\_invoke.ps1" aex --debug @args
 exit $LASTEXITCODE

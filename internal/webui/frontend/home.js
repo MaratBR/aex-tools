@@ -93,6 +93,24 @@ async function save() {
   }
 }
 
+// glide runs apply (which moves, resizes or removes widgets) and slides the widgets that moved from
+// where they were to where they are now.
+function glide(apply) {
+  if (reduceMotion() || page !== 'home') return apply();
+  const cells = [...grid.children];
+  const before = new Map(cells.map(c => [c, c.getBoundingClientRect()]));
+  apply();
+  for (const c of cells) {
+    if (!c.isConnected) continue;
+    const a = before.get(c), b = c.getBoundingClientRect();
+    const dx = a.left - b.left, dy = a.top - b.top;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+    c.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+  }
+}
+
+let firstRender = true; // the widgets Home opens with come in one after another
+
 function renderHome() {
   $('home-empty').hidden = layout.length > 0;
   $('home-edit').hidden = !layout.length;
@@ -100,9 +118,14 @@ function renderHome() {
   if (!layout.length && editing) setEditing(false);
   const cells = new Map([...grid.children].map(c => [c.dataset.id, c]));
   for (const w of layout) {
-    if (!cells.has(w.id)) grid.appendChild(makeCell(w));
+    if (!cells.has(w.id)) {
+      const cell = makeCell(w);
+      if (firstRender) cell.style.setProperty('--i', grid.childElementCount);
+      grid.appendChild(cell);
+    }
     cells.delete(w.id);
   }
+  if (layout.length) firstRender = false;
   cells.forEach(c => c.remove());
   fitGrid();
 }
@@ -120,7 +143,7 @@ function fitGrid() {
   if (page !== 'home') return;
   const width = grid.clientWidth;
   if (!width) return;
-  cols = width >= 900 ? 4 : width >= 440 ? 2 : 1;
+  cols = colsFor(width);
   grid.style.setProperty('--cols', cols);
   for (const w of layout) {
     const cell = cellOf(w);
@@ -130,7 +153,9 @@ function fitGrid() {
     cell.querySelector('.size').textContent = `${w.w} × ${w.h}`;
   }
 }
-new ResizeObserver(() => fitGrid()).observe(grid);
+function colsFor(width) { return width >= 900 ? 4 : width >= 440 ? 2 : 1; }
+// The widgets glide into a new number of columns (the window resized, the sidebar slid).
+new ResizeObserver(() => (grid.clientWidth && colsFor(grid.clientWidth) !== cols ? glide(fitGrid) : fitGrid())).observe(grid);
 
 function makeCell(w) {
   const cell = el('div', 'cell');
@@ -148,14 +173,14 @@ function makeCell(w) {
   const change = (dw, dh) => {
     w.w = Math.max(1, Math.min(4, w.w + dw));
     w.h = Math.max(1, Math.min(4, w.h + dh));
-    fitGrid();
+    glide(fitGrid);
     save();
   };
   const move = d => {
     const i = layout.indexOf(w), j = i + d;
     if (j < 0 || j >= layout.length) return;
     [layout[i], layout[j]] = [layout[j], layout[i]];
-    fitGrid();
+    glide(fitGrid);
     save();
   };
   const tools = el('div', 'cell-tools');
@@ -170,9 +195,14 @@ function makeCell(w) {
   back.setAttribute('aria-label', 'Move earlier');
   const on = button('›', 'step', () => move(1));
   on.setAttribute('aria-label', 'Move later');
-  const remove = button('Remove', 'btn small destructive', () => {
+  const remove = button('Remove', 'btn small destructive', async () => {
+    cell.style.pointerEvents = 'none';
+    if (!reduceMotion()) {
+      await cell.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.92)' }],
+        { duration: 170, easing: 'ease-in', fill: 'forwards' }).finished;
+    }
     layout = layout.filter(x => x !== w);
-    renderHome();
+    glide(renderHome);
     save();
   });
   tools.append(stepper('Width', () => change(-1, 0), () => change(1, 0)),
@@ -204,7 +234,7 @@ function makeCell(w) {
     rest.splice(rest.indexOf(w) + (after ? 1 : 0), 0, dragged);
     if (rest.some((x, i) => x !== layout[i])) {
       layout = rest;
-      fitGrid();
+      glide(fitGrid);
     }
   });
   cell.addEventListener('drop', e => e.preventDefault()); // dragend saves it

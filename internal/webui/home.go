@@ -38,6 +38,9 @@ type WidgetInfo struct {
 	// Refresh is how often, in seconds, the home page tells it to load again (sdk.js: aex.onRefresh)
 	// while auto refresh is on (HomeLayout.AutoRefreshOff); 0: only after runs.
 	Refresh int `json:"refresh,omitempty"`
+	// Debug marks a widget for developing aex or a plugin: offered, and usable, only with --debug
+	// (settings.Debug).
+	Debug bool `json:"debug,omitempty"`
 }
 
 var widgetCatalog = []WidgetInfo{
@@ -102,7 +105,7 @@ type InactivePlugin struct {
 // Widgets lists the widgets that can be added: built-in ones, then plugins' (which describes the
 // safe plugins).
 func (a *App) Widgets() WidgetList {
-	list := WidgetList{Widgets: slices.Clone(widgetCatalog)}
+	list := WidgetList{Widgets: slices.DeleteFunc(slices.Clone(widgetCatalog), func(w WidgetInfo) bool { return w.Debug && !settings.Debug })}
 	plugins, err := plugin.List()
 	if err != nil {
 		return list
@@ -113,7 +116,10 @@ func (a *App) Widgets() WidgetList {
 			continue
 		}
 		for _, w := range p.Widgets {
-			info := WidgetInfo{ID: p.Name + "/" + w.ID, Plugin: p.Name, Name: w.Name,
+			if w.Debug && !settings.Debug {
+				continue
+			}
+			info := WidgetInfo{ID: p.Name + "/" + w.ID, Plugin: p.Name, Name: w.Name, Debug: w.Debug,
 				Summary: w.Summary, W: min(max(w.W, 1), maxWidgetW), H: min(max(w.H, 1), maxWidgetH)}
 			if w.Refresh > 0 {
 				info.Refresh = max(w.Refresh, minRefresh)
@@ -185,6 +191,11 @@ func knownWidget(id string) bool {
 		pluginWidget.MatchString(id) && !strings.HasPrefix(id, ".")
 }
 
+// debugWidget reports whether id is a built-in debug widget that cannot be used without --debug.
+func debugWidget(id string) bool {
+	return !settings.Debug && slices.ContainsFunc(widgetCatalog, func(w WidgetInfo) bool { return w.ID == id && w.Debug })
+}
+
 // validSettings reports whether s is a JSON object small enough to keep.
 func validSettings(s json.RawMessage) bool {
 	var m map[string]any
@@ -245,6 +256,9 @@ func (a *App) WidgetPage(widget string) (WidgetPage, error) {
 	if !knownWidget(widget) {
 		return WidgetPage{}, fmt.Errorf("unknown widget: %q", widget)
 	}
+	if debugWidget(widget) {
+		return WidgetPage{Problem: plugin.ErrDebugWidget.Error()}, nil
+	}
 	b, err := assets.ReadFile("frontend/widgets/" + widget + ".html")
 	return WidgetPage{HTML: string(b)}, err
 }
@@ -266,6 +280,9 @@ func (a *App) WidgetCall(widget, name string, args map[string]any) (any, error) 
 	}
 	if !knownWidget(widget) {
 		return nil, fmt.Errorf("unknown widget: %q", widget)
+	}
+	if debugWidget(widget) {
+		return nil, plugin.ErrDebugWidget
 	}
 	api, ok := widgetAPIs[name]
 	if !ok {
