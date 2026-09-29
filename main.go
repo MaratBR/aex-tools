@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"aex/internal/autostart"
 	"aex/internal/custom"
 	"aex/internal/plugin"
 	"aex/internal/settings"
@@ -41,6 +42,7 @@ var builtins = []tool.Tool{
 	plugins.Tool,
 	customtools.Tool,
 	onboarding.Tool,
+	onboarding.ResetTool,
 }
 
 // debugGroup holds the debug tools (tool.Tool.Debug), only with --debug.
@@ -90,7 +92,7 @@ func help() string {
 			fmt.Fprintf(&list, "    %-*s%s\n", nameWidth()-2, s.Name, s.Summary)
 		}
 	}
-	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [--debug] [<tool> [args...]]
+	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [--debug] [--autostart] [<tool> [args...]]
 
 Without a tool, opens the aex window to pick and run tools.
 With a tool name, runs that tool once in the terminal with the given args (try "aex <tool> --help");
@@ -163,16 +165,24 @@ func pluginDir() string {
 }
 
 func run(args []string) error {
-	for len(args) > 0 && (args[0] == "--plain" || args[0] == "--debug") {
-		if args[0] == "--plain" {
+	autostarted := false
+	for len(args) > 0 && (args[0] == "--plain" || args[0] == "--debug" || args[0] == autostart.Flag) {
+		switch args[0] {
+		case "--plain":
 			ui.Plain = true
-		} else {
+		case "--debug":
 			settings.Debug = true
+		default:
+			autostarted = true
 		}
 		args = args[1:]
 	}
 	tools = withDebug(builtins)
 	if len(args) == 0 {
+		// Started on login (internal/autostart) on a day not picked for that: nothing to do.
+		if autostarted && autostart.Skip() {
+			return nil
+		}
 		return guiMenu()
 	}
 	if args[0] == "--help" || args[0] == "-h" {

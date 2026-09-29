@@ -2,10 +2,13 @@ package webui
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
 	"aex/internal/aext"
+	"aex/internal/autostart"
+	"aex/internal/dates"
 	"aex/internal/settings"
 	"aex/internal/shortcut"
 	"aex/internal/tool"
@@ -28,6 +31,10 @@ type SettingField struct {
 	Source string `json:"source,omitempty"`
 	// Overridden lists fallback sources that also set it, which app settings override.
 	Overridden []string `json:"overridden,omitempty"`
+	// Auto, for a setting that can be auto, is what auto means now (TZ_OFFSET_HOURS: the device's offset).
+	Auto string `json:"auto,omitempty"`
+	// Warning is something off about the value in effect.
+	Warning string `json:"warning,omitempty"`
 }
 
 // SettingsForm is everything the form shows.
@@ -35,12 +42,23 @@ type SettingsForm struct {
 	File     string         `json:"file"`
 	Fields   []SettingField `json:"fields"`
 	Shortcut *ShortcutInfo  `json:"shortcut,omitempty"` // nil when the OS has no app launcher aex supports
+	// Autostart is nil when aex cannot start with this OS.
+	Autostart *AutostartInfo `json:"autostart,omitempty"`
 }
 
 // ShortcutInfo is aex's entry in the OS app launcher.
 type ShortcutInfo struct {
 	Where  string `json:"where"`
 	Exists bool   `json:"exists"`
+}
+
+// AutostartInfo is whether aex starts when the user logs in, and on which days (autostart.Week).
+type AutostartInfo struct {
+	Enabled bool     `json:"enabled"`
+	Days    []string `json:"days"`
+	// Suggested is whether onboarding turns it on: in release builds, not dev builds (rebuilt in
+	// place, run from the repo).
+	Suggested bool `json:"suggested"`
 }
 
 // SaveResult says how saving the form went. When Errors is set, nothing was saved.
@@ -87,12 +105,40 @@ func (a *App) Settings() SettingsForm {
 				f.Source = settings.Source(s.Name)
 			}
 		}
+		if s.Name == "TZ_OFFSET_HOURS" {
+			f.Auto = dates.DeviceTZLabel()
+			if dates.TZMismatch() {
+				f.Warning = fmt.Sprintf("This device is on %s, but dates are computed in %s. Pick auto to follow the device.",
+					f.Auto, dates.TZLabel())
+			}
+		}
 		form.Fields = append(form.Fields, f)
 	}
 	if shortcut.Supported() {
 		form.Shortcut = &ShortcutInfo{Where: shortcut.Where(), Exists: shortcut.Exists()}
 	}
+	form.Autostart = a.Autostart()
 	return form
+}
+
+// Autostart gives whether aex starts when the user logs in; nil when it cannot on this OS.
+func (a *App) Autostart() *AutostartInfo {
+	if !autostart.Supported() {
+		return nil
+	}
+	return &AutostartInfo{Enabled: autostart.Enabled(), Days: autostart.Days(), Suggested: !settings.IsDev}
+}
+
+// SetAutostart saves the days aex starts on and makes it start when the user logs in (enabled) or
+// not.
+func (a *App) SetAutostart(enabled bool, days []string) error {
+	if err := autostart.SetDays(days); err != nil {
+		return err
+	}
+	if !enabled {
+		return autostart.Disable()
+	}
+	return autostart.Enable()
 }
 
 // SaveSettings saves the changed settings, by name: an empty value removes a setting from app

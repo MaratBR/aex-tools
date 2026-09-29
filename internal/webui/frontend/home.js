@@ -15,7 +15,13 @@ let catalog = { widgets: [], inactive: [] }; // WidgetList
 let layout = [];        // HomeWidget: {id, widget, w, h, settings}
 let autoRefresh = true; // !HomeLayout.autoRefreshOff
 let editing = false;
-let cols = 4;
+let cols = 12;
+// Widths are in twelfths of the grid (home.go: gridColumns), heights in rows; as clamped in home.go.
+const maxW = 12, maxH = 4;
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+// shownW is how many columns a widget takes now: all of its width, or the whole row when the
+// window is too narrow for it.
+const shownW = w => Math.min(w.w, cols);
 
 // On Home the sidebar is hidden unless the user opened it there (remembered in this browser); on
 // Runs it is always shown.
@@ -54,6 +60,7 @@ document.addEventListener('keydown', e => {
 function showPage(name, auto = false) {
   if (!auto) pageChosen = true;
   if (name === page) return;
+  if (page === 'settings') leavePluginSettings();
   scrollTops[page] = scroller.scrollTop;
   page = name;
   $('home').hidden = name !== 'home';
@@ -150,12 +157,12 @@ function fitGrid() {
   for (const w of layout) {
     const cell = cellOf(w);
     if (!cell) continue;
-    cell.style.gridColumn = `span ${Math.min(w.w, cols)}`;
+    cell.style.gridColumn = `span ${shownW(w)}`;
     cell.style.gridRow = `span ${w.h}`;
-    cell.querySelector('.size').textContent = `${w.w} × ${w.h}`;
+    cell.querySelector('.size').textContent = `${shownW(w)}/${cols} × ${w.h}`;
   }
 }
-function colsFor(width) { return width >= 900 ? 4 : width >= 440 ? 2 : 1; }
+function colsFor(width) { return width >= 900 ? 12 : width >= 440 ? 6 : 1; }
 // The widgets glide into a new number of columns (the window resized, the sidebar slid).
 new ResizeObserver(() => (grid.clientWidth && colsFor(grid.clientWidth) !== cols ? glide(fitGrid) : fitGrid())).observe(grid);
 
@@ -172,9 +179,10 @@ function makeCell(w) {
   const cover = el('div', 'cell-edit');
   const head = el('div', 'cell-edit-head');
   head.append(el('span', 'cell-name'), el('span', 'size'));
+  // Widths change from what is shown: in a narrow window a widget is at most as wide as it is.
   const change = (dw, dh) => {
-    w.w = Math.max(1, Math.min(4, w.w + dw));
-    w.h = Math.max(1, Math.min(4, w.h + dh));
+    if (dw) w.w = clamp(shownW(w) + dw, 1, Math.min(cols, maxW));
+    w.h = clamp(w.h + dh, 1, maxH);
     glide(fitGrid);
     save();
   };
@@ -209,14 +217,14 @@ function makeCell(w) {
   });
   tools.append(stepper('Width', () => change(-1, 0), () => change(1, 0)),
     stepper('Height', () => change(0, -1), () => change(0, 1)), back, on, remove);
-  cover.append(head, tools);
+  cover.append(head, tools, resizer(cell, w, 'e'), resizer(cell, w, 's'), resizer(cell, w, 'se'));
   cell.appendChild(cover);
 
   // Dragging a cover over another widget puts it there.
   cell.draggable = editing;
   let before = '';
   cell.addEventListener('dragstart', e => {
-    if (!editing) return e.preventDefault();
+    if (!editing || cell.classList.contains('resizing')) return e.preventDefault();
     cell.classList.add('dragging');
     before = layout.map(x => x.id).join();
     e.dataTransfer.effectAllowed = 'move';
@@ -242,6 +250,47 @@ function makeCell(w) {
   cell.addEventListener('drop', e => e.preventDefault()); // dragend saves it
   loadWidget(w, cell);
   return cell;
+}
+
+// resizer is a handle on a widget's cover, on its right edge (dir 'e'), bottom edge ('s') or corner
+// ('se'): dragging it resizes the widget a column or a row at a time, saved when let go.
+function resizer(cell, w, dir) {
+  const handle = el('div', 'cell-resize ' + dir);
+  handle.setAttribute('aria-hidden', 'true'); // the Width and Height steppers do it from the keyboard
+  handle.addEventListener('pointerdown', e => {
+    if (!editing || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+    cell.draggable = false;
+    cell.classList.add('resizing');
+    const style = getComputedStyle(grid);
+    const colGap = parseFloat(style.columnGap) || 0, rowGap = parseFloat(style.rowGap) || 0;
+    const colStep = (grid.clientWidth - colGap * (cols - 1)) / cols + colGap;
+    const rowStep = (cell.getBoundingClientRect().height + rowGap) / w.h; // a row and its gap
+    // From where it started, not where the widget is now: a resized widget can move in the grid.
+    const x0 = e.clientX, y0 = e.clientY, w0 = shownW(w), h0 = w.h, before = `${w.w}x${w.h}`;
+    const move = ev => {
+      const nw = dir === 's' ? w.w : clamp(w0 + Math.round((ev.clientX - x0) / colStep), 1, Math.min(cols, maxW));
+      const nh = dir === 'e' ? w.h : clamp(h0 + Math.round((ev.clientY - y0) / rowStep), 1, maxH);
+      if (nw === w.w && nh === w.h) return;
+      w.w = nw;
+      w.h = nh;
+      glide(fitGrid);
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      cell.classList.remove('resizing');
+      cell.draggable = editing;
+      if (`${w.w}x${w.h}` !== before) save();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  });
+  return handle;
 }
 
 function setEditing(on) {

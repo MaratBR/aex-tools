@@ -242,7 +242,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .controls { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 2px; }
 .controls.row { flex-direction: row; flex-wrap: wrap; }
 .q-input { display: flex; gap: 6px; width: 100%; }
-.q-input input, .field input, .wipe-panel input {
+.q-input input, .field input, .field select, .wipe-panel input {
   flex: 1; min-width: 0;
   padding: 6px 11px;
   border: 0;
@@ -253,7 +253,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
   transition: box-shadow .15s, background-color .15s;
 }
 .q-input input { font: 13px/1.5 var(--mono); }
-.q-input input:focus, .field input:focus, .wipe-panel input:focus { background: var(--surface); box-shadow: var(--ring); }
+.q-input input:focus, .field input:focus, .field select:focus, .wipe-panel input:focus { background: var(--surface); box-shadow: var(--ring); }
 .q-input input[type="password"], .field input[type="password"] { letter-spacing: .15em; }
 .q-input input::placeholder, .field input::placeholder, .wipe-panel input::placeholder { color: var(--faint); letter-spacing: normal; }
 .answer { font: 600 13px/1.45 var(--mono); }
@@ -355,7 +355,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 #home-empty .dim { color: var(--faint); font-size: 13px; }
 
 #grid {
-  --cols: 4;
+  --cols: 12;
   display: grid;
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   grid-auto-rows: 150px;
@@ -390,6 +390,18 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 }
 .home-editing .cell-edit { display: flex; }
 .cell.dragging { opacity: .4; }
+/* Handles on the right edge, the bottom edge and the corner to resize a widget with the mouse. */
+.cell-resize { position: absolute; z-index: 1; touch-action: none; }
+.cell-resize.e { top: 14px; bottom: 14px; right: 0; width: 8px; cursor: ew-resize; }
+.cell-resize.s { left: 14px; right: 14px; bottom: 0; height: 8px; cursor: ns-resize; }
+.cell-resize.se { right: 0; bottom: 0; width: 13px; height: 13px; cursor: nwse-resize; } /* inside the cover's padding: clear of Remove */
+.cell-resize.se::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px;
+  border: solid color-mix(in srgb, var(--accent) 70%, transparent); border-width: 0 2px 2px 0;
+  border-bottom-right-radius: 4px;
+}
+.cell.resizing { z-index: 2; }
+.cell.resizing .cell-edit { box-shadow: inset 0 0 0 2px var(--accent); }
 .cell-edit-head { display: flex; align-items: baseline; gap: 8px; }
 .cell-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cell-edit .size { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -513,7 +525,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .field-name { flex: 1; font-weight: 500; }
 .field-env { font: 11px/1 var(--mono); color: var(--faint); }
 .field-line { display: flex; gap: 6px; align-items: center; }
-.field input { font: 13px/1.5 var(--sans); }
+.field input, .field select { font: 13px/1.5 var(--sans); }
 .field-hint { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .field-note { font-size: 12px; color: var(--warn); }
 .field-error { font-size: 12px; color: var(--fail); }
@@ -561,6 +573,10 @@ div.row { cursor: default; }
 .segmented span { display: block; padding: 3px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
 .segmented input:checked + span { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-weight: 500; }
 .segmented input:focus-visible + span { box-shadow: var(--ring); }
+/* The days aex starts on (settings.js: autostartRows), dimmed while it does not start at all. */
+.autostart-days { flex-wrap: wrap; }
+.autostart-days .segmented span { padding: 3px 9px; }
+.autostart-days.off .segmented { opacity: .5; }
 
 .wipe-panel:empty { display: none; }
 .wipe-panel { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
@@ -606,6 +622,7 @@ div.row { cursor: default; }
 .ob-service .state .warn { color: var(--warn); }
 .ob-service .note { color: var(--fail); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
 .ob-service .btn { flex: none; }
+#ob-autostart { margin-top: 22px; }
 .ob-foot { display: flex; align-items: center; gap: 12px; margin-top: 26px; }
 .ob-foot .dim { flex: 1; color: var(--muted); font-size: 13px; }
 @media (max-width: 720px) { .ob-body { padding: 10vh 16px 24px; } .ob-body h1 { font-size: 28px; } }

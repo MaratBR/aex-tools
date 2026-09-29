@@ -10,6 +10,8 @@ let run = null;     // the run in progress: {el, body, status, out, term, starte
 let keyHandler = null;
 // dropHandler takes the paths of files dropped on the window, while a question for a path is open.
 let dropHandler = null;
+// cancelQuestion cancels the open question, if there is one.
+let cancelQuestion = null;
 
 // Helpers ---------------------------------------------------------------------------------------
 
@@ -61,7 +63,9 @@ function optionName(ansi) {
 }
 
 const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
-const toBottom = () => (scroller.scrollTop = scroller.scrollHeight);
+// toBottom scrolls to the end of a run's page, only while that page is shown: the pages share the
+// scroller, so a start-up run printing would otherwise scroll Home.
+const toBottom = (where = run?.page) => { if (!where || where === page) scroller.scrollTop = scroller.scrollHeight; };
 
 function elapsed(ms) {
   const s = Math.round(ms / 1000);
@@ -188,7 +192,7 @@ function finished({ status, ok, quiet }) {
   document.body.classList.remove('running');
   updateCommand();
   runChanged();
-  if (nearBottom()) toBottom();
+  if (nearBottom()) toBottom(where);
   if (where === 'settings') pluginSettingsFinished();
   refresh();
   refreshWidgets();
@@ -201,6 +205,7 @@ function closeQuestion() {
   if (keyHandler) document.removeEventListener('keydown', keyHandler, true);
   keyHandler = null;
   dropHandler = null;
+  cancelQuestion = null;
   document.querySelectorAll('.question.open').forEach(q => {
     q.classList.remove('open');
     q.querySelectorAll('button, input').forEach(b => (b.disabled = true));
@@ -232,6 +237,7 @@ function onPrompt(p) {
   const q = el('section', 'question open');
   q.dataset.title = p.title;
   const cancel = () => answer(p, q, '', 'Cancelled', true);
+  cancelQuestion = cancel;
   const title = el('div', 'q-title');
   title.appendChild(ansiToFragment(p.title));
   q.appendChild(title);

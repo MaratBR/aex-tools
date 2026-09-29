@@ -64,6 +64,7 @@ func Run(title string, host Host) error {
 		Height:           760,
 		MinWidth:         640,
 		MinHeight:        420,
+		WindowStartState: options.Maximised,
 		Frameless:        true, // the title bar is part of the page: see #titlebar in index.html
 		AssetServer:      &assetserver.Options{Assets: sub},
 		BackgroundColour: &options.RGBA{R: 24, G: 26, B: 31, A: 255},

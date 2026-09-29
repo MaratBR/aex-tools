@@ -360,7 +360,9 @@ func keyOf(date, project, description string) entryKey {
 	return entryKey{date, strings.TrimSpace(project), strings.TrimSpace(description)}
 }
 
-// skipDuplicates drops entries AEXT already has, and says which (with both hours when they differ).
+// skipDuplicates drops entries AEXT already has, and says which. When the hours differ, the AEXT
+// entry is changed to the CSV's; with several AEXT entries for the key, which one to change is
+// unclear, so they are left as they are.
 func skipDuplicates(c *aext.Client, entries []aext.Entry) ([]aext.Entry, error) {
 	from, to := entries[0].Date, entries[0].Date
 	for _, e := range entries {
@@ -371,18 +373,31 @@ func skipDuplicates(c *aext.Client, entries []aext.Entry) ([]aext.Entry, error) 
 		return nil, err
 	}
 	keep, skipped := splitDuplicates(entries, existing)
+	changed := 0
 	for _, s := range skipped {
 		line := fmt.Sprintf("  %s %s %s", s.entry.Date, s.entry.Project, s.entry.Description)
-		if math.Abs(s.entry.HoursTotal-s.logged) > 0.01 {
-			line += ui.Out.Yellow(fmt.Sprintf(" (AEXT has %.2fh, CSV %.2fh)", s.logged, s.entry.HoursTotal))
-		}
-		if s.inCSV {
+		switch {
+		case s.inCSV:
 			line += ui.Out.Yellow(" (repeated in CSV)")
+		case math.Abs(s.entry.HoursTotal-s.logged) <= 0.01:
+		case s.id == nil:
+			line += ui.Out.Yellow(fmt.Sprintf(" (AEXT has %.2fh in several entries, CSV %.2fh: not changed)", s.logged, s.entry.HoursTotal))
+		default:
+			if err := c.SetHours(*s.id, s.entry.HoursTotal); err != nil {
+				fmt.Println(line)
+				return nil, err
+			}
+			changed++
+			line += ui.Out.Green(fmt.Sprintf(" (AEXT had %.2fh, changed to %.2fh)", s.logged, s.entry.HoursTotal))
 		}
 		fmt.Println(line)
 	}
 	if len(skipped) > 0 {
-		fmt.Printf("%s skipped %d entries already logged (above).\n", aextLabel(), len(skipped))
+		msg := fmt.Sprintf("skipped %d entries already logged (above)", len(skipped))
+		if changed > 0 {
+			msg += fmt.Sprintf(", changed the hours of %d", changed)
+		}
+		fmt.Printf("%s %s.\n", aextLabel(), msg)
 	}
 	return keep, nil
 }
@@ -391,21 +406,30 @@ type skippedEntry struct {
 	entry  aext.Entry
 	logged float64 // hours AEXT (or an earlier CSV row) has for the key
 	inCSV  bool    // duplicate of an earlier CSV row, not of an AEXT entry
+	id     *int64  // the AEXT entry, when it is the only one for the key
 }
 
 // splitDuplicates keeps entries whose key is neither in existing nor an earlier entry.
 func splitDuplicates(entries []aext.Entry, existing []aext.TimeEntry) (keep []aext.Entry, skipped []skippedEntry) {
 	logged := map[entryKey]float64{}
+	ids := map[entryKey][]int64{}
 	for _, e := range existing {
-		logged[keyOf(e.Date, e.Project, e.Description)] += *e.HoursTotal
+		k := keyOf(e.Date, e.Project, e.Description)
+		logged[k] += *e.HoursTotal
+		ids[k] = append(ids[k], *e.ID)
 	}
-	sent := map[entryKey]float64{}
+	sent := map[entryKey]float64{} // hours of the first CSV row for each key
 	for _, e := range entries {
 		k := keyOf(e.Date, e.Project, e.Description)
-		if h, ok := logged[k]; ok {
-			skipped = append(skipped, skippedEntry{entry: e, logged: h})
-		} else if h, ok := sent[k]; ok {
+		if h, ok := sent[k]; ok {
 			skipped = append(skipped, skippedEntry{entry: e, logged: h, inCSV: true})
+		} else if h, ok := logged[k]; ok {
+			s := skippedEntry{entry: e, logged: h}
+			if len(ids[k]) == 1 {
+				s.id = &ids[k][0]
+			}
+			skipped = append(skipped, s)
+			sent[k] = e.HoursTotal
 		} else {
 			sent[k] = e.HoursTotal
 			keep = append(keep, e)

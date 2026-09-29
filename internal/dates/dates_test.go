@@ -41,3 +41,11 @@ func TestMonths(t *testing.T) {
 		t.Errorf("EachDay len = %d", got)
 	}
 }
+
+func TestOffsetLabel(t *testing.T) {
+	for hours, want := range map[float64]string{7: "UTC+7", -5: "UTC-5", 5.5: "UTC+5:30", -9.5: "UTC-9:30", 0: "UTC+0", 12.75: "UTC+12:45"} {
+		if got := OffsetLabel(hours); got != want {
+			t.Errorf("OffsetLabel(%g) = %q, want %q", hours, got, want)
+		}
+	}
+}

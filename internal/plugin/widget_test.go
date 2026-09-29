@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -54,7 +55,11 @@ func TestWidgets(t *testing.T) {
 	hash := approveFile(t, p.Path)
 
 	info, err := inspect(p.Name, p.Path)
-	if err != nil || len(info.Widgets) != 1 || info.Widgets[0] != (WidgetInfo{ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1}) {
+	want := []WidgetInfo{
+		{ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1, Access: []Access{}},
+		{ID: "jira", Name: "Jira", W: 1, H: 1, Access: []Access{Jira}},
+	}
+	if err != nil || !reflect.DeepEqual(info.Widgets, want) {
 		t.Fatalf("described widgets = %+v, %v", info.Widgets, err)
 	}
 	if info.Settings != "test settings" {
@@ -78,12 +83,21 @@ func TestWidgets(t *testing.T) {
 		t.Fatal("unknown call: no error")
 	}
 
-	// Access the plugin asks for must be granted already: a widget cannot ask.
+	// A widget cannot need access its plugin does not ask for.
+	if _, err := WidgetCall(p, "jira", "echo", nil); err == nil {
+		t.Fatal("widget needing access the plugin does not ask for: no error")
+	}
+
+	// Access the widget needs must be granted already: a widget cannot ask.
 	t.Setenv("WIDGET_TEST_ACCESS", "1")
 	widgetMu.Lock()
 	clear(widgetDescribed)
 	widgetMu.Unlock()
-	_, err = WidgetCall(p, "hello", "echo", nil)
+	// A widget needing none of it works without it.
+	if got, err := WidgetCall(p, "hello", "echo", []byte(`{"a":1}`)); err != nil || string(got) != `{"a":1}` {
+		t.Fatalf("widget needing no access: echo = %s, %v", got, err)
+	}
+	_, err = WidgetCall(p, "jira", "echo", nil)
 	if we, ok := errors.AsType[*WidgetError](err); !ok {
 		t.Fatalf("access not granted: err = %v, want a WidgetError", err)
 	} else if want := "plugin widgetplugin has not been granted access to jira"; we.Error() != want {
@@ -91,8 +105,17 @@ func TestWidgets(t *testing.T) {
 	}
 	settings.Credentials.Set(grantKey(p.Path), hash+" jira")
 	// Granted, but its settings are not set (none are here): still not asked for.
-	_, err = WidgetCall(p, "hello", "echo", nil)
+	_, err = WidgetCall(p, "jira", "echo", nil)
 	if we, ok := errors.AsType[*WidgetError](err); !ok || we.Reason != "needs JIRA_EMAIL, which is not set" {
 		t.Fatalf("settings not set: err = %v", err)
+	}
+
+	// A plugin built before widgets listed their access (none listed): its widgets need all of it.
+	settings.Credentials.Delete(grantKey(p.Path))
+	widgetMu.Lock()
+	widgetDescribed[hash] = description{Access: []Access{Jira}, Widgets: []WidgetInfo{{ID: "hello"}}}
+	widgetMu.Unlock()
+	if _, err := WidgetCall(p, "hello", "echo", nil); !errors.As(err, new(*WidgetError)) {
+		t.Fatalf("widget of an older plugin, access not granted: err = %v, want a WidgetError", err)
 	}
 }

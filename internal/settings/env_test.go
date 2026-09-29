@@ -47,7 +47,7 @@ func TestProblem(t *testing.T) {
 			t.Errorf("HOURS_PER_DAY %q valid = %v", value, !ok)
 		}
 	}
-	for value, ok := range map[string]bool{"5.5": true, "-12": true, "5.75": true, "5.1": false, "15": false} {
+	for value, ok := range map[string]bool{"5.5": true, "-12": true, "5.75": true, "5.1": false, "15": false, "auto": true, " Auto ": true, "autox": false} {
 		if (Problem("TZ_OFFSET_HOURS", value) == "") != ok {
 			t.Errorf("TZ_OFFSET_HOURS %q valid = %v", value, !ok)
 		}

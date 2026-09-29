@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"aex/internal/aext"
@@ -33,7 +34,7 @@ type WidgetInfo struct {
 	Plugin  string `json:"plugin,omitempty"` // the plugin it comes from, for a plugin's widget
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
-	W       int    `json:"w"` // size it is added with, in grid cells
+	W       int    `json:"w"` // size it is added with, in grid cells (gridColumns across)
 	H       int    `json:"h"`
 	// Refresh is how often, in seconds, the home page tells it to load again (sdk.js: aex.onRefresh)
 	// while auto refresh is on (HomeLayout.AutoRefreshOff); 0: only after runs.
@@ -44,9 +45,10 @@ type WidgetInfo struct {
 }
 
 var widgetCatalog = []WidgetInfo{
-	{ID: "quota", Name: "AEXT quota", Summary: "Hours logged this month against the quota, and last month", W: 2, H: 2, Refresh: 60},
-	{ID: "google-calendars", Name: "Google Calendar now", Summary: "What is on now in a Google calendar you pick, and when it ends", W: 2, H: 2, Refresh: 60},
-	{ID: "jira-tickets", Name: "Jira tickets", Summary: "Open tickets assigned to you, or where you are in fields you pick", W: 2, H: 2, Refresh: 60},
+	{ID: "quota", Name: "AEXT quota", Summary: "Hours logged this month against the quota, and last month", W: 6, H: 2, Refresh: 60},
+	{ID: "google-calendars", Name: "Google Calendar", Summary: "What is on now in a Google calendar you pick, and what comes in the next working days", W: 6, H: 2, Refresh: 60},
+	{ID: "jira-tickets", Name: "Jira tickets", Summary: "Open tickets assigned to you, or where you are in fields you pick", W: 6, H: 2, Refresh: 60},
+	{ID: "cat", Name: "Cat as a service", Summary: "A random cat from cataas.com, a new one on click", W: 3, H: 1},
 }
 
 // widgetAPIs are the calls widgets make with aex.call(name, args). They never prompt: a widget has
@@ -58,11 +60,14 @@ var widgetAPIs = map[string]func(args map[string]any) (any, error){
 	"jiraFields":      jiraFieldsAPI,
 	"jiraTickets":     jiraTicketsAPI,
 	"jiraOpen":        jiraOpenAPI,
+	"cat":             catAPI,
 }
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
 const (
-	maxWidgetW    = 4
+	gridColumns   = 12 // the grid's columns at full width: widths are in twelfths
+	oldColumns    = 4  // the grid's columns before, still in home.json files without Columns, and plugins' sizes
+	maxWidgetW    = gridColumns
 	maxWidgetH    = 4
 	maxWidgets    = 48
 	homeFileLimit = 1 << 20
@@ -86,6 +91,9 @@ type HomeLayout struct {
 	Widgets []HomeWidget `json:"widgets"`
 	// AutoRefreshOff turns off refreshing widgets on their own (WidgetInfo.Refresh), on by default.
 	AutoRefreshOff bool `json:"autoRefreshOff,omitempty"`
+	// Columns is the grid's columns the widths are in, gridColumns when saved; a file from before
+	// has none, its widths are in oldColumns. Only in the file.
+	Columns int `json:"columns,omitempty"`
 }
 
 // WidgetList is what can be added to the home page.
@@ -120,7 +128,7 @@ func (a *App) Widgets() WidgetList {
 				continue
 			}
 			info := WidgetInfo{ID: p.Name + "/" + w.ID, Plugin: p.Name, Name: w.Name, Debug: w.Debug,
-				Summary: w.Summary, W: min(max(w.W, 1), maxWidgetW), H: min(max(w.H, 1), maxWidgetH)}
+				Summary: w.Summary, W: min(max(w.W, 1), oldColumns) * (gridColumns / oldColumns), H: min(max(w.H, 1), maxWidgetH)}
 			if w.Refresh > 0 {
 				info.Refresh = max(w.Refresh, minRefresh)
 			}
@@ -145,6 +153,11 @@ func (a *App) Home() (HomeLayout, error) {
 	if err := json.Unmarshal(b, &saved); err != nil {
 		return layout, fmt.Errorf("%s: %w", settings.HomeFile, err)
 	}
+	if saved.Columns != gridColumns {
+		for i := range saved.Widgets {
+			saved.Widgets[i].W *= gridColumns / oldColumns
+		}
+	}
 	layout.Widgets = cleanWidgets(saved.Widgets)
 	layout.AutoRefreshOff = saved.AutoRefreshOff
 	return layout, nil
@@ -167,6 +180,7 @@ func (a *App) SaveHome(layout HomeLayout) error {
 		return fmt.Errorf("at most %d widgets", maxWidgets)
 	}
 	layout.Widgets = cleanWidgets(layout.Widgets)
+	layout.Columns = gridColumns
 	b, err := json.MarshalIndent(layout, "", "  ")
 	if err != nil {
 		return err
@@ -374,7 +388,7 @@ func googleCalendarsAPI(map[string]any) (any, error) {
 	return reply, nil
 }
 
-// NowReply is the googleNow API's result: what is on now in one calendar.
+// NowReply is the googleNow API's result: what is on now in one calendar, and what comes next.
 type NowReply struct {
 	NotConfigured bool   `json:"notConfigured,omitempty"` // no OAuth client: nothing else is set
 	NeedLogin     bool   `json:"needLogin,omitempty"`     // no valid Google login: nothing else is set
@@ -385,6 +399,9 @@ type NowReply struct {
 	Calendar CalendarInfo `json:"calendar"`
 	Now      string       `json:"now,omitempty"` // RFC 3339, when the events were read
 	Events   []EventInfo  `json:"events"`
+	// Upcoming: the events starting later, until the end of the upcomingDays-th working day after today.
+	Upcoming []EventInfo `json:"upcoming"`
+	Until    string      `json:"until,omitempty"` // YYYY-MM-DD, the last day Upcoming covers
 }
 
 // EventInfo is an event on now, as the widget shows it.
@@ -430,26 +447,93 @@ func googleNowAPI(args map[string]any) (any, error) {
 	}
 	cal := list[i]
 	now := time.Now()
-	events, err := c.Events(id, now, now.Add(time.Second))
+	last := upcomingUntil(dates.Today())
+	events, err := c.Events(id, now, dates.DayStart(dates.AddDays(last, 1)))
 	if errors.Is(err, google.ErrNoLogin) {
 		return NowReply{NeedLogin: true}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	reply := NowReply{Email: c.Email(), Now: now.Format(time.RFC3339), Events: []EventInfo{},
+	reply := NowReply{Email: c.Email(), Now: now.Format(time.RFC3339), Events: []EventInfo{}, Upcoming: []EventInfo{}, Until: last,
 		Calendar: CalendarInfo{ID: cal.ID, Name: cal.Name(), Color: cal.Color, Access: cal.AccessRole, Primary: cal.Primary, Hidden: cal.Hidden}}
 	for _, e := range events {
 		if e.Declined() {
 			continue
 		}
 		info := EventInfo{Title: e.Summary, Free: e.Transparency == "transparent", Tentative: e.Status == "tentative"}
+		var start time.Time
 		if e.Start.DateTime != "" {
 			info.Start, info.End = e.Start.DateTime, e.End.DateTime
+			start, _ = time.Parse(time.RFC3339, e.Start.DateTime)
 		} else {
 			info.Start, info.End, info.AllDay = e.Start.Date, e.End.Date, true
+			start = dates.DayStart(e.Start.Date)
 		}
-		reply.Events = append(reply.Events, info)
+		if start.After(now) {
+			reply.Upcoming = append(reply.Upcoming, info)
+		} else {
+			reply.Events = append(reply.Events, info)
+		}
 	}
 	return reply, nil
+}
+
+// upcomingDays is how many working days after today the calendar widget looks ahead.
+const upcomingDays = 3
+
+// upcomingUntil is the upcomingDays-th working day after today: by the AEXT working-days calendar
+// when there is a session, else counting Monday to Friday. Kept for the day, as it is asked each minute.
+var upcoming struct {
+	sync.Mutex
+	today, until string
+}
+
+func upcomingUntil(today string) string {
+	upcoming.Lock()
+	defer upcoming.Unlock()
+	if upcoming.today == today {
+		return upcoming.until
+	}
+	until, fromAEXT := nthWorkingDay(today, upcomingDays, aextWorkingDays(today))
+	if fromAEXT {
+		upcoming.today, upcoming.until = today, until
+	}
+	return until
+}
+
+// aextWorkingDays is the working days of the next few weeks after today, or nil without a session.
+func aextWorkingDays(today string) map[string]bool {
+	c, err := aext.NewQuiet()
+	if err != nil || !c.HasSession() {
+		return nil
+	}
+	days, err := c.WorkingDays(dates.AddDays(today, 1), dates.AddDays(today, 21))
+	if err != nil {
+		return nil
+	}
+	working := map[string]bool{}
+	for _, d := range days {
+		working[d.Date] = *d.IsWorkingDay
+	}
+	return working
+}
+
+// nthWorkingDay is the n-th working day after today, by working (a day missing from it is counted
+// Monday to Friday); true when working had every day it looked at.
+func nthWorkingDay(today string, n int, working map[string]bool) (string, bool) {
+	day, complete := today, working != nil
+	for n > 0 {
+		day = dates.AddDays(day, 1)
+		isWorking, ok := working[day]
+		if !ok {
+			complete = false
+			wd := dates.DayStart(day).Weekday()
+			isWorking = wd != time.Saturday && wd != time.Sunday
+		}
+		if isWorking {
+			n--
+		}
+	}
+	return day, complete
 }

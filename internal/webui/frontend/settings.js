@@ -1,6 +1,6 @@
 // The Settings page: its menu has General, the form of what the configure tool asks for in a
 // terminal, and under Plugins each plugin with settings of its own, run on the page (a run like on
-// Runs, app.js, but here). Backend: settings.go (Settings, SaveSettings, SetShortcut, WipeList,
+// Runs, app.js, but here). Backend: settings.go (Settings, SaveSettings, SetShortcut, SetAutostart, WipeList,
 // Wipe, WipeSession), webui.go (RunSettings).
 const settingsForm = $('settings-form'), settingsBody = $('settings-body');
 const saveButton = $('settings-save'), discardButton = $('settings-discard'), settingsNote = $('settings-note');
@@ -79,6 +79,7 @@ function renderSettingsNav() {
 
 // showSection shows General or a plugin's settings; picked (from the menu) starts the plugin's.
 function showSection(section, picked = false) {
+  if (section !== settingsSection) leavePluginSettings();
   settingsSection = section;
   document.querySelectorAll('.settings-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.section === section)));
   settingsForm.hidden = section !== 'general';
@@ -114,6 +115,13 @@ async function startPluginSettings() {
   } catch (e) {
     finished({ status: String(e), ok: false });
   }
+}
+
+// leavePluginSettings is leaving the plugin's settings shown while they run: the question they wait
+// on is cancelled, or the run would go on waiting out of sight and keep every other tool from
+// running.
+function leavePluginSettings() {
+  if (pluginRunning && pluginRunning === settingsSection && run?.page === 'settings' && cancelQuestion) cancelQuestion();
 }
 
 // pluginSettingsFinished is the plugin's settings run ending (app.js: finished).
@@ -152,10 +160,41 @@ async function loadSettings(message) {
   }
   group('Appearance').appendChild(themeRow());
   if (form.shortcut) group('App launcher').appendChild(shortcutRow(form.shortcut));
+  if (form.autostart) group('Start with the system', 'On a day not picked, aex started when you log in closes at once.')
+    .append(...autostartRows(form.autostart, saveAutostart));
   group('Reset', `Settings are saved in ${form.file}. .env and environment variables are never touched and still apply.`)
     .append(wipeRow(false), wipeRow(true));
   updateDirty();
   note(message);
+}
+
+// tzOffsets are the UTC offsets in use somewhere, in hours.
+const tzOffsets = [-12, -11, -10, -9.5, -9, -8, -7, -6, -5, -4, -3.5, -3, -2, -1, 0, 1, 2, 3, 3.5, 4, 4.5, 5, 5.5, 5.75,
+  6, 6.5, 7, 8, 8.75, 9, 9.5, 10, 10.5, 11, 12, 12.75, 13, 13.75, 14];
+
+function offsetLabel(hours) {
+  const abs = Math.abs(hours), whole = Math.trunc(abs), minutes = Math.round((abs - whole) * 60);
+  return 'UTC' + (hours < 0 ? '-' : '+') + whole + (minutes ? ':' + String(minutes).padStart(2, '0') : '');
+}
+
+// tzSelect picks TZ_OFFSET_HOURS: auto (the device's timezone) or a UTC offset. A saved value is
+// matched to its option by number (07 is 7), so it does not show as changed.
+function tzSelect(f) {
+  const select = el('select');
+  const option = (value, text) => {
+    const o = el('option', null, text);
+    o.value = value;
+    select.appendChild(o);
+  };
+  option('auto', `Device timezone (${f.auto || 'auto'})`);
+  for (const h of tzOffsets) option(String(h), offsetLabel(h));
+  const saved = f.value || f.default;
+  const match = [...select.options].find(o => o.value.toLowerCase() === String(saved).toLowerCase() ||
+    (o.value !== 'auto' && Number(o.value) === Number(saved)));
+  if (!match) option(saved, saved);
+  f.value = match ? match.value : saved;
+  select.value = f.value;
+  return select;
 }
 
 function fieldRow(f) {
@@ -165,14 +204,18 @@ function fieldRow(f) {
   head.htmlFor = id;
   head.append(el('span', 'field-name', settingLabels[f.name] || f.name), el('span', 'field-env', f.name));
   const line = el('div', 'field-line');
-  const input = el('input');
+  const isTZ = f.name === 'TZ_OFFSET_HOURS';
+  const input = isTZ ? tzSelect(f) : el('input');
   input.id = id;
-  input.type = f.secret ? 'password' : 'text';
-  input.spellcheck = false;
-  input.autocomplete = 'off';
-  input.value = f.value || '';
   const secretPlaceholder = () => (f.masked ? `Saved (${f.masked}), type to replace` : 'Not set');
-  input.placeholder = f.secret ? secretPlaceholder() : f.default ? 'Default: ' + f.default : 'Not set';
+  if (isTZ) f.hint = 'Dates are computed in it: ranges, "today", worklog days, file timestamps.';
+  else {
+    input.type = f.secret ? 'password' : 'text';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.value = f.value || '';
+    input.placeholder = f.secret ? secretPlaceholder() : f.default ? 'Default: ' + f.default : 'Not set';
+  }
   line.appendChild(input);
   const x = { f, input, cleared: false };
   if (f.secret && f.masked) {
@@ -190,6 +233,7 @@ function fieldRow(f) {
   const hint = el('div', 'field-hint');
   hint.appendChild(withLinks(f.hint));
   row.appendChild(hint);
+  if (f.warning) row.appendChild(el('div', 'field-note', f.warning));
   if (f.source) row.appendChild(el('div', 'field-note', `Now comes from ${f.source}. Saving it here overrides that.`));
   else if (f.overridden?.length) row.appendChild(el('div', 'field-note', `Also set in ${f.overridden.join(', ')}, which this overrides.`));
   x.error = el('div', 'field-error');
@@ -220,6 +264,68 @@ function shortcutRow(s) {
   };
   row.appendChild(toggle);
   return row;
+}
+
+// autostartRows are a switch for starting aex when the user logs in and the days to (Monday first),
+// set to info ({enabled, days}). onChange(value) runs on each change with {enabled, days}; a promise
+// it returns keeps the rows disabled until it settles, and puts them back as they were when it
+// rejects. The last day picked cannot be unpicked.
+const weekDays = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
+function autostartRows(info, onChange) {
+  const row = el('label', 'row');
+  row.appendChild(el('span', 'row-text', 'Start aex when you log in'));
+  const toggle = el('input', 'switch');
+  toggle.type = 'checkbox';
+  toggle.setAttribute('role', 'switch');
+  toggle.checked = info.enabled;
+  row.appendChild(toggle);
+  const daysRow = el('div', 'row autostart-days');
+  daysRow.appendChild(el('span', 'row-text', 'On'));
+  const seg = el('div', 'segmented');
+  seg.setAttribute('role', 'group');
+  seg.setAttribute('aria-label', 'Days to start on');
+  const boxes = weekDays.map(([value, text]) => {
+    const label = el('label');
+    const input = el('input');
+    input.type = 'checkbox';
+    input.value = value;
+    input.checked = info.days.includes(value);
+    label.append(input, el('span', null, text));
+    seg.appendChild(label);
+    return input;
+  });
+  daysRow.appendChild(seg);
+  const value = () => ({ enabled: toggle.checked, days: boxes.filter(b => b.checked).map(b => b.value) });
+  const sync = () => { daysRow.classList.toggle('off', !toggle.checked); };
+  let last = value();
+  const changed = async input => {
+    if (!boxes.some(b => b.checked)) { input.checked = true; return; }
+    sync();
+    const inputs = [toggle, ...boxes];
+    inputs.forEach(i => (i.disabled = true));
+    try {
+      await onChange(value());
+      last = value();
+    } catch {
+      toggle.checked = last.enabled;
+      boxes.forEach(b => (b.checked = last.days.includes(b.value)));
+      sync();
+    }
+    inputs.forEach(i => (i.disabled = false));
+  };
+  [toggle, ...boxes].forEach(i => (i.onchange = () => changed(i)));
+  sync();
+  return [row, daysRow];
+}
+
+async function saveAutostart({ enabled, days }) {
+  try {
+    await api().SetAutostart(enabled, days);
+    note(enabled ? 'aex starts when you log in on ' + days.map(d => weekDays.find(w => w[0] === d)[1]).join(', ') + '.' : 'aex no longer starts when you log in.');
+  } catch (e) {
+    note(String(e), true);
+    throw e;
+  }
 }
 
 // themeRow picks the window's theme, which applies (and is kept) at once, not on Save.

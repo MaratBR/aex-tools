@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"aex/internal/aext"
+	"aex/internal/autostart"
 	"aex/internal/settings"
 	"aex/internal/shortcut"
 	"aex/internal/tool"
@@ -27,6 +28,7 @@ func configureHelp() string {
 	return fmt.Sprintf(`Usage: configure [NAME | NAME=value]...
        configure --wipe-settings | --wipe-all
        configure --add-shortcut | --remove-shortcut
+       configure --autostart <days> | --autostart off
 
 Without arguments, lists the settings with their current values: pick one to change it (it is
 saved right away), or fill in every setting that is not set. Settings (app settings, %s):
@@ -40,6 +42,9 @@ saved right away), or fill in every setting that is not set. Settings (app setti
 Both ask you to type CONFIRM. The menu offers them too.
   --add-shortcut     Add aex to the %s (%s), pointing at this exe
   --remove-shortcut  Remove aex from it
+  --autostart <days> Start aex when you log in, on those days: mon,tue,wed,thu,fri,sat,sun (comma
+                     separated), workdays or every-day. On other days it closes at once.
+  --autostart off    Do not start aex when you log in
 
 App settings have the highest priority: they override .env and real environment variables,
 which remain fallbacks. Leave an answer empty to keep the current value, or enter "-" to
@@ -57,6 +62,7 @@ func run(args []string) error {
 	wipeAll := fs.Bool("wipe-all", false, "")
 	addShortcut := fs.Bool("add-shortcut", false, "")
 	removeShortcut := fs.Bool("remove-shortcut", false, "")
+	autostartDays := fs.String("autostart", "", "")
 	if done, err := tool.ParseFlagsAndArgs(fs, args, configureHelp()); done || err != nil {
 		return err
 	}
@@ -74,6 +80,12 @@ func run(args []string) error {
 			return errors.New("--add-shortcut and --remove-shortcut take no other arguments (see configure --help)")
 		}
 		return setShortcut(*addShortcut)
+	}
+	if *autostartDays != "" {
+		if fs.NArg() > 0 {
+			return errors.New("--autostart takes no other arguments (see configure --help)")
+		}
+		return setAutostart(*autostartDays)
 	}
 	if fs.NArg() > 0 {
 		return runArgs(fs.Args())
@@ -171,6 +183,13 @@ func menu() error {
 				options = append(options, ui.Option{Label: "Add aex to the " + shortcut.Where(), Value: "add-shortcut"})
 			}
 		}
+		if autostart.Supported() {
+			if autostart.Enabled() {
+				options = append(options, ui.Option{Label: "Start aex when you log in: " + strings.Join(autostart.Days(), ","), Value: "autostart"})
+			} else {
+				options = append(options, ui.Option{Label: "Start aex when you log in: off", Value: "autostart"})
+			}
+		}
 		options = append(options,
 			ui.Option{Label: "Wipe all settings…", Value: "wipe-settings"},
 			ui.Option{Label: "Wipe everything (settings, session, output, plugin data)…", Value: "wipe-all"},
@@ -186,6 +205,28 @@ func menu() error {
 		case "add-shortcut", "remove-shortcut":
 			if err := setShortcut(choice == "add-shortcut"); err != nil {
 				return err
+			}
+			fmt.Println()
+		case "autostart":
+			days, err := ui.Input(ui.Field{
+				Title:       "Days to start aex on when you log in",
+				Description: "mon,tue,wed,thu,fri,sat,sun (comma separated), workdays or every-day; off to not start it. Empty keeps it as it is.",
+				Placeholder: strings.Join(autostart.Days(), ","),
+				Validate: func(v string) error {
+					if v = strings.TrimSpace(v); v == "" || strings.EqualFold(v, "off") {
+						return nil
+					}
+					_, err := autostart.ParseDays(v)
+					return err
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(days) != "" {
+				if err := setAutostart(days); err != nil {
+					return err
+				}
 			}
 			fmt.Println()
 		case "wipe-settings", "wipe-all":
@@ -398,5 +439,29 @@ func setShortcut(add bool) error {
 		return err
 	}
 	fmt.Println(ui.Out.Green("Removed from the " + shortcut.Where()))
+	return nil
+}
+
+// setAutostart makes aex start when the user logs in on the days given (as autostart.ParseDays
+// takes them), or ("off") not.
+func setAutostart(days string) error {
+	if strings.EqualFold(strings.TrimSpace(days), "off") {
+		if err := autostart.Disable(); err != nil {
+			return err
+		}
+		fmt.Println(ui.Out.Green("aex no longer starts when you log in."))
+		return nil
+	}
+	list, err := autostart.ParseDays(days)
+	if err != nil {
+		return err
+	}
+	if err := autostart.SetDays(list); err != nil {
+		return err
+	}
+	if err := autostart.Enable(); err != nil {
+		return err
+	}
+	fmt.Println(ui.Out.Green("aex starts when you log in on " + strings.Join(autostart.Days(), ", ") + "."))
 	return nil
 }

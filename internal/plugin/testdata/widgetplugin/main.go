@@ -15,12 +15,13 @@ func main() {
 	if os.Getenv("WIDGET_TEST_ACCESS") != "" {
 		access = append(access, plugin.Jira)
 	}
+	calls := map[string]func(json.RawMessage) (any, error){
+		"echo": func(args json.RawMessage) (any, error) { return args, nil },
+		"fail": func(json.RawMessage) (any, error) { return nil, errors.New("it failed") },
+	}
 	plugin.Main(tool.Tool{Name: "widgetplugin", Summary: "test", Run: func([]string) error { return nil }},
-		append(access, plugin.Widget{
-			ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1, HTML: "<p>hello</p>",
-			Calls: map[string]func(json.RawMessage) (any, error){
-				"echo": func(args json.RawMessage) (any, error) { return args, nil },
-				"fail": func(json.RawMessage) (any, error) { return nil, errors.New("it failed") },
-			},
-		}, plugin.Settings{Summary: "test settings", Run: func([]string) error { return nil }})...)
+		append(access,
+			plugin.Widget{ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1, HTML: "<p>hello</p>", Calls: calls},
+			plugin.Widget{ID: "jira", Name: "Jira", W: 1, H: 1, Access: []plugin.Access{plugin.Jira}, HTML: "<p>jira</p>", Calls: calls},
+			plugin.Settings{Summary: "test settings", Run: func([]string) error { return nil }})...)
 }

@@ -22,6 +22,8 @@ type Setting struct {
 	Default string
 	Rule    string
 	Valid   func(float64) bool
+	// Auto allows the value "auto" (Auto) besides numbers.
+	Auto bool
 	// Credential is the key the setting is kept under in Credentials (the OS credential store)
 	// instead of app settings.
 	Credential string
@@ -60,12 +62,16 @@ var AppSettings = []Setting{
 	},
 	{
 		Name:    "TZ_OFFSET_HOURS",
-		Default: "7",
-		Hint:    "Timezone as a UTC offset in hours: 7 = UTC+7, -5 = UTC-5, 5.5 = UTC+5:30",
-		Rule:    "a number from -12 to 14, in steps of 0.25",
+		Default: Auto,
+		Hint:    "Timezone: auto follows the device's, or a UTC offset in hours: 7 = UTC+7, -5 = UTC-5, 5.5 = UTC+5:30",
+		Rule:    "auto, or a number from -12 to 14, in steps of 0.25",
 		Valid:   func(n float64) bool { return n >= -12 && n <= 14 && n*4 == float64(int(n*4)) },
+		Auto:    true,
 	},
 }
+
+// Auto is the value of a setting with Auto set that the app works out itself.
+const Auto = "auto"
 
 // All is everything configure asks for.
 var All = append(append([]Setting{}, AuthSettings...), AppSettings...)
@@ -192,7 +198,11 @@ func Problem(name, value string) string {
 	if def == nil {
 		return ""
 	}
-	n, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	value = strings.TrimSpace(value)
+	if def.Auto && strings.EqualFold(value, Auto) {
+		return ""
+	}
+	n, err := strconv.ParseFloat(value, 64)
 	if err == nil && def.Valid(n) {
 		return ""
 	}
@@ -201,6 +211,13 @@ func Problem(name, value string) string {
 
 // Number returns an AppSettings value, or its default if missing or invalid (warning once).
 func Number(name string) float64 {
+	n, _ := strconv.ParseFloat(Value(name), 64)
+	return n
+}
+
+// Value returns an AppSettings value as text (Auto for "auto" in any case), or its default if
+// missing or invalid (warning once).
+func Value(name string) string {
 	def := appSetting(name)
 	value, ok := lookup(name)
 	if !ok {
@@ -215,8 +232,11 @@ func Number(name string) float64 {
 		}
 		value = def.Default
 	}
-	n, _ := strconv.ParseFloat(strings.TrimSpace(value), 64)
-	return n
+	value = strings.TrimSpace(value)
+	if def.Auto && strings.EqualFold(value, Auto) {
+		return Auto
+	}
+	return value
 }
 
 var plainValue = regexp.MustCompile(`^[\w.@+\-/:=]*$`)

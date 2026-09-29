@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cat as a service</title>
+  <style>
+    /* The picture fills the whole widget, edge to edge, cropped to fit. */
+    body { position: relative; cursor: pointer; }
+    #cat { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .3s ease; }
+    #cat.shown { opacity: 1; }
+
+    .notice { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; padding: 14px 16px; color: var(--muted); font-size: 13px; text-align: center; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+    .loading svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Rating: over the bottom of the picture, on a dark scrim (the colors are for a photo, not the
+       theme). Shown on hover, or once rated. */
+    .rate {
+      position: absolute; inset: auto 0 0 0;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 22px 10px 8px;
+      background: linear-gradient(to top, rgba(0, 0, 0, .72), rgba(0, 0, 0, .45) 60%, transparent);
+      color: #fff; font-size: 12px; line-height: 1.35; text-align: center;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+      cursor: default;
+      opacity: 0; transition: opacity .2s ease;
+    }
+    body:hover .rate, .rate:focus-within, .rate.rated { opacity: 1; }
+    #cat:not(.shown) ~ .rate { display: none; }
+
+    .msg { max-height: 4.1em; overflow: hidden; }
+    .msg em { font-style: italic; }
+    .msg:empty { display: none; }
+
+    /* In the page from 5 to 1, shown from 1 to 5: a hovered star lights itself and the ones before it. */
+    .stars { display: flex; flex-direction: row-reverse; }
+    .star { border: 0; background: none; padding: 1px; cursor: pointer; color: rgba(255, 255, 255, .75); border-radius: 4px; transition: transform .12s ease; }
+    .star svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
+    .star.on { color: #ffc83d; }
+    .star.on svg { fill: currentColor; }
+    .stars:hover .star { color: rgba(255, 255, 255, .75); }
+    .stars:hover .star svg { fill: none; }
+    .stars:hover .star:hover, .stars:hover .star:hover ~ .star { color: #ffc83d; }
+    .stars:hover .star:hover svg, .stars:hover .star:hover ~ .star svg { fill: currentColor; }
+    .star:hover { transform: scale(1.15); }
+
+    @media (max-height: 130px) { .rate { padding-top: 14px; } .msg { max-height: 2.7em; } }
+  </style>
+</head>
+<body title="Another cat">
+  <img id="cat" alt="A cat">
+  <div class="rate" id="rate" title="">
+    <div class="msg" id="msg" aria-live="polite"></div>
+    <div class="stars" id="stars" role="group" aria-label="Rate this cat"></div>
+  </div>
+  <div class="notice loading" id="loading">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/></svg>
+  </div>
+  <div class="notice" id="failed" hidden>
+    <div class="error" id="error"></div>
+    <div>Click to try again</div>
+  </div>
+
+  <script>
+    // A random cat from Cat as a service (cat.go: catAPI, as a data: URL); a click brings another.
+    // It can be rated out of 5 stars, which does nothing: the rating is not kept or sent anywhere,
+    // and each message says so. Nobody knows the cat's sex, so each cat gets one at random.
+    const img = document.getElementById('cat');
+    const loading = document.getElementById('loading');
+    const failed = document.getElementById('failed');
+    const rate = document.getElementById('rate');
+    const msg = document.getElementById('msg');
+    const stars = document.getElementById('stars');
+    let busy = false;
+
+    const pronouns = [
+      { he: 'he', him: 'him', his: 'his' },
+      { he: 'she', him: 'her', his: 'her' },
+    ];
+    let cat = pronouns[0];
+
+    // One message per rating, 1 to 5.
+    const messages = [
+      p => `Ouch. Luckily this rating does nothing, so ${p.he} will never know.`,
+      p => `${cap(p.he)} <em>does</em> look grumpy, doesn't ${p.he}? This rating does nothing, which suits ${p.him} fine.`,
+      p => `A fair three. It changes nothing, but ${p.he} respects your honesty.`,
+      p => `Four stars! They go nowhere, but ${p.he} is quietly pleased with ${p.his} score anyway.`,
+      p => `Thank you! This does nothing but I am sure ${p.he} appreciates it.`,
+    ];
+    const cap = s => s[0].toUpperCase() + s.slice(1);
+
+    const starSVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>';
+    for (let n = 5; n >= 1; n--) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'star';
+      b.dataset.n = n;
+      b.title = `${n} star${n > 1 ? 's' : ''}`;
+      b.setAttribute('aria-label', b.title);
+      b.innerHTML = starSVG;
+      b.addEventListener('click', () => rated(n));
+      stars.append(b);
+    }
+    // Clicking the rating is not asking for another cat.
+    rate.addEventListener('click', e => e.stopPropagation());
+
+    function rated(n) {
+      for (const b of stars.children) {
+        b.classList.toggle('on', +b.dataset.n <= n);
+        b.setAttribute('aria-pressed', String(+b.dataset.n === n));
+      }
+      msg.innerHTML = messages[n - 1](cat);
+      rate.classList.add('rated');
+    }
+
+    function unrated() {
+      for (const b of stars.children) {
+        b.classList.remove('on');
+        b.removeAttribute('aria-pressed');
+      }
+      msg.textContent = '';
+      rate.classList.remove('rated');
+    }
+
+    async function load() {
+      if (busy) return;
+      busy = true;
+      failed.hidden = true;
+      loading.hidden = img.classList.contains('shown'); // the old cat stays until the new one is in
+      try {
+        const { url } = await aex.call('cat');
+        const next = new Image();
+        next.src = url;
+        await next.decode();
+        img.src = url;
+        img.classList.add('shown');
+        cat = pronouns[Math.floor(Math.random() * pronouns.length)];
+        unrated();
+      } catch (e) {
+        document.getElementById('error').textContent = e.message;
+        img.classList.remove('shown');
+        failed.hidden = false;
+      } finally {
+        loading.hidden = true;
+        busy = false;
+      }
+    }
+
+    document.body.addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 // Package dates does calendar-day math. A "day" is a YYYY-MM-DD string in the TZ_OFFSET_HOURS
-// zone (app setting); day strings compare correctly as strings.
+// zone (app setting: the device's zone when auto); day strings compare correctly as strings.
 package dates
 
 import (
@@ -17,12 +17,32 @@ import (
 const layout = "2006-01-02"
 
 func zone() *time.Location {
-	return time.FixedZone(TZLabel(), int(math.Round(settings.TZOffsetHours()*3600)))
+	hours, ok := settings.TZOffsetHours()
+	if !ok {
+		return time.Local
+	}
+	return time.FixedZone(OffsetLabel(hours), int(math.Round(hours*3600)))
 }
 
-// TZLabel is e.g. UTC+7, UTC-5, UTC+5:30.
-func TZLabel() string {
-	hours := settings.TZOffsetHours()
+// TZLabel is the configured zone's UTC offset now, e.g. UTC+7, UTC-5, UTC+5:30.
+func TZLabel() string { return OffsetLabel(offsetHours(time.Now().In(zone()))) }
+
+// DeviceTZLabel is the device's UTC offset now.
+func DeviceTZLabel() string { return OffsetLabel(offsetHours(time.Now())) }
+
+// TZMismatch reports whether TZ_OFFSET_HOURS is set to an offset the device is not on now.
+func TZMismatch() bool {
+	hours, ok := settings.TZOffsetHours()
+	return ok && hours != offsetHours(time.Now())
+}
+
+func offsetHours(t time.Time) float64 {
+	_, seconds := t.Zone()
+	return float64(seconds) / 3600
+}
+
+// OffsetLabel is e.g. UTC+7, UTC-5, UTC+5:30 for an offset in hours.
+func OffsetLabel(hours float64) string {
 	sign := "+"
 	if hours < 0 {
 		sign = "-"

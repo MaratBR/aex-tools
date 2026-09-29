@@ -415,6 +415,12 @@ func (c *Client) MyLeaves(start, end string) ([]Leave, error) {
 		func(l Leave) bool { return l.ID != nil && l.Start != "" && l.End != "" })
 }
 
+// SetHours changes a logged entry's hours (PATCH /api/time-entries/<id>).
+func (c *Client) SetHours(id int64, hours float64) error {
+	_, err := request[any](c, "PATCH", fmt.Sprintf("/api/time-entries/%d", id), nil, map[string]any{"hours_total": hours}, nil)
+	return err
+}
+
 // Entry is a time entry to import.
 type Entry struct {
 	Date        string  `json:"date"`

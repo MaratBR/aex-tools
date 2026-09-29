@@ -31,6 +31,8 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
     leave statuses (`config.go`)
   - `shortcut` — adds aex to the Start menu (Windows), `~/Applications` (macOS) or the app menu (Linux)
     and removes it; asks once on first launch
+  - `autostart` — starts aex when you log in (Windows `Run` registry key, macOS LaunchAgent, Linux XDG
+    autostart entry) on the days picked; `--autostart` exits at once on other days
   - `dates` — day math and range expressions
   - `jira`, `aext` — API clients
   - `google` — Google sign-in (see Google) and the Calendar API client
@@ -67,7 +69,10 @@ Exports Jira worklogs to `<data folder>\output\jira-export\<timestamp>.csv` (`da
 one row per day + issue), then offers to send it to AEXT.
 
 Before sending, rows AEXT already has (`GET /api/time-entries/`: same date, project and description) are
-skipped and listed, with both hours when they differ; so are rows repeated in the CSV.
+skipped and listed; so are rows repeated in the CSV (the first row counts). When the hours differ, the
+AEXT entry is changed to the CSV's (`PATCH /api/time-entries/<id>` with `{"hours_total": …}`) and both
+hours are shown; when AEXT has several entries for the row, which one to change is unclear, so they are
+left and both hours are shown.
 
 Range: by default suggested from AEXT (first working day this month with no hours per the AEXT working-days calendar, through today;
 offers an earlier start if last month has gaps). Decline, or use `--manual`, to type one:
@@ -145,6 +150,16 @@ the running exe (with `--data-dir` if it was given), or removes it:
 
 The first time a release build opens the window, it asks once whether to add it (skipped when it is already
 there); the answer is remembered as `SHORTCUT_ASKED` in app settings, so wiping settings asks again.
+
+`configure --autostart <days>` (or the `configure` list, or Settings in the window) makes aex start when you log in, with
+`--autostart` (and `--data-dir` if it was given): days are `mon,tue,wed,thu,fri,sat,sun` (comma separated), `workdays` or
+`every-day`, saved as `AUTOSTART_DAYS` in app settings (not set: workdays). Started that way on a day not picked, aex exits
+at once. `configure --autostart off` stops it.
+- Windows: an `aex` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+- macOS: `~/Library/LaunchAgents/com.aexsoft.aex.plist`.
+- Linux: `aex.desktop` in `$XDG_CONFIG_HOME/autostart` (default `~/.config/autostart`).
+
+The window's onboarding (first start) asks too, set to workdays in release builds (off in dev builds).
 
 Tools that need a missing auth setting prompt for it and offer to save it to app settings too.
 
@@ -304,11 +319,14 @@ Home takes the whole window: the sidebar slides away there, and the button at th
 brings it back or hides it again, remembered in the web view's storage; a dot on the button says a run
 printed meanwhile. Runs always shows the sidebar.
 
-Home is a grid of widgets (4 columns, 2 or 1 when the window is narrow; rows 150 px). Add widget picks
-one (a widget can be added more than once); Edit puts a cover on each widget to drag it elsewhere,
-move it earlier or later, change its width and height (1–4 cells) or remove it. Every change is saved
-to `home.json` in the data folder (`App.SaveHome`; unknown built-in widgets are dropped and sizes
-clamped on load; plugins' widgets stay, see below).
+Home is a grid of widgets (12 columns, 6 or 1 when the window is narrow, a widget taking the whole row
+when it is wider than that; rows 150 px). Add widget picks one (a widget can be added more than once);
+Edit puts a cover on each widget to drag it elsewhere, move it earlier or later, change its width
+(1–12 columns) and height (1–4 rows), with the steppers or by dragging its right edge, bottom edge or
+corner, or remove it. Every change is saved to `home.json` in the data folder (`App.SaveHome`; unknown
+built-in widgets are dropped and sizes clamped on load; plugins' widgets stay, see below). A
+`home.json` from the 4-column grid (no `"columns": 12`) has its widths multiplied by 3 on load. A
+plugin's widget sizes (`plugin.Widget.W`) are still in quarters of the width, multiplied by 3 too.
 
 Auto refresh: a widget can ask to be refreshed on its own every so many seconds (`WidgetInfo.Refresh`
 in `widgetCatalog`, `plugin.Widget.Refresh` for a plugin's, at least 5 s; none by default). The Auto
@@ -349,11 +367,14 @@ Widgets so far:
   ahead, due by today, hours/day to finish, working days without hours with a button to run
   worklog-sync) and whether last month is complete. One row high it shows only the numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
-- `google-calendars` (every minute) — Google Calendar now: the events on now in one calendar, each with when it
-  started and when it ends (and the time left), leaving out cancelled ones and ones you declined; free
-  and tentative ones are marked. The first time it lists the account's calendars to pick one, kept in
-  its placement's settings, so each copy can show another; the calendar button changes it. It counts
-  down between refreshes. Without a Google login it offers to log in (`account --login google`).
+- `google-calendars` (every minute) — Google Calendar: the events on now in one calendar, each with when
+  it started, when it ends, how long it is and the time left, then the upcoming ones through the third
+  working day after today (AEXT working-days calendar with a session, else Monday to Friday), by day,
+  with their times and length (and time to the start today; outlined within 15 minutes). Events are
+  tinted in the calendar's color; cancelled ones and ones you declined are left out; free and tentative
+  ones are marked. The first time it lists the account's calendars to pick one, kept in its placement's
+  settings, so each copy can show another; the calendar button changes it. It counts down between
+  refreshes. Without a Google login it offers to log in (`account --login google`).
 - `jira-tickets` (every minute) — Jira tickets: open tickets (status not Done, 50 most recently
   updated, `jirawidget.go`), each with its key, summary, type, priority, when it was updated and its
   status; clicking one opens it in the browser. When added it asks which, kept in its placement's
@@ -367,6 +388,11 @@ Widgets so far:
 
   Without a Jira login, or when Jira rejects the token, it offers `account --login jira`. One row high
   it shows only the count and the warning.
+- `cat` — Cat as a service: a random cat from `https://cataas.com/cat` (`cat.go`, fetched by aex and
+  handed to the widget as a `data:` URL, since widgets have no network), filling the whole widget with
+  no padding (cropped to fit). Clicking it brings another. No auto refresh. On hover, 5 stars over the
+  bottom of the picture rate the cat; the rating does nothing (not kept or sent anywhere), and each of
+  the 5 ratings has its own message saying so. Each cat is a he or a she at random, for the messages.
 - `cm-release/cm-repos-state` (cm-release plugin, every 5 s) — CM repos state: each repo's branch and uncommitted
   changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
   (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
@@ -442,13 +468,16 @@ credentials: a plugin never opens the credential store and ignores secret settin
   (so its approval covers the page too) and its data calls: `plugin.Main(t, plugin.Jira,
   plugin.Widget{ID: "foo", Name: "...", Summary: "...", W: 2, H: 1, Refresh: time.Minute, HTML: page, Calls:
   map[string]func(json.RawMessage) (any, error){...}})`, `page` being a `go:embed`ded file. They are
-  listed in `--aex-describe` (`"widgets": [{"id", "name", "summary", "w", "h", "refresh"}]`, refresh in seconds) and are `<plugin>/<id>`
+  listed in `--aex-describe` (`"widgets": [{"id", "name", "summary", "w", "h", "refresh", "access"}]`, refresh in seconds) and are `<plugin>/<id>`
   in the window. aex gets the page with `<plugin> --aex-widget <id>` (cached per file hash) and runs a
   call with `<plugin> --aex-widget-call <id> <call>`: args as JSON on stdin, `{"result": ...}` or
   `{"error": "..."}` on stdout, 20 s at most, its output never shown in a run. Neither asks anything:
-  the plugin must be safe and, for calls, have its access granted and its settings set; else the widget
-  says what is missing, with Review (runs `plugins allow <name>`). A call gets the plugin's settings and
-  granted secrets as a run does. Plugins not approved cannot describe themselves, so Add widget lists
+  the plugin must be safe and, for calls of a widget needing access, have it granted and its settings
+  set; else the widget says what is missing, with Review (runs `plugins allow <name>`). A widget needs
+  the access in `plugin.Widget.Access`, some of the plugin's (`Access: []plugin.Access{plugin.Jira}`):
+  one needing none works while the plugin's access is not granted, and its calls get no credentials.
+  A plugin built before widgets listed their access lists none, and its widgets need all the plugin's.
+  A call gets the plugin's settings and the secrets of the widget's access, as a run does. Plugins not approved cannot describe themselves, so Add widget lists
   them under "Don't see the widget you need?", each with Review.
 
 ## Custom tools
@@ -522,8 +551,10 @@ fallback source). Invalid values fall back to the default with a warning. Read l
 apply in the open window:
 
 - `HOURS_PER_DAY` (default `8`) — working hours per day for the quota.
-- `TZ_OFFSET_HOURS` (default `7`) — UTC offset all dates are computed in (ranges, "today", worklog days,
-  file timestamps); quarter hours allowed, e.g. `5.5` = UTC+5:30.
+- `TZ_OFFSET_HOURS` (default `auto`) — timezone all dates are computed in (ranges, "today", worklog days,
+  file timestamps): `auto` follows the device's (daylight saving included), a number pins a UTC offset;
+  quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list and warns when a
+  pinned offset is not the device's.
 
 The window's header shows the current values, the settings file path, the credential store in use and the data folder.
 

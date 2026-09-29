@@ -28,9 +28,10 @@ import (
 //	<plugin> --aex-widget-call <id> <call>  runs one of its calls: JSON args on stdin, and on stdout
 //	                                        {"result": ...} or {"error": "..."}
 //
-// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h", "refresh", "debug"}]). aex
-// runs neither flag unless the plugin is safe, and a call only with the plugin's access granted: it
-// never asks, since a widget has no run to ask in (WidgetError says what is missing).
+// The widgets are listed in --aex-describe ("widgets": [{"id", "name", "summary", "w", "h", "refresh",
+// "debug", "access"}]). aex runs neither flag unless the plugin is safe, and a call only with the
+// access the widget needs (of the plugin's) granted: it never asks, since a widget has no run to ask
+// in (WidgetError says what is missing).
 
 const (
 	widgetFlag     = "--aex-widget"
@@ -53,17 +54,20 @@ type Widget struct {
 	ID      string // unique in the plugin: lowercase letters, digits, - and _
 	Name    string
 	Summary string
-	W, H    int // the size it is added with, in grid cells (1-4)
+	W, H    int // the size it is added with, in quarters of the grid's width and rows (1-4)
 	// Refresh is how often the home page tells it to load again (aex.onRefresh) while auto refresh
 	// is on; 0: only after runs. Each of its calls starts the plugin, so the window uses 5 s at least.
 	Refresh time.Duration
 	// Debug marks a widget for developing the plugin: the window offers it, and runs its calls,
 	// only when aex runs with --debug.
 	Debug bool
-	HTML  string // its page, usually go:embed
+	// Access is the access its calls need, some of the plugin's: they get the credentials of that
+	// only, and work while the plugin's access is not granted when it needs none.
+	Access []Access
+	HTML   string // its page, usually go:embed
 	// Calls are its data calls. Each gets the call's args as JSON and returns what to send back
-	// (marshalled to JSON), running in the plugin with its settings and granted access, but with no
-	// way to ask questions.
+	// (marshalled to JSON), running in the plugin with its settings and the widget's access, but with
+	// no way to ask questions.
 	Calls map[string]func(args json.RawMessage) (any, error)
 }
 
@@ -76,6 +80,9 @@ type WidgetInfo struct {
 	H       int    `json:"h"`
 	Refresh int    `json:"refresh,omitempty"` // Widget.Refresh in seconds
 	Debug   bool   `json:"debug,omitempty"`
+	// Access is Widget.Access, always listed: a plugin built before widgets had it lists none (nil),
+	// and its widgets need all of the plugin's access.
+	Access []Access `json:"access"`
 }
 
 var widgetID = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
@@ -84,7 +91,8 @@ func describeWidgets(ws []Widget) []WidgetInfo {
 	var d []WidgetInfo
 	for _, w := range ws {
 		d = append(d, WidgetInfo{ID: w.ID, Name: w.Name, Summary: w.Summary, W: w.W, H: w.H,
-			Refresh: int(w.Refresh.Round(time.Second) / time.Second), Debug: w.Debug})
+			Refresh: int(w.Refresh.Round(time.Second) / time.Second), Debug: w.Debug,
+			Access: append([]Access{}, w.Access...)})
 	}
 	return d
 }
@@ -194,7 +202,7 @@ func WidgetPage(p Info, id string) (string, error) {
 }
 
 // WidgetCall runs call of the plugin's widget id with args (JSON) and gives its result (JSON). The
-// plugin must be safe and, when it asks for access, have it granted, with its settings set.
+// plugin must be safe and, when the widget needs access, have it granted, with its settings set.
 func WidgetCall(p Info, id, call string, args []byte) (json.RawMessage, error) {
 	if !widgetID.MatchString(id) {
 		return nil, fmt.Errorf("bad widget id %q", id)
@@ -228,10 +236,24 @@ func WidgetCall(p Info, id, call string, args []byte) (json.RawMessage, error) {
 			return nil, &WidgetError{p.Name, "changed while starting"}
 		}
 	}
-	if !settings.Debug && slices.ContainsFunc(d.Widgets, func(w WidgetInfo) bool { return w.ID == id && w.Debug }) {
+	i := slices.IndexFunc(d.Widgets, func(w WidgetInfo) bool { return w.ID == id })
+	if i < 0 {
+		return nil, fmt.Errorf("plugin %s has no widget %q", p.Name, id)
+	}
+	w := d.Widgets[i]
+	if !settings.Debug && w.Debug {
 		return nil, ErrDebugWidget
 	}
-	pass, err := granted(p.Name, p.Path, approved, d.Access)
+	need := w.Access
+	if need == nil {
+		need = d.Access
+	}
+	for _, a := range need {
+		if !slices.Contains(d.Access, a) {
+			return nil, fmt.Errorf("widget %s/%s needs access to %s, which plugin %s does not ask for", p.Name, id, a, p.Name)
+		}
+	}
+	pass, err := granted(p.Name, p.Path, approved, d.Access, need)
 	if err != nil {
 		return nil, err
 	}
@@ -272,10 +294,11 @@ func widgetEnv(pass []string) ([]string, error) {
 	}), nil
 }
 
-// granted is grant without asking: the secret settings to pass, or a WidgetError when the access
-// is not granted for this hash or a setting it needs is not set.
-func granted(name, path, hash string, access []Access) ([]string, error) {
-	if len(access) == 0 {
+// granted is grant without asking, for a widget needing need of the plugin's access: the secret
+// settings of need to pass, or a WidgetError when access is not granted for this hash or a setting
+// need needs is not set. Needing none, nothing has to be granted.
+func granted(name, path, hash string, access, need []Access) ([]string, error) {
+	if len(need) == 0 {
 		return nil, nil
 	}
 	access = slices.Compact(slices.Sorted(slices.Values(access)))
@@ -294,7 +317,7 @@ func granted(name, path, hash string, access []Access) ([]string, error) {
 		return nil, &WidgetError{name, "has not been granted access to " + strings.Join(names, ", ")}
 	}
 	var pass []string
-	for _, a := range access {
+	for _, a := range slices.Compact(slices.Sorted(slices.Values(need))) {
 		for _, s := range accessKinds[a].settings {
 			if settings.Get(s) == "" {
 				return nil, &WidgetError{name, "needs " + s + ", which is not set"}

@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Google Calendar now</title>
+  <title>Google Calendar</title>
   <style>
-    body { display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
+    body { --cal: var(--accent); display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
     .head { display: flex; align-items: center; gap: 8px; }
     .title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-weight: 600; }
     .title .text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -14,20 +14,32 @@
     .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
 
     .list { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; font-size: 13px; }
-    .list > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
+    .picks > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
 
-    /* The events on now. */
-    .event { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+    /* The events: on now first, as tinted cards in the calendar's color (--cal), then the upcoming
+       ones by day. */
+    .section { display: flex; align-items: baseline; gap: 6px; padding: 8px 0 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .section:first-child { padding-top: 0; }
+    .section .live { width: 7px; height: 7px; border-radius: 50%; background: var(--cal); align-self: center; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+    .event { display: flex; align-items: center; gap: 10px; margin: 3px 0; padding: 6px 10px 6px 0; border-radius: 8px; background: color-mix(in srgb, var(--cal) 9%, transparent); overflow: hidden; }
     .event .what { flex: 1; min-width: 0; }
     .event .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .event .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .event .when { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
     .event .until { font-weight: 600; }
     .event .left { color: var(--muted); font-size: 12px; }
+    .event .bar { flex: none; align-self: stretch; width: 4px; border-radius: 0 3px 3px 0; background: var(--cal); }
+    .event.tentative .bar { background: repeating-linear-gradient(var(--cal) 0 3px, transparent 3px 6px); }
+    .event.now { padding-top: 8px; padding-bottom: 8px; background: color-mix(in srgb, var(--cal) 18%, transparent); }
+    .event.now .name { font-size: 14px; }
+    .event.soon { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--cal) 55%, transparent); }
+    .event.soon .left { color: var(--cal); font-weight: 600; }
+    .event.free, .event.free.now { background: var(--fill); }
     .event.free .name, .event.free .until { font-weight: 400; color: var(--muted); }
-    .event .bar { flex: none; align-self: stretch; width: 3px; border-radius: 3px; background: var(--accent); }
-    .event.tentative .bar { background: repeating-linear-gradient(var(--accent) 0 3px, transparent 3px 6px); }
-    .event.free .bar { background: var(--fill); }
+    .event.free .bar { background: var(--muted); opacity: .4; }
+    .quiet { padding: 2px 0; font-size: 13px; font-weight: 600; color: var(--ok); }
+    .quiet.muted { font-weight: 400; color: var(--muted); }
     .nothing { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
     .nothing .big { font: 600 20px/1.2 var(--display); letter-spacing: -.02em; color: var(--ok); }
     .nothing .muted { font-size: 13px; }
@@ -46,8 +58,8 @@
 
     @media (max-height: 200px) {
       body { gap: 6px; padding-top: 12px; }
-      .event { padding: 3px 0; }
-      .event .note, .event .left { display: none; }
+      .event, .event.now { padding-top: 3px; padding-bottom: 3px; }
+      .event .note { display: none; }
     }
   </style>
 </head>
@@ -64,7 +76,8 @@
   <div id="content"></div>
 
   <script>
-    // What is on now in one Google calendar, and when each event ends (home.go: googleNowAPI). The
+    // What is on now in one Google calendar and when each event ends, then what comes until the end
+    // of the third working day after today (home.go: googleNowAPI). The
     // calendar is picked the first time (home.go: googleCalendarsAPI) and kept in this placement's
     // settings (aex.settings.calendar), so each copy of the widget can show another one.
     const content = document.getElementById('content');
@@ -81,7 +94,11 @@
     function setTitle(name, color) {
       titleEl.textContent = name || 'Google Calendar';
       dotEl.hidden = !name;
-      dotEl.style.background = /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : '';
+      const ok = /^#[0-9a-f]{3,8}$/i.test(color || '');
+      dotEl.style.background = ok ? color : '';
+      // --cal tints the events: the accent when the calendar has no color.
+      if (ok) document.body.style.setProperty('--cal', color);
+      else document.body.style.removeProperty('--cal');
     }
 
     // Dates and times -------------------------------------------------------------------------
@@ -89,7 +106,8 @@
     const localDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const parseDate = s => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10)); // YYYY-MM-DD, local
     const pad = n => String(n).padStart(2, '0');
-    const shortDay = d => d.toLocaleString('en', { weekday: 'short' }) + ' ' + pad(d.getMonth() + 1) + '.' + pad(d.getDate());
+    const monthDay = d => d.toLocaleString('en', { month: 'short', day: 'numeric' }); // Oct 1
+    const shortDay = d => d.toLocaleString('en', { weekday: 'short' }) + ' ' + monthDay(d);
     const clock = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const sameDay = (a, b) => localDay(a).getTime() === localDay(b).getTime();
 
@@ -122,35 +140,105 @@
       return 'since ' + (sameDay(start, now) ? clock(start) : shortDay(start) + ' ' + clock(start));
     }
 
+    // inTime is how long until an event starts, for the ones starting today.
+    function inTime(ms) {
+      const min = Math.max(1, Math.ceil(ms / 60000));
+      if (min < 60) return 'in ' + min + ' min';
+      const h = Math.floor(min / 60), m = min % 60;
+      return 'in ' + h + 'h' + (m ? ' ' + m + 'm' : '');
+    }
+
+    // dayLabel names the day upcoming events are on.
+    function dayLabel(d, now) {
+      const days = Math.round((localDay(d) - localDay(now)) / 86400000);
+      if (days === 0) return 'Later today';
+      if (days === 1) return 'Tomorrow';
+      return d.toLocaleString('en', { weekday: 'long' }) + ', ' + monthDay(d);
+    }
+
+    // duration is how long an event lasts: 45 min, 1h 30m, 2 days.
+    function duration(e) {
+      const ms = endOf(e) - startOf(e);
+      if (e.allDay) {
+        const days = Math.round(ms / 86400000);
+        return days === 1 ? 'all day' : days + ' days';
+      }
+      const min = Math.round(ms / 60000);
+      if (min < 60) return min + ' min';
+      const h = Math.floor(min / 60), m = min % 60;
+      return h + 'h' + (m ? ' ' + m + 'm' : '');
+    }
+
     // Views -----------------------------------------------------------------------------------
 
     let reply = null; // the last googleNow reply, counted down between loads
+    const SOON = 15 * 60000; // an event starting within this is outlined
+
+    function eventRow(e, cls, notes, main, sub, title) {
+      const li = node('div', 'event' + (cls ? ' ' + cls : '') + (e.free ? ' free' : '') + (e.tentative ? ' tentative' : ''));
+      const what = node('div', 'what');
+      what.append(node('div', 'name', e.title || '(no title)'));
+      if (e.tentative) notes.push('tentative');
+      if (e.free) notes.push('free');
+      if (notes.length) what.append(node('div', 'note', notes.join(' · ')));
+      const when = node('div', 'when');
+      when.append(node('div', 'until', main));
+      if (sub) when.append(node('div', 'left', sub));
+      li.append(node('span', 'bar'), what, when);
+      li.title = (e.title || '(no title)') + '\n' + title;
+      return li;
+    }
+
+    function section(text, live) {
+      const s = node('div', 'section');
+      if (live) s.append(node('span', 'live'));
+      s.append(node('span', null, text));
+      return s;
+    }
 
     function renderNow() {
       const now = new Date();
       content.className = 'list';
       content.textContent = '';
       content.style.display = '';
-      const events = reply.events.filter(e => endOf(e) > now);
-      if (!events.length) {
-        content.className = 'nothing';
-        content.append(node('div', 'big', 'Nothing on now'), node('div', 'muted', 'No event in this calendar at the moment.'));
-        return;
+      // Events move from upcoming to now as they start, between loads.
+      const all = reply.events.concat(reply.upcoming || []).filter(e => endOf(e) > now);
+      const on = all.filter(e => startOf(e) <= now), next = all.filter(e => startOf(e) > now);
+
+      if (on.length) {
+        content.append(section('Now', true));
+        for (const e of on) {
+          const long = duration(e) === 'all day' ? [] : [duration(e)];
+          content.append(eventRow(e, 'now', [since(e, now), ...long], until(e, now), e.allDay ? '' : left(endOf(e) - now),
+            since(e, now) + ', ' + until(e, now) + ' (' + duration(e) + ')'));
+        }
+      } else {
+        content.append(node('div', 'quiet', 'Nothing on now'));
       }
-      for (const e of events) {
-        const li = node('div', 'event' + (e.free ? ' free' : '') + (e.tentative ? ' tentative' : ''));
-        const what = node('div', 'what');
-        what.append(node('div', 'name', e.title || '(no title)'));
-        const notes = [since(e, now)];
-        if (e.tentative) notes.push('tentative');
-        if (e.free) notes.push('free');
-        what.append(node('div', 'note', notes.join(' · ')));
-        const when = node('div', 'when');
-        when.append(node('div', 'until', until(e, now)));
-        if (!e.allDay) when.append(node('div', 'left', left(endOf(e) - now)));
-        li.append(node('span', 'bar'), what, when);
-        li.title = (e.title || '(no title)') + '\n' + since(e, now) + ', ' + until(e, now);
-        content.append(li);
+
+      let day = null;
+      for (const e of next) {
+        const start = startOf(e), end = endOf(e);
+        if (!day || !sameDay(day, start)) {
+          day = start;
+          content.append(section(dayLabel(start, now)));
+        }
+        let main, sub, title;
+        if (e.allDay) {
+          const last = new Date(end.getTime() - 86400000);
+          main = duration(e);
+          sub = sameDay(last, start) ? '' : 'until ' + shortDay(last);
+          title = shortDay(start) + (sub ? ' ' + sub : '') + ' (' + duration(e) + ')';
+        } else {
+          const endText = sameDay(end, start) ? clock(end) : shortDay(end) + ' ' + clock(end);
+          main = clock(start) + '–' + endText;
+          sub = (sameDay(start, now) ? inTime(start - now) + ' · ' : '') + duration(e);
+          title = shortDay(start) + ' ' + main + ' (' + duration(e) + ')';
+        }
+        content.append(eventRow(e, !e.allDay && start - now <= SOON ? 'soon' : '', [], main, sub, title));
+      }
+      if (!next.length) {
+        content.append(node('div', 'quiet muted', 'Nothing else' + (reply.until ? ' through ' + shortDay(parseDate(reply.until)) : '') + '.'));
       }
     }
 
@@ -196,7 +284,7 @@
         if (n !== seq) return;
         if (problem(r)) return;
         const current = aex.settings.calendar;
-        content.className = 'list';
+        content.className = 'list picks';
         content.textContent = '';
         content.append(node('div', 'pick-head', 'Pick the calendar to show (' + r.email + ')'));
         for (const cal of r.calendars) {
@@ -280,12 +368,9 @@
     }
 
     // Google is asked again on each refresh (auto refresh: every minute, home.go); between loads the
-    // times left count down, and an event ending brings the next one sooner.
+    // times count down.
     setInterval(() => {
-      if (!reply || picking) return;
-      const now = new Date();
-      if (reply.events.some(e => endOf(e) <= now)) load();
-      else renderNow();
+      if (reply && !picking) renderNow();
     }, 30000);
 
     changeBtn.onclick = pick;
