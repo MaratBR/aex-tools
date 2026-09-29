@@ -23,6 +23,8 @@ directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
     app settings (`.env.config`), the credential store; auth settings list, prompts for missing ones and saves
     them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
     leave statuses (`config.go`)
+  - `shortcut` — adds aex to the Start menu (Windows), `~/Applications` (macOS) or the app menu (Linux)
+    and removes it; asks once on first launch
   - `dates` — day math and range expressions
   - `jira`, `aext` — API clients
   - `httpx` — on any unexpected response (status, non-JSON, wrong shape) dumps status, URL,
@@ -114,6 +116,15 @@ type `CONFIRM`:
 
 `.env` and environment variables are never touched and still apply as fallbacks.
 
+The menu (or `configure --add-shortcut` / `--remove-shortcut`) also adds aex to the OS app launcher, pointing at
+the running exe (with `--data-dir` if it was given), or removes it:
+- Windows: `aex.lnk` in the Start menu (`%APPDATA%\Microsoft\Windows\Start Menu\Programs`), with the exe's icon.
+- macOS: `~/Applications/aex.app`, a small bundle that opens the exe in Terminal. Only a bundle aex made is removed.
+- Linux: `aex.desktop` in `$XDG_DATA_HOME/applications` (default `~/.local/share/applications`), run in a terminal.
+
+The first time a release build opens the menu, it asks once whether to add it (skipped when it is already
+there); the answer is remembered as `SHORTCUT_ASKED` in app settings, so wiping settings asks again.
+
 Tools that need a missing auth setting prompt for it and offer to save it to app settings too.
 
 ## data-folder
@@ -124,8 +135,10 @@ Tools that need a missing auth setting prompt for it and offer to save it to app
 
 `.\bin\plugins.ps1` manages plugins (see Plugins). Without args on a terminal it lists them and asks
 what to do; else `list` (default), `describe [<name>]` (asks to approve any not safe yet),
-`delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `open` (opens
-the plugins folder).
+`delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `forget-all [--yes]` (forgets every plugin's safe hash and
+granted access, keeping the files: each asks to be approved again on its next run), `open` (opens the
+plugins folder). The credential store cannot list its keys, so approved plugin paths are also kept in
+`plugin-approved-paths`; `forget-all` clears those plus the plugins in the folder now.
 
 ## cm-release (plugin)
 

@@ -17,8 +17,10 @@ var (
 	// AppRoot holds .env: the repo for a dev build, else the folder holding the exe.
 	AppRoot string
 	// DataDir holds app settings (.env.config), the AEXT session and output files.
-	DataDir       string
-	JiraExportDir string
+	DataDir string
+	// DataDirFromArg is true when DataDir came from --data-dir, which a launcher has to pass on.
+	DataDirFromArg bool
+	JiraExportDir  string
 	// OutputDir holds files tools write for the user, one folder per tool.
 	OutputDir string
 	// PluginSettingsDir holds plugins' settings files, one per plugin.
@@ -58,6 +60,7 @@ func Init(dataDir, embeddedEnv string) error {
 
 	// --data-dir, else AEX_DATA_DIR (real environment only: app settings live in the data folder),
 	// else the per-user default (%APPDATA%\aex on Windows).
+	DataDirFromArg = dataDir != ""
 	if dataDir == "" {
 		dataDir = os.Getenv("AEX_DATA_DIR")
 	}

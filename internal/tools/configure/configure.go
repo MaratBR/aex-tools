@@ -10,6 +10,7 @@ import (
 
 	"aex/internal/aext"
 	"aex/internal/settings"
+	"aex/internal/shortcut"
 	"aex/internal/tool"
 	"aex/internal/ui"
 )
@@ -25,6 +26,7 @@ func configureHelp() string {
 	}
 	return fmt.Sprintf(`Usage: configure [NAME | NAME=value]...
        configure --wipe-settings | --wipe-all
+       configure --add-shortcut | --remove-shortcut
 
 Without arguments, lists the settings with their current values: pick one to change it (it is
 saved right away), or fill in every setting that is not set. Settings (app settings, %s):
@@ -36,10 +38,13 @@ saved right away), or fill in every setting that is not set. Settings (app setti
   --wipe-all       Delete everything: all settings, the AEXT session, output files, plugin data and
                    anything else in the data folder. Plugins and their approvals are kept.
 Both ask you to type CONFIRM. The menu offers them too.
+  --add-shortcut     Add aex to the %s (%s), pointing at this exe
+  --remove-shortcut  Remove aex from it
 
 App settings have the highest priority: they override .env and real environment variables,
 which remain fallbacks. Leave an answer empty to keep the current value, or enter "-" to
-remove it from app settings (settings with a default are reset to it).`, settings.ConfigEnvFile, list.String())
+remove it from app settings (settings with a default are reset to it).`, settings.ConfigEnvFile, list.String(),
+		shortcut.Where(), shortcutPath())
 }
 
 // Tool is the configure tool.
@@ -49,6 +54,8 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("configure", flag.ContinueOnError)
 	wipeSettings := fs.Bool("wipe-settings", false, "")
 	wipeAll := fs.Bool("wipe-all", false, "")
+	addShortcut := fs.Bool("add-shortcut", false, "")
+	removeShortcut := fs.Bool("remove-shortcut", false, "")
 	if done, err := tool.ParseFlagsAndArgs(fs, args, configureHelp()); done || err != nil {
 		return err
 	}
@@ -60,6 +67,12 @@ func run(args []string) error {
 			return err
 		}
 		return wipe(*wipeAll)
+	}
+	if *addShortcut || *removeShortcut {
+		if fs.NArg() > 0 || (*addShortcut && *removeShortcut) {
+			return errors.New("--add-shortcut and --remove-shortcut take no other arguments (see configure --help)")
+		}
+		return setShortcut(*addShortcut)
 	}
 	if fs.NArg() > 0 {
 		return runArgs(fs.Args())
@@ -150,6 +163,13 @@ func menu() error {
 		for _, s := range settings.All {
 			options = append(options, ui.Option{Label: fmt.Sprintf("%-*s  %s", width, s.Name, shown(s)), Value: s.Name})
 		}
+		if shortcut.Supported() {
+			if shortcut.Exists() {
+				options = append(options, ui.Option{Label: "Remove aex from the " + shortcut.Where(), Value: "remove-shortcut"})
+			} else {
+				options = append(options, ui.Option{Label: "Add aex to the " + shortcut.Where(), Value: "add-shortcut"})
+			}
+		}
 		options = append(options,
 			ui.Option{Label: "Wipe all settings…", Value: "wipe-settings"},
 			ui.Option{Label: "Wipe everything (settings, session, output, plugin data)…", Value: "wipe-all"},
@@ -162,6 +182,11 @@ func menu() error {
 		switch choice {
 		case "done":
 			return nil
+		case "add-shortcut", "remove-shortcut":
+			if err := setShortcut(choice == "add-shortcut"); err != nil {
+				return err
+			}
+			fmt.Println()
 		case "wipe-settings", "wipe-all":
 			if err := wipe(choice == "wipe-all"); err != nil {
 				return err
@@ -341,5 +366,33 @@ func wipe(all bool) error {
 	} else {
 		fmt.Println(ui.Out.Green("Wiped all settings."))
 	}
+	return nil
+}
+
+func shortcutPath() string {
+	p, err := shortcut.Path()
+	if err != nil {
+		return err.Error()
+	}
+	return p
+}
+
+// setShortcut adds aex to the OS app launcher (add) or removes it.
+func setShortcut(add bool) error {
+	if add {
+		if err := shortcut.Create(); err != nil {
+			return err
+		}
+		fmt.Println(ui.Out.Green("Added to the " + shortcut.Where() + ": " + shortcutPath()))
+		return nil
+	}
+	if !shortcut.Exists() {
+		fmt.Printf("aex is not in the %s, nothing to remove.\n", shortcut.Where())
+		return nil
+	}
+	if err := shortcut.Remove(); err != nil {
+		return err
+	}
+	fmt.Println(ui.Out.Green("Removed from the " + shortcut.Where()))
 	return nil
 }

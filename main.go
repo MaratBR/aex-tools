@@ -12,6 +12,7 @@ import (
 
 	"aex/internal/plugin"
 	"aex/internal/settings"
+	"aex/internal/shortcut"
 	"aex/internal/tool"
 	"aex/internal/tools/account"
 	"aex/internal/tools/configure"
@@ -132,6 +133,10 @@ func run(args []string) error {
 		args = args[1:]
 	}
 	if len(args) == 0 {
+		// Dev builds are rebuilt in place and run from the repo, so only release builds offer this.
+		if !settings.IsDev {
+			shortcut.OfferOnce()
+		}
 		loadPlugins()
 		if plain || !useTUI() {
 			return plainMenu()
