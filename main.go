@@ -15,7 +15,6 @@ import (
 	"aex/internal/tool"
 	"aex/internal/tools/account"
 	"aex/internal/tools/configure"
-	"aex/internal/tools/datafolder"
 	"aex/internal/tools/plugins"
 	"aex/internal/tools/quota"
 	"aex/internal/tools/worklogsync"
@@ -36,7 +35,6 @@ var builtins = []tool.Tool{
 	quota.Tool,
 	account.Tool,
 	configure.Tool,
-	datafolder.Tool,
 	plugins.Tool,
 }
 

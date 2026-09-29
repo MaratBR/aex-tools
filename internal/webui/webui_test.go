@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -123,5 +124,15 @@ func TestChooseAndConfirm(t *testing.T) {
 	}
 	if v, _ := a.Confirm("ok?", true); v {
 		t.Error("Confirm no = true")
+	}
+}
+
+func TestPromptOptionsReachFrontendAsLabelAndValue(t *testing.T) {
+	data, err := json.Marshal(prompt{Kind: "choose", Options: []ui.Option{{Label: "Send all", Value: "all"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"options":[{"label":"Send all","value":"all"}]`; !strings.Contains(string(data), want) {
+		t.Fatalf("prompt JSON %s, want it to contain %s", data, want)
 	}
 }

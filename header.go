@@ -135,7 +135,7 @@ func infoLines() [][]segment {
 	return [][]segment{
 		loginLine("AEXT", l.aext, "tools log in when needed, or run account", ""),
 		loginLine("Jira", l.jira, "token rejected, run account", "run account"),
-		{{"Settings  ", dim}, {fmt.Sprintf("%g h/day · %s", settings.HoursPerDay(), dates.TZLabel()), plain}, {"  (configure to change)", dim}},
+		{{"Settings  ", dim}, {fmt.Sprintf("%g h/day · %s", settings.HoursPerDay(), dates.TZLabel()), plain}},
 		{{"File      ", dim}, {settings.ConfigEnvFile, plain}},
 		credentialsLine(),
 		{{"Data      ", dim}, {settings.DataDir, plain}},

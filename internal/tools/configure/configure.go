@@ -48,7 +48,8 @@ remove it from app settings (settings with a default are reset to it).`, setting
 }
 
 // Tool is the configure tool.
-var Tool = tool.Tool{Name: "configure", Summary: "Set AEXT / Jira login, hours per day and timezone (app settings)", Run: run}
+// The window has its own settings form instead, so it is hidden there.
+var Tool = tool.Tool{Name: "configure", Summary: "Set AEXT / Jira login, hours per day and timezone (app settings)", Run: run, Hidden: true}
 
 func run(args []string) error {
 	fs := flag.NewFlagSet("configure", flag.ContinueOnError)
@@ -248,29 +249,8 @@ func edit(s settings.Setting) error {
 // apply saves value ("-" removes it, or resets to the default) for s. ask allows confirming an
 // override of a fallback source, and wiping the AEXT session when the email changes.
 func apply(s settings.Setting, value string, ask bool) error {
-	layers := settings.Layers()
-	fallbacks := layers[:len(layers)-1]
-	_, inAppSettings := layers[len(layers)-1].Vars[s.Name]
-	before := settings.Get(s.Name)
-	if value == "-" && s.Default != "" {
-		value = s.Default
-	}
-
-	var change settings.Change
-	if value == "-" {
-		if !inAppSettings {
-			fmt.Printf("%s is not in app settings, nothing to remove.\n", s.Name)
-			return nil
-		}
-		change = settings.Change{Name: s.Name}
-	} else {
-		var overridden []string
-		for _, l := range fallbacks {
-			if l.Vars[s.Name] != "" {
-				overridden = append(overridden, l.Label)
-			}
-		}
-		if len(overridden) > 0 {
+	if value != "-" {
+		if overridden := Overrides(s.Name); len(overridden) > 0 {
 			fmt.Fprintf(os.Stderr, "  %s %s is also set in %s; app settings will override it.\n",
 				ui.Err.Yellow("Warning:"), s.Name, strings.Join(overridden, ", "))
 			if ask {
@@ -280,31 +260,55 @@ func apply(s settings.Setting, value string, ask bool) error {
 				}
 			}
 		}
-		change = settings.Change{Name: s.Name, Value: &value}
 	}
-	if err := settings.SaveAppSettings([]settings.Change{change}); err != nil {
+	before := settings.Get(s.Name)
+	msg, err := Save(s.Name, value)
+	if err != nil {
 		return err
 	}
-
-	if change.Value == nil {
-		settings.Unset(s.Name)
-		// Fall back to the next source down, as a restart would.
-		for i := len(fallbacks) - 1; i >= 0; i-- {
-			if v := fallbacks[i].Vars[s.Name]; v != "" {
-				settings.Set(s.Name, v)
-				break
-			}
-		}
-		fmt.Println(ui.Out.Green("Removed " + s.Name))
-	} else {
-		settings.Set(s.Name, value)
-		fmt.Println(ui.Out.Green("Saved " + s.Name))
-	}
-
+	fmt.Println(ui.Out.Green(msg))
 	if s.Name == "AEXT_EMAIL" && before != "" && before != settings.Get(s.Name) {
 		return emailChanged(ask)
 	}
 	return nil
+}
+
+// Overrides lists the fallback sources (.env, environment variables) that also set name, which
+// app settings override.
+func Overrides(name string) []string {
+	var list []string
+	for _, l := range settings.Fallbacks() {
+		if l.Vars[name] != "" {
+			list = append(list, l.Label)
+		}
+	}
+	return list
+}
+
+// Save saves value for the setting name to app settings without asking anything: "-" removes it
+// (or resets it to its default). It does not validate value. Returns what it did, for the user.
+func Save(name, value string) (string, error) {
+	s, err := find(name)
+	if err != nil {
+		return "", err
+	}
+	if value == "-" && s.Default != "" {
+		value = s.Default
+	}
+	if value == "-" {
+		if !settings.InAppSettings(s.Name) {
+			return s.Name + " is not in app settings, nothing to remove", nil
+		}
+		if _, err := settings.RemoveAppSetting(s.Name); err != nil {
+			return "", err
+		}
+		return "Removed " + s.Name, nil
+	}
+	if err := settings.SaveAppSettings([]settings.Change{{Name: s.Name, Value: &value}}); err != nil {
+		return "", err
+	}
+	settings.Set(s.Name, value)
+	return "Saved " + s.Name, nil
 }
 
 // emailChanged offers to wipe the cached AEXT session, which belongs to the old email.

@@ -15,7 +15,7 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
   - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
     `ParseFlags` (gives `--help`)
   - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
-    `datafolder`, `plugins`), each exporting `Tool`; `main.go` lists them in the order the window shows them
+    `plugins`), each exporting `Tool`; `main.go` lists them in the order the window shows them
   - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
     a plugin's own `main`
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
@@ -48,7 +48,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `output\jira-export\` — generated files
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
-environment variable (real environment only). `data-folder` opens it in Explorer.
+environment variable (real environment only). Click its path in the window's sidebar to open it.
 
 ## worklog-sync
 
@@ -98,6 +98,11 @@ action directly: `--show`, `--login aext|jira`, `--logout aext|jira`, `--wipe-se
 
 ## configure
 
+In the window, settings are a form rather than a tool: the gear next to the logo (or the Settings line in the
+sidebar, or typing `configure`) opens it. It edits every setting below at once (checked before anything is
+saved; an empty field removes the setting, or resets it to its default), toggles the app launcher entry, and
+wipes after you type `CONFIRM`. The rest of this section is the terminal tool, `aex configure`.
+
 `.\bin\configure.ps1` lists the settings with their current values: the auth settings `AEXT_EMAIL`,
 `JIRA_EMAIL` and `JIRA_TOKEN` (hidden input), then `HOURS_PER_DAY` and `TZ_OFFSET_HOURS` (validated). Pick one
 to change it; it is saved to app settings (`.env.config` in the data folder) right away, then the list comes
@@ -126,10 +131,6 @@ The first time a release build opens the window, it asks once whether to add it 
 there); the answer is remembered as `SHORTCUT_ASKED` in app settings, so wiping settings asks again.
 
 Tools that need a missing auth setting prompt for it and offer to save it to app settings too.
-
-## data-folder
-
-`.\bin\data-folder.ps1` prints the data folder and opens it in the file manager (`--print`: only print).
 
 ## plugins
 

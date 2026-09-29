@@ -8,7 +8,12 @@
 </head>
 <body>
   <aside id="side">
-    <div class="brand"><img src="logo.svg" alt=""><span>aex</span></div>
+    <div class="brand">
+      <img src="logo.svg" alt=""><span>aex</span>
+      <button id="open-settings" class="icon-btn" type="button" title="Settings" aria-label="Settings">
+        <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
     <div class="section">Tools</div>
     <nav id="tools"></nav>
     <div id="info"></div>
@@ -41,7 +46,25 @@
     </div>
   </main>
 
+  <div id="sheet-backdrop" hidden>
+    <form id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" autocomplete="off" novalidate>
+      <header class="sheet-head">
+        <h2 id="sheet-title">Settings</h2>
+        <button type="button" class="icon-btn" id="sheet-close" aria-label="Close">
+          <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <div class="sheet-body" id="sheet-body"></div>
+      <footer class="sheet-foot">
+        <span id="sheet-note" class="sheet-note"></span>
+        <button type="button" class="btn" id="sheet-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="sheet-save" disabled>Save</button>
+      </footer>
+    </form>
+  </div>
+
   <script src="ansi.js"></script>
   <script src="app.js"></script>
+  <script src="settings.js"></script>
 </body>
 </html>

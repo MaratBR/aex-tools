@@ -21,6 +21,9 @@ type Tool struct {
 	Summary string
 	Run     func(args []string) error
 	Sub     []Tool
+	// Hidden keeps the tool out of the window's tool list, for a tool the window has its own UI
+	// for; it still runs as "aex <name>".
+	Hidden bool
 }
 
 // IsGroup reports whether the tool is a group of sub-tools.

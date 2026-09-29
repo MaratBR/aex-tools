@@ -128,6 +128,8 @@ function onOutput(s) {
 async function runLine(line) {
   line = line.trim();
   if (!line || run) return;
+  // configure is a form in the window, not a run.
+  if (/^(configure|settings)\b/.test(line)) { openSettings(); return; }
   const { path, args } = resolve(line);
   if (!path.length) {
     showCommandError(`There is no tool called "${splitArgs(line)[0]}".`);
@@ -411,12 +413,23 @@ function renderInfo(lines) {
   const info = $('info');
   info.textContent = '';
   for (const l of lines) {
-    const row = el('div', 'info-row' + (l.state ? ' login ' + l.state : ''));
+    const link = l.open || l.action;
+    const row = el(link ? 'button' : 'div', 'info-row' + (l.state ? ' login ' + l.state : '') + (link ? ' link' : ''));
     row.appendChild(el('span', 'label', l.label));
     const text = el('span', 'text');
     for (const s of l.segments || []) text.appendChild(el('span', s.kind, s.text));
-    text.title = text.textContent;
     row.appendChild(text);
+    if (l.open) {
+      row.type = 'button';
+      row.title = 'Open ' + l.open;
+      row.onclick = () => api().Open(l.open).catch(e => showCommandError(String(e)));
+    } else if (l.action === 'settings') {
+      row.type = 'button';
+      row.title = 'Change settings';
+      row.onclick = () => openSettings();
+    } else {
+      text.title = text.textContent;
+    }
     info.appendChild(row);
   }
 }

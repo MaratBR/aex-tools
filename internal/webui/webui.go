@@ -32,6 +32,8 @@ type Host struct {
 	Header func(wait bool) []InfoLine // wait for the login checks to finish first
 	// Ready, when set, runs once the window has loaded, like a tool: it may print and ask.
 	Ready func()
+	// Changed, when set, runs after the settings form changed settings (or wiped them).
+	Changed func()
 }
 
 // InfoLine is one line of the header (the logins and settings under the tools): a label and styled text.
@@ -39,6 +41,8 @@ type InfoLine struct {
 	Label    string    `json:"label"`
 	State    string    `json:"state,omitempty"` // for a login: checking | in | out | unset | error
 	Segments []Segment `json:"segments"`
+	Open     string    `json:"open,omitempty"`   // a folder the line opens when clicked
+	Action   string    `json:"action,omitempty"` // "settings": the line opens the settings form
 }
 
 // Segment is styled text: Kind is plain, dim, bold or warn.
@@ -112,13 +116,15 @@ type ToolInfo struct {
 	Sub     []ToolInfo `json:"sub,omitempty"`
 }
 
-// Tools lists the tools: built-in ones, then plugins.
+// Tools lists the tools: built-in ones, then plugins. Hidden ones are left out.
 func (a *App) Tools() []ToolInfo {
 	var list func([]tool.Tool) []ToolInfo
 	list = func(ts []tool.Tool) []ToolInfo {
-		out := make([]ToolInfo, len(ts))
-		for i, t := range ts {
-			out[i] = ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub)}
+		var out []ToolInfo
+		for _, t := range ts {
+			if !t.Hidden {
+				out = append(out, ToolInfo{Name: t.Name, Summary: t.Summary, Sub: list(t.Sub)})
+			}
 		}
 		return out
 	}
@@ -182,7 +188,7 @@ func (a *App) find(path []string) *tool.Tool {
 	for _, name := range path {
 		t = nil
 		for i := range list {
-			if list[i].Name == name {
+			if list[i].Name == name && !list[i].Hidden {
 				t = &list[i]
 			}
 		}

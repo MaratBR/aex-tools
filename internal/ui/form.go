@@ -44,10 +44,10 @@ type Field struct {
 	Describe func(string) string
 }
 
-// Option is one choice of Choose.
+// Option is one choice of Choose (tagged for the window's frontend, which reads label and value).
 type Option struct {
-	Label string
-	Value string
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // Ask prints question and returns the answer, trimmed.
