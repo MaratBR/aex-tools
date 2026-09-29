@@ -28,28 +28,27 @@
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #0a84ff;
-    --ink: #f5f5f7;
-    --muted: #98989d;
-    --faint: #636366;
-    --bg: #1c1c1e;
-    --side: #232325;
-    --surface: #2c2c2e;
-    --fill: rgba(118, 118, 128, .24);
-    --fill-2: rgba(118, 118, 128, .14);
-    --hover: rgba(118, 118, 128, .22);
-    --sep: rgba(84, 84, 88, .45);
-    --ok: #30d158;
-    --fail: #ff453a;
-    --warn: #ff9f0a;
-    --card-shadow: none;
-    --pop-shadow: 0 0 0 .5px rgba(255, 255, 255, .08), 0 14px 48px rgba(0, 0, 0, .5);
-    --c0: #48484a; --c1: #ff6961; --c2: #6fd08f; --c3: #e9c46a; --c4: #6cb4ff; --c5: #c792ea; --c6: #5ccfe6; --c7: #aeaeb2;
-    --c8: #7c7c80; --c9: #ff8a80; --c10: #8fe0a8; --c11: #f2d38a; --c12: #8dc6ff; --c13: #d7a8f0; --c14: #7fdcee; --c15: #ffffff;
-    color-scheme: dark;
-  }
+/* theme.js sets data-theme from the Theme setting, or from the system's while that is "System". */
+:root[data-theme="dark"] {
+  --accent: #0a84ff;
+  --ink: #f5f5f7;
+  --muted: #98989d;
+  --faint: #636366;
+  --bg: #1c1c1e;
+  --side: #232325;
+  --surface: #2c2c2e;
+  --fill: rgba(118, 118, 128, .24);
+  --fill-2: rgba(118, 118, 128, .14);
+  --hover: rgba(118, 118, 128, .22);
+  --sep: rgba(84, 84, 88, .45);
+  --ok: #30d158;
+  --fail: #ff453a;
+  --warn: #ff9f0a;
+  --card-shadow: none;
+  --pop-shadow: 0 0 0 .5px rgba(255, 255, 255, .08), 0 14px 48px rgba(0, 0, 0, .5);
+  --c0: #48484a; --c1: #ff6961; --c2: #6fd08f; --c3: #e9c46a; --c4: #6cb4ff; --c5: #c792ea; --c6: #5ccfe6; --c7: #aeaeb2;
+  --c8: #7c7c80; --c9: #ff8a80; --c10: #8fe0a8; --c11: #f2d38a; --c12: #8dc6ff; --c13: #d7a8f0; --c14: #7fdcee; --c15: #ffffff;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -85,11 +84,11 @@ aside {
   display: flex;
   flex-direction: column;
   background: var(--side);
-  padding: 16px 10px 14px;
+  padding: 0 10px 14px;
   gap: 2px;
   overflow: hidden;
 }
-.brand { display: flex; align-items: center; gap: 9px; padding: 2px 4px 14px 10px; font: 600 17px/1 var(--display); letter-spacing: -.02em; }
+.brand { display: flex; align-items: center; gap: 9px; height: 44px; margin-bottom: 8px; padding: 6px 4px 0 10px; --wails-draggable: drag; font: 600 17px/1 var(--display); letter-spacing: -.02em; }
 .brand img { width: 22px; height: 22px; }
 .brand span { flex: 1; }
 .icon-btn {
@@ -149,11 +148,32 @@ aside {
 #info .bold { font-weight: 600; }
 #info .warn { color: var(--warn); }
 
+/* Title bar: the window is frameless, so this strip drags it and holds its buttons. ---------- */
+
+#titlebar { flex: none; height: 36px; display: flex; justify-content: flex-end; --wails-draggable: drag; }
+.brand button, #titlebar button { --wails-draggable: no-drag; }
+.win-controls { display: flex; }
+.win-controls button {
+  width: 46px; height: 32px;
+  display: grid; place-items: center;
+  border: 0; border-radius: 0;
+  background: none; color: var(--ink);
+  transition: background-color .1s, color .1s;
+}
+.win-controls button:hover { background: var(--hover); }
+.win-controls button:active { background: var(--fill); }
+#win-close:hover { background: #c42b1c; color: #fff; }
+#win-close:active { background: #b22a1b; color: #fff; }
+.win-controls svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; shape-rendering: crispEdges; }
+#win-close svg { shape-rendering: geometricPrecision; }
+#win-max .restore, .maximised #win-max .max { display: none; }
+.maximised #win-max .restore { display: block; }
+
 /* Feed ----------------------------------------------------------------------------------------- */
 
 main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 #scroll { flex: 1; overflow-y: auto; }
-#page { max-width: 820px; margin: 0 auto; padding: 32px 28px 24px; }
+#page { max-width: 820px; margin: 0 auto; padding: 4px 28px 24px; }
 
 #welcome { padding: 10vh 0 0; }
 #welcome img { width: 48px; height: 48px; }
@@ -415,6 +435,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 }
 .row-text { flex: 1; }
 button.row:hover { background: var(--fill-2); }
+div.row { cursor: default; }
 .row.danger { color: var(--fail); }
 
 .switch {
@@ -437,6 +458,14 @@ button.row:hover { background: var(--fill-2); }
 .switch:checked { background: var(--ok); }
 .switch:checked::before { transform: translateX(16px); }
 .switch:disabled { opacity: .5; }
+
+/* A segmented control: one of a few options, as radio buttons. */
+.segmented { display: flex; flex: none; padding: 2px; border-radius: 8px; background: var(--fill); }
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented span { display: block; padding: 3px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
+.segmented input:checked + span { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-weight: 500; }
+.segmented input:focus-visible + span { box-shadow: var(--ring); }
 
 .wipe-panel:empty { display: none; }
 .wipe-panel { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }

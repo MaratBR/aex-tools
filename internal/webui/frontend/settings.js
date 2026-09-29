@@ -78,6 +78,7 @@ async function loadSettings(message) {
     const list = form.fields.filter(pick);
     if (list.length) group(title, foot).append(...list.map(fieldRow));
   }
+  group('Appearance').appendChild(themeRow());
   if (form.shortcut) group('App launcher').appendChild(shortcutRow(form.shortcut));
   group('Reset', `Settings are saved in ${form.file}. .env and environment variables are never touched and still apply.`)
     .append(wipeRow(false), wipeRow(true));
@@ -146,6 +147,28 @@ function shortcutRow(s) {
     toggle.disabled = false;
   };
   row.appendChild(toggle);
+  return row;
+}
+
+// themeRow picks the window's theme, which applies (and is kept) at once, not on Save.
+function themeRow() {
+  const row = el('div', 'row');
+  row.appendChild(el('span', 'row-text', 'Theme'));
+  const seg = el('div', 'segmented');
+  seg.setAttribute('role', 'radiogroup');
+  seg.setAttribute('aria-label', 'Theme');
+  for (const [value, text] of [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]) {
+    const label = el('label');
+    const input = el('input');
+    input.type = 'radio';
+    input.name = 'theme';
+    input.value = value;
+    input.checked = theme.get() === value;
+    input.onchange = () => theme.set(value);
+    label.append(input, el('span', null, text));
+    seg.appendChild(label);
+  }
+  row.appendChild(seg);
   return row;
 }
 
