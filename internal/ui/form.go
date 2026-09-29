@@ -48,6 +48,9 @@ type Field struct {
 type Option struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
+	// Summary and Group are for PickTool: what the tool does, and whether it is a group of tools.
+	Summary string `json:"summary,omitempty"`
+	Group   bool   `json:"group,omitempty"`
 }
 
 // Ask prints question and returns the answer, trimmed.
@@ -138,6 +141,20 @@ func Choose(title string, options []Option) (string, error) {
 		}
 	}
 	return value, nil
+}
+
+// PickTool asks which tool of a group to run and returns its Value. Each option is a tool: Label
+// its name, Summary what it does. The window shows it as a tool list, a console as a Choose.
+func PickTool(title string, tools []Option) (string, error) {
+	title = cleanTitle(title)
+	if Remote != nil {
+		return Remote.PickTool(title, tools)
+	}
+	options := make([]Option, len(tools))
+	for i, t := range tools {
+		options[i] = Option{Label: t.Label + "  " + Err.Dim(t.Summary), Value: t.Value}
+	}
+	return Choose(title, options)
 }
 
 func run(field huh.Field) error {

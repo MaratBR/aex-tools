@@ -246,6 +246,40 @@ func subTools(p Info, names []string, tools []SubTool) []tool.Tool {
 	return subs
 }
 
+// pickSub is sub, then the tools picked down to one that is not a group, when sub names a group
+// of tools (the plugin itself for none). A name it does not know is left for the plugin to reject.
+func pickSub(name string, sub []string, tools []SubTool) ([]string, error) {
+	for _, n := range sub {
+		i := slices.IndexFunc(tools, func(t SubTool) bool { return t.Name == n })
+		if i < 0 {
+			return sub, nil
+		}
+		tools = tools[i].Tools
+	}
+	if len(tools) == 0 {
+		return sub, nil
+	}
+	var picked []string
+	g := tool.Tool{Name: strings.Join(append([]string{name}, sub...), " "), Sub: pickTools(tools, func(path []string) { picked = path })}
+	if err := g.Exec(nil); err != nil {
+		return nil, err
+	}
+	return append(slices.Clip(sub), picked...), nil
+}
+
+// pickTools are tools as tool.Tools that only report the path to the one run.
+func pickTools(tools []SubTool, picked func(path []string)) []tool.Tool {
+	var ts []tool.Tool
+	for _, t := range tools {
+		ts = append(ts, tool.Tool{
+			Name: t.Name, Summary: t.Summary,
+			Run: func([]string) error { picked([]string{t.Name}); return nil },
+			Sub: pickTools(t.Tools, func(path []string) { picked(append([]string{t.Name}, path...)) }),
+		})
+	}
+	return ts
+}
+
 // ExitError is a plugin that exited non-zero. It printed its own error.
 type ExitError struct {
 	Name string
@@ -266,6 +300,13 @@ func runner(name, path string, sub []string) func(args []string) error {
 		d, err := describe(o, path)
 		if err != nil {
 			return err
+		}
+		// A plugin approved just now was listed as a plain tool, its tools unknown: when it is a group,
+		// ask for one here, where questions can be answered (the plugin cannot in the window).
+		if len(args) == 0 {
+			if sub, err = pickSub(name, sub, d.Tools); err != nil {
+				return err
+			}
 		}
 		pass, err := grant(name, path, approved, d.Access)
 		if err != nil {

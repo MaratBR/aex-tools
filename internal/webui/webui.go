@@ -225,7 +225,7 @@ func (a *App) Describe(id int, value string) string {
 // prompt is a question sent to the frontend as a "prompt" event.
 type prompt struct {
 	ID          int         `json:"id"`
-	Kind        string      `json:"kind"` // input | confirm | choose | key
+	Kind        string      `json:"kind"` // input | confirm | choose | tool | key
 	Title       string      `json:"title"`
 	Description string      `json:"description,omitempty"`
 	Placeholder string      `json:"placeholder,omitempty"`
@@ -293,7 +293,16 @@ func (a *App) Confirm(question string, defaultYes bool) (bool, error) {
 }
 
 func (a *App) Choose(title string, options []ui.Option) (string, error) {
-	ans := a.ask(prompt{Kind: "choose", Title: title, Options: options}, nil)
+	return a.choose("choose", title, options)
+}
+
+// PickTool is a Choose the window shows as a list of tools, like the sidebar's.
+func (a *App) PickTool(title string, tools []ui.Option) (string, error) {
+	return a.choose("tool", title, tools)
+}
+
+func (a *App) choose(kind, title string, options []ui.Option) (string, error) {
+	ans := a.ask(prompt{Kind: kind, Title: title, Options: options}, nil)
 	if ans.cancelled {
 		return "", errCancelled
 	}

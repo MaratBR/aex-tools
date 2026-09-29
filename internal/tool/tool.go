@@ -54,9 +54,9 @@ func (t *Tool) Exec(args []string) error {
 		}
 		options := make([]ui.Option, len(t.Sub))
 		for i, s := range t.Sub {
-			options[i] = ui.Option{Label: s.Name + "  " + ui.Err.Dim(s.Summary), Value: s.Name}
+			options[i] = ui.Option{Label: s.Name, Value: s.Name, Summary: s.Summary, Group: s.IsGroup()}
 		}
-		name, err := ui.Choose(t.Name, options)
+		name, err := ui.PickTool("Which "+t.Name+" tool?", options)
 		if err != nil {
 			return err
 		}

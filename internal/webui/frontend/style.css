@@ -189,6 +189,10 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
   overflow: hidden;
 }
 .run[data-state="running"] { --state: var(--accent); }
+/* The one moving part: an accent sweep along the top of the run while it runs. */
+.run { position: relative; }
+.run::before { content: ""; position: absolute; left: 12px; right: 12px; top: 0; height: 2px; border-radius: 2px; opacity: 0; transition: opacity .2s; background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent) 0 0 / 40% 100% no-repeat; }
+.run[data-state="running"]:not(.orphan)::before { opacity: 1; animation: sweep 1.4s ease-in-out infinite; }
 .run[data-state="waiting"] { --state: var(--warn); }
 .run[data-state="done"] { --state: var(--ok); }
 .run[data-state="failed"] { --state: var(--fail); }
@@ -277,6 +281,31 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .option:hover, .option:focus-visible { background: var(--hover); box-shadow: none; }
 .option kbd { font: 500 11px/1 var(--sans); color: var(--muted); border-radius: 5px; padding: 3px 6px; background: var(--fill); }
 
+/* Which tool of a group to run: bigger than other questions, its tools listed like the sidebar's. */
+.question.pick-tool { padding: 16px 16px 12px; gap: 10px; }
+.pick-tool .q-title { font: 600 18px/1.3 var(--display); letter-spacing: -.02em; }
+.pick-tool .controls { gap: 8px; margin-top: 0; }
+.tool-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.pick {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background-color .12s, box-shadow .12s;
+}
+.pick:hover, .pick:focus-visible { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); box-shadow: var(--ring); }
+.pick kbd { flex: none; font: 500 11px/1 var(--sans); color: var(--muted); border-radius: 5px; padding: 4px 7px; background: var(--fill); }
+.pick .text { flex: 1; min-width: 0; }
+.pick .name { display: block; font-weight: 600; font-size: 15px; }
+.pick .summary { display: block; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.pick.has-sub .name::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 8px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(-45deg); }
+.pick:disabled { cursor: default; opacity: .6; box-shadow: none; }
+
 /* Command line --------------------------------------------------------------------------------- */
 
 /* A quiet line under the feed: tools are picked from the sidebar and the welcome cards. */
@@ -306,9 +335,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 #send svg { width: 12px; height: 12px; fill: currentColor; margin-left: 2px; }
 #command-error { color: var(--fail); font-size: 12px; padding: 5px 16px 0; }
 
-/* The one moving part: an accent sweep along the command line while a tool runs. */
-.progress { position: absolute; left: 12px; right: 12px; bottom: 0; height: 2px; border-radius: 2px; opacity: 0; transition: opacity .2s; background: linear-gradient(90deg, transparent, var(--accent), var(--accent-2), transparent) 0 0 / 40% 100% no-repeat; }
-.running .progress { opacity: 1; animation: sweep 1.4s ease-in-out infinite; }
+/* The command line is for starting a tool: gone while one runs. */
+.running #dock { display: none; }
 @keyframes sweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 @keyframes blink { from { opacity: .3; } to { opacity: 1; } }
 

@@ -280,6 +280,30 @@ function onPrompt(p) {
       e.preventDefault();
     };
     list.firstChild.focus();
+  } else if (p.kind === 'tool') {
+    // Which tool of a group to run: the main question of its run, a list like the sidebar's.
+    q.classList.add('pick-tool');
+    const list = el('div', 'tool-list');
+    p.options.forEach((o, i) => {
+      const b = button('', 'pick' + (o.group ? ' has-sub' : ''), () => answer(p, q, o.value, o.label));
+      const text = el('span', 'text');
+      text.append(el('span', 'name', o.label));
+      if (o.summary) text.append(el('span', 'summary', o.summary));
+      b.append(el('kbd', null, String(i + 1)), text);
+      list.appendChild(b);
+    });
+    controls.append(list, button('Cancel', 'btn quiet', cancel));
+    keyHandler = e => {
+      const n = Number(e.key);
+      const items = [...list.children];
+      const at = items.indexOf(document.activeElement);
+      if (n >= 1 && n <= items.length) items[n - 1].click();
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+      else if (e.key === 'Escape') cancel();
+      else return;
+      e.preventDefault();
+    };
+    list.firstChild.focus();
   } else if (p.kind === 'key') {
     const b = button('Continue', 'btn primary', () => answer(p, q, '', 'Continued'));
     controls.appendChild(b);

@@ -1,7 +1,7 @@
 package ui
 
 // Remote, when set, answers every prompt instead of the terminal: the GUI sets it, and tools keep
-// calling Input, Confirm, Choose and WaitKey as they do on a console.
+// calling Input, Confirm, Choose, PickTool and WaitKey as they do on a console.
 var Remote Prompter
 
 // Prompter asks questions somewhere other than the terminal. Its methods block until answered;
@@ -10,6 +10,7 @@ type Prompter interface {
 	Input(f Field) (string, error)
 	Confirm(question string, defaultYes bool) (bool, error)
 	Choose(title string, options []Option) (string, error)
+	PickTool(title string, tools []Option) (string, error)
 	WaitKey()
 	ClearScreen()
 }
