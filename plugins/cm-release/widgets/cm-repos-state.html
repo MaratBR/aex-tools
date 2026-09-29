@@ -34,6 +34,9 @@
   <div class="head">
     <div class="title">CM repos state</div>
     <span class="verdict" id="verdict" hidden></span>
+    <button class="icon-btn" id="git-client" type="button" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 4-6 3-11.5 7.5"/></svg>
+    </button>
     <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
     </button>
@@ -104,6 +107,24 @@
       }
     }
 
+    // The git client found on the device (gitclient.go), if any, opens from the head.
+    const gitClientEl = document.getElementById('git-client');
+    let gitClient = '';
+    function setGitClient(name) {
+      gitClient = name || '';
+      gitClientEl.hidden = !name;
+      if (!name) return;
+      gitClientEl.title = 'Open ' + name;
+      gitClientEl.setAttribute('aria-label', 'Open ' + name);
+    }
+    gitClientEl.onclick = async () => {
+      try {
+        await aex.call('openGitClient');
+      } catch (e) {
+        notice(`Could not open ${gitClient}.`, e.message, { label: 'Back', run: load });
+      }
+    };
+
     let seq = 0, shown = false;
     async function load() {
       const n = ++seq;
@@ -112,6 +133,7 @@
       try {
         const s = await aex.call('state');
         if (n !== seq) return;
+        setGitClient(s.gitClient);
         if (!s.reposDir) {
           shown = false;
           notice('The repos folder is not set yet.', '', { label: 'Set it', run: () => aex.run('cm-release jira-handoff --settings') });

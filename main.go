@@ -92,12 +92,13 @@ func help() string {
 			fmt.Fprintf(&list, "    %-*s%s\n", nameWidth()-2, s.Name, s.Summary)
 		}
 	}
-	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [--debug] [--autostart] [<tool> [args...]]
+	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [--debug] [--debug-fake-error] [--autostart] [<tool> [args...]]
 
 Without a tool, opens the aex window to pick and run tools.
 With a tool name, runs that tool once in the terminal with the given args (try "aex <tool> --help");
 --plain (or AEX_TUI=0) asks its questions line by line instead of with arrow-key prompts.
---debug adds the tools and widgets for developing aex (the debug group); binex.ps1 passes it.
+--debug adds the tools and widgets for developing aex (the debug group); bin\aex.ps1 passes it.
+--debug-fake-error has the window print a made-up error soon after it opens, outside any run.
 A group of tools (its tools indented below it) runs one: "aex <group> <tool> [args...]".
 
 Tools:
@@ -166,12 +167,14 @@ func pluginDir() string {
 
 func run(args []string) error {
 	autostarted := false
-	for len(args) > 0 && (args[0] == "--plain" || args[0] == "--debug" || args[0] == autostart.Flag) {
+	for len(args) > 0 && slices.Contains([]string{"--plain", "--debug", "--debug-fake-error", autostart.Flag}, args[0]) {
 		switch args[0] {
 		case "--plain":
 			ui.Plain = true
 		case "--debug":
 			settings.Debug = true
+		case "--debug-fake-error":
+			settings.FakeError = true
 		default:
 			autostarted = true
 		}

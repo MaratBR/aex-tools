@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>2048</title>
+  <style>
+    /* Board as big a square as fits under the bar. */
+    body { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; }
+    .bar { width: 100%; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .bar .title { font: 600 15px/1 var(--display); letter-spacing: -.01em; margin-right: auto; }
+    .score { display: flex; flex-direction: column; align-items: center; min-width: 46px; padding: 2px 8px; border-radius: 8px; background: var(--fill); line-height: 1.2; }
+    .score span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .score b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+    #board {
+      --size: min(calc(100vw - 16px), calc(100vh - 58px));
+      --gap: calc(var(--size) * .03);
+      --cell: calc((var(--size) - var(--gap) * 5) / 4);
+      position: relative; width: var(--size); height: var(--size); flex: none;
+      border-radius: calc(var(--gap) * 1.6);
+      background: var(--fill);
+      touch-action: none; outline: none;
+    }
+    #board:focus-visible { box-shadow: var(--ring); }
+    .cell, .tile {
+      position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell);
+      border-radius: calc(var(--gap) * 1.1);
+      transform: translate(calc(var(--gap) + var(--x) * (var(--cell) + var(--gap))), calc(var(--gap) + var(--y) * (var(--cell) + var(--gap))));
+    }
+    .cell { background: var(--fill); }
+    .tile { transition: transform .1s ease-in-out; z-index: 1; }
+    .tile.merged { z-index: 2; }
+    .tile > div {
+      width: 100%; height: 100%; border-radius: inherit;
+      display: grid; place-items: center;
+      font: 700 calc(var(--cell) * .42)/1 var(--display); font-variant-numeric: tabular-nums;
+      background: var(--bg-t); color: var(--ink-t, #fff);
+    }
+    .tile.new > div { animation: pop .15s ease .08s backwards; }
+    .tile.merged > div { animation: bump .15s ease .08s; }
+    @keyframes pop { from { transform: scale(0); } }
+    @keyframes bump { 50% { transform: scale(1.14); } }
+    .tile.d3 > div { font-size: calc(var(--cell) * .34); }
+    .tile.d4 > div { font-size: calc(var(--cell) * .27); }
+    .tile.d5 > div { font-size: calc(var(--cell) * .22); }
+
+    /* Tile colors: warm, from pale to bright, then the accent past 2048. */
+    .v2    { --bg-t: #eee4da; --ink-t: #776e65; }
+    .v4    { --bg-t: #ede0c8; --ink-t: #776e65; }
+    .v8    { --bg-t: #f2b179; }
+    .v16   { --bg-t: #f59563; }
+    .v32   { --bg-t: #f67c5f; }
+    .v64   { --bg-t: #f65e3b; }
+    .v128  { --bg-t: #edcf72; }
+    .v256  { --bg-t: #edcc61; }
+    .v512  { --bg-t: #edc850; }
+    .v1024 { --bg-t: #edc53f; }
+    .v2048 { --bg-t: #edc22e; }
+    .vbig  { --bg-t: #3c3a32; }
+    :root[data-theme="dark"] .v2 { --bg-t: #4a4640; --ink-t: #f5f5f7; }
+    :root[data-theme="dark"] .v4 { --bg-t: #5b5446; --ink-t: #f5f5f7; }
+    :root[data-theme="dark"] .vbig { --bg-t: var(--accent); }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .v2 { --bg-t: #4a4640; --ink-t: #f5f5f7; }
+      :root:not([data-theme="light"]) .v4 { --bg-t: #5b5446; --ink-t: #f5f5f7; }
+      :root:not([data-theme="light"]) .vbig { --bg-t: var(--accent); }
+    }
+
+    .over {
+      position: absolute; inset: 0; z-index: 3; border-radius: inherit;
+      display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px;
+      background: color-mix(in srgb, var(--surface) 78%, transparent);
+      font: 600 18px/1.2 var(--display); text-align: center;
+      animation: fade .3s ease;
+    }
+    @keyframes fade { from { opacity: 0; } }
+    .over .row { display: flex; gap: 6px; }
+
+    @media (max-height: 200px) { .bar .title { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div class="title">2048</div>
+    <div class="score"><span>Score</span><b id="score">0</b></div>
+    <div class="score"><span>Best</span><b id="best">0</b></div>
+    <button class="icon-btn" id="restart" type="button" title="New game" aria-label="New game">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4.5h4.5"/></svg>
+    </button>
+  </div>
+  <div id="board" tabindex="0" role="application" aria-label="2048 board: arrow keys or swipe to move the tiles"></div>
+
+  <script>
+    // The game of 2048: arrow keys (or WASD) once the widget has the focus, or a swipe. Tiles of the
+    // same number that run into each other merge; reaching 2048 wins, and the game can go on.
+    // The board, score and best score are kept in this placement's settings (aex.saveSettings), so a
+    // game survives the window closing.
+    const N = 4;
+    const board = document.getElementById('board');
+    const scoreEl = document.getElementById('score');
+    const bestEl = document.getElementById('best');
+
+    let grid;          // grid[y][x]: a tile {id, v, x, y} or null
+    let score = 0, best = 0, won = false, keepGoing = false;
+    let nextId = 1;
+    const els = new Map(); // tile id -> its element
+
+    for (let i = 0; i < N * N; i++) {
+      const c = document.createElement('div');
+      c.className = 'cell';
+      c.style.setProperty('--x', i % N);
+      c.style.setProperty('--y', Math.floor(i / N));
+      board.append(c);
+    }
+
+    const empty = () => Array.from({ length: N }, () => Array(N).fill(null));
+
+    function tileEl(t) {
+      let el = els.get(t.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.append(document.createElement('div'));
+        board.append(el);
+        els.set(t.id, el);
+      }
+      const digits = String(t.v).length;
+      el.className = `tile v${t.v > 2048 ? 'big' : t.v}${digits > 2 ? ' d' + Math.min(digits, 5) : ''}`;
+      el.style.setProperty('--x', t.x);
+      el.style.setProperty('--y', t.y);
+      el.firstChild.textContent = t.v;
+      return el;
+    }
+
+    function addRandom() {
+      const free = [];
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (!grid[y][x]) free.push([x, y]);
+      if (!free.length) return;
+      const [x, y] = free[Math.floor(Math.random() * free.length)];
+      const t = { id: nextId++, v: Math.random() < .9 ? 2 : 4, x, y };
+      grid[y][x] = t;
+      tileEl(t).classList.add('new');
+    }
+
+    function newGame() {
+      for (const el of els.values()) el.remove();
+      els.clear();
+      grid = empty();
+      score = 0; won = false; keepGoing = false;
+      closeOverlay();
+      addRandom(); addRandom();
+      update();
+      save();
+    }
+
+    // Moves the tiles towards (dx, dy); true if anything moved.
+    function move(dx, dy) {
+      const xs = [...Array(N).keys()], ys = [...Array(N).keys()];
+      if (dx > 0) xs.reverse();
+      if (dy > 0) ys.reverse();
+      const next = empty();
+      const gone = [];     // tiles merged into another: slide, then go
+      const merged = [];   // tiles that got a merge this move
+      let moved = false;
+      for (const y of ys) for (const x of xs) {
+        const t = grid[y][x];
+        if (!t) continue;
+        let nx = x, ny = y;
+        while (inside(nx + dx, ny + dy) && !next[ny + dy][nx + dx]) { nx += dx; ny += dy; }
+        const ahead = inside(nx + dx, ny + dy) && next[ny + dy][nx + dx];
+        if (ahead && ahead.v === t.v && !ahead.merged) {
+          ahead.v *= 2;
+          ahead.merged = true;
+          score += ahead.v;
+          if (ahead.v === 2048 && !won) won = true;
+          t.x = ahead.x; t.y = ahead.y;
+          gone.push(t);
+          merged.push(ahead);
+          moved = true;
+          continue;
+        }
+        if (nx !== x || ny !== y) moved = true;
+        t.x = nx; t.y = ny;
+        next[ny][nx] = t;
+      }
+      if (!moved) return false;
+      grid = next;
+      for (const t of gone) {
+        const el = els.get(t.id);
+        el.style.setProperty('--x', t.x);
+        el.style.setProperty('--y', t.y);
+        els.delete(t.id);
+        setTimeout(() => el.remove(), 100);
+      }
+      for (const row of grid) for (const t of row) if (t) tileEl(t);
+      for (const t of merged) {
+        delete t.merged;
+        const el = els.get(t.id);
+        // The number changes when the sliding tile arrives.
+        el.firstChild.textContent = t.v / 2;
+        setTimeout(() => { tileEl(t).classList.add('merged'); }, 100);
+      }
+      addRandom();
+      update();
+      save();
+      return true;
+    }
+
+    const inside = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
+
+    function canMove() {
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const t = grid[y][x];
+        if (!t) return true;
+        if (x + 1 < N && grid[y][x + 1]?.v === t.v) return true;
+        if (y + 1 < N && grid[y + 1][x]?.v === t.v) return true;
+      }
+      return false;
+    }
+
+    function update() {
+      if (score > best) best = score;
+      scoreEl.textContent = score;
+      bestEl.textContent = best;
+      if (won && !keepGoing) overlay('You made 2048!', [['Keep going', () => { keepGoing = true; closeOverlay(); save(); }, true], ['New game', newGame]]);
+      else if (!canMove()) overlay('Game over', [['Try again', newGame, true]]);
+    }
+
+    function overlay(text, buttons) {
+      closeOverlay();
+      const o = document.createElement('div');
+      o.className = 'over';
+      o.textContent = text;
+      const row = document.createElement('div');
+      row.className = 'row';
+      for (const [label, fn, primary] of buttons) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = primary ? 'btn primary' : 'btn';
+        b.textContent = label;
+        b.addEventListener('click', () => { fn(); board.focus(); });
+        row.append(b);
+      }
+      o.append(row);
+      setTimeout(() => board.append(o), 250); // after the last move shows
+      overlayEl = o;
+    }
+    let overlayEl = null;
+    function closeOverlay() { overlayEl?.remove(); overlayEl = null; }
+
+    // Saved a moment after the last move, not on every key.
+    let saveTimer = 0;
+    function save() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        const cells = grid.flat().map(t => t ? t.v : 0);
+        aex.saveSettings({ cells, score, best, won, keepGoing }).catch(() => {});
+      }, 400);
+    }
+
+    function restore() {
+      const s = aex.settings;
+      best = Number(s.best) || 0;
+      if (!Array.isArray(s.cells) || s.cells.length !== N * N) return false;
+      grid = empty();
+      s.cells.forEach((v, i) => {
+        if (!v) return;
+        const t = { id: nextId++, v: Number(v), x: i % N, y: Math.floor(i / N) };
+        grid[t.y][t.x] = t;
+        tileEl(t);
+      });
+      if (!grid.flat().some(Boolean)) return false;
+      score = Number(s.score) || 0;
+      won = !!s.won;
+      keepGoing = !!s.keepGoing;
+      update();
+      return true;
+    }
+
+    const keys = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+      a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1],
+    };
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const dir = keys[e.key.length === 1 ? e.key.toLowerCase() : e.key];
+      if (!dir) return;
+      e.preventDefault();
+      if (!overlayEl) move(...dir);
+    });
+
+    // A swipe on the board: the longer axis of a drag of 24px or more.
+    let start = null;
+    board.addEventListener('pointerdown', e => {
+      if (e.target.closest('.over')) return;
+      start = { x: e.clientX, y: e.clientY };
+      board.focus();
+    });
+    addEventListener('pointerup', e => {
+      if (!start) return;
+      const dx = e.clientX - start.x, dy = e.clientY - start.y;
+      start = null;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24 || overlayEl) return;
+      if (Math.abs(dx) > Math.abs(dy)) move(Math.sign(dx), 0);
+      else move(0, Math.sign(dy));
+    });
+    addEventListener('pointercancel', () => { start = null; });
+
+    document.getElementById('restart').addEventListener('click', () => { newGame(); board.focus(); });
+
+    if (!restore()) newGame();
+  </script>
+</body>
+</html>

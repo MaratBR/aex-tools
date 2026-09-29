@@ -18,6 +18,8 @@ type reposState struct {
 	Repos    []repoState `json:"repos"`
 	// Clean is true when no repo has changes, unpushed commits or an error.
 	Clean bool `json:"clean"`
+	// GitClient is the git client openGitClient starts, empty when none is installed.
+	GitClient string `json:"gitClient,omitempty"`
 }
 
 type repoState struct {
@@ -38,6 +40,7 @@ func stateCall(json.RawMessage) (any, error) {
 		return nil, err
 	}
 	st := reposState{ReposDir: c.ReposDir, Repos: []repoState{}, Clean: true}
+	st.GitClient, _, _ = findGitClient()
 	if c.ReposDir == "" {
 		return st, nil
 	}

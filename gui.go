@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -70,6 +72,12 @@ func guiMenu() error {
 		},
 		Changed: func() { loginDone = startLoginCheck() },
 		Ready: func() {
+			if settings.FakeError {
+				// After the start-up questions' run: output outside any run, as a widget's call makes.
+				time.AfterFunc(3*time.Second, func() {
+					printError(errors.New("a fake error, printed because aex runs with --debug-fake-error"))
+				})
+			}
 			// Dev builds are rebuilt in place and run from the repo, so only release builds offer this.
 			if !settings.IsDev {
 				shortcut.OfferOnce()

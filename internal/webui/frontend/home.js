@@ -68,7 +68,8 @@ function showPage(name, auto = false) {
   $('settings').hidden = name !== 'settings';
   document.body.dataset.page = name;
   document.querySelectorAll('.page-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.page === name)));
-  if (name === 'runs') document.body.classList.remove('runs-activity');
+  if (name === 'runs') document.body.classList.remove('runs-activity', 'runs-problem');
+  if (notice && notice.r.page === name) hideNotice();
   if (name !== 'home') closePicker();
   scroller.scrollTop = scrollTops[name];
   syncSide(!auto);

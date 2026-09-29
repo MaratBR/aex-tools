@@ -143,14 +143,17 @@
       row(rows, 'Expected', node('span', 'muted', expected), 'extra');
       content.append(rows);
 
-      if (missing.length) {
-        const actions = node('div', 'actions');
-        const sync = node('button', 'btn primary', 'Run worklog-sync');
-        sync.type = 'button';
-        sync.onclick = () => aex.run('worklog-sync');
-        actions.append(sync);
-        content.append(actions);
-      }
+      // worklog-sync's "this week" is from Monday through today.
+      const actions = node('div', 'actions');
+      const action = (label, primary, line) => {
+        const b = node('button', 'btn' + (primary ? ' primary' : ''), label);
+        b.type = 'button';
+        b.onclick = () => aex.run(line);
+        actions.append(b);
+      };
+      if (missing.length) action('Run worklog-sync', true, 'worklog-sync');
+      action('Sync this week', !missing.length, 'worklog-sync --range "this week"');
+      content.append(actions);
 
       const foot = node('div', 'last');
       foot.append(node('span', 'name', monthName(last.month)));

@@ -4,7 +4,8 @@
 //   - prepare-release (prepare.go): creates and pushes release/VERSION off staging in every CM repo.
 //   - merge-prod (merge.go): merges release/VERSION into PROD and tags it in every CM repo.
 //   - jira-handoff (handoff.go): hands an epic's "Ready for Production" tickets over to QA.
-//   - the cm-repos-state widget (state.go): the git state of every CM repo on the home page.
+//   - the cm-repos-state widget (state.go): the git state of every CM repo on the home page, and
+//     a button to open the git client found on the device (gitclient.go).
 //
 // The git tools share git.go. Widgets for the window's home page are in widgets/.
 package main
@@ -36,6 +37,8 @@ func main() {
 	}, plugin.Jira, plugin.Widget{
 		ID: "cm-repos-state", Name: "CM repos state", Summary: "Git state of every CM repo: clean or pending changes",
 		W: 2, H: 2, Refresh: 5 * time.Second, HTML: reposStatePage,
-		Calls: map[string]func(json.RawMessage) (any, error){"state": stateCall},
+		Calls: map[string]func(json.RawMessage) (any, error){
+			"state": stateCall, "openGitClient": openGitClientCall,
+		},
 	}, plugin.Settings{Summary: "Default project prefix, default QA, always Cc, excluded assignees, repos", Run: runSettings})
 }

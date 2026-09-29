@@ -7,6 +7,9 @@ const feed = $('feed'), scroller = $('scroll'), input = $('input'), commandForm 
 
 let tools = [];
 let run = null;     // the run in progress: {el, body, status, out, term, started, page}
+// stray is the block of output printed outside any run (a warning from a widget's call), like a run's
+// but never in progress: it does not hold the command line. A run starting ends it.
+let stray = null;
 let keyHandler = null;
 // dropHandler takes the paths of files dropped on the window, while a question for a path is open.
 let dropHandler = null;
@@ -74,13 +77,13 @@ function elapsed(ms) {
 
 // Runs ------------------------------------------------------------------------------------------
 
-function setStatus(state, text) {
-  run.el.dataset.state = state;
-  run.status.textContent = text;
+function setStatus(state, text, r = run) {
+  r.el.dataset.state = state;
+  r.status.textContent = text;
 }
 
-// startRun adds the run's block to the feed, or to where (a plugin's settings, on Settings).
-function startRun(path, args, where = feed) {
+// runBlock adds a run's block to the feed, or to where (a plugin's settings, on Settings).
+function runBlock(path, args, where = feed) {
   if (where === feed) {
     $('welcome').hidden = true;
     $('clear').hidden = false;
@@ -95,7 +98,13 @@ function startRun(path, args, where = feed) {
   const body = el('div', 'run-body');
   block.append(head, body);
   where.appendChild(block);
-  run = { el: block, body, status, out: null, term: null, started: Date.now(), page: where === feed ? 'runs' : 'settings' };
+  return { el: block, body, status, out: null, term: null, started: Date.now(), page: where === feed ? 'runs' : 'settings' };
+}
+
+function startRun(path, args, where = feed) {
+  closeOut(stray);
+  stray = null;
+  run = runBlock(path, args, where);
   setStatus('running', 'Running');
   document.body.classList.add('running');
   updateCommand();
@@ -103,30 +112,36 @@ function startRun(path, args, where = feed) {
   toBottom();
 }
 
-// outBlock is where output goes: the run's last output block, or a new one.
-function outBlock() {
-  if (!run) {
-    // Output outside a run (a warning at start): its own block.
-    startRun(['aex'], []);
-    run.el.classList.add('orphan');
+// target is the block output goes to: the run's, else the stray output's (a new one if needed).
+function target() {
+  if (run) return run;
+  if (!stray || !stray.el.isConnected) {
+    stray = runBlock(['aex'], []);
+    stray.el.classList.add('orphan');
+    setStatus('done', '', stray);
   }
-  if (!run.out) {
-    run.out = el('div', 'out');
-    run.body.appendChild(run.out);
-    run.term = new Terminal(run.out);
-  }
-  return run.term;
+  return stray;
 }
 
-// closeOut ends the current output block, dropping blank lines around it.
-function closeOut() {
-  if (!run || !run.out) return;
-  const lines = run.out.children;
+// outBlock is where r's output goes: its last output block, or a new one.
+function outBlock(r) {
+  if (!r.out) {
+    r.out = el('div', 'out');
+    r.body.appendChild(r.out);
+    r.term = new Terminal(r.out);
+  }
+  return r.term;
+}
+
+// closeOut ends r's current output block, dropping blank lines around it.
+function closeOut(r = run) {
+  if (!r || !r.out) return;
+  const lines = r.out.children;
   const blank = l => !l.textContent.trim();
   while (lines.length && blank(lines[0])) lines[0].remove();
   while (lines.length && blank(lines[lines.length - 1])) lines[lines.length - 1].remove();
-  if (!lines.length) run.out.remove();
-  run.out = run.term = null;
+  if (!lines.length) r.out.remove();
+  r.out = r.term = null;
 }
 
 // onClear is the tool clearing the screen: its run starts over empty.
@@ -138,10 +153,12 @@ function onClear() {
 }
 
 function onOutput(s) {
-  if (!run || run.page === 'runs') runsActivity();
+  const r = target();
+  if (r.page === 'runs') runsActivity();
   const stick = nearBottom();
-  outBlock().write(s);
-  if (stick) toBottom();
+  outBlock(r).write(s);
+  if (stick) toBottom(r.page);
+  scanProblems(r, s);
 }
 
 async function runLine(line) {
@@ -183,6 +200,7 @@ function finished({ status, ok, quiet }) {
   }
   const took = elapsed(Date.now() - run.started);
   setStatus(ok ? 'done' : 'failed', (ok ? 'Done' : 'Failed') + ' in ' + took);
+  if (!ok) problem(run, run.el.querySelector('.tool').textContent + ' failed', status.replace(/^✖\s*/, ''), true);
   // A failure's error is already in the output unless the tool printed nothing.
   if (!ok && !run.body.querySelector('.out')) {
     run.body.appendChild(el('div', 'fail-note', status.replace(/^✖\s*/, '')));
@@ -198,6 +216,63 @@ function finished({ status, ok, quiet }) {
   refreshWidgets();
   if (where === 'runs') resumeOnboarding(ok, status);
 }
+
+// Problems --------------------------------------------------------------------------------------
+
+// A warning, an error or a failed run on a page not shown (a widget's call warning while Home is
+// shown) comes up as a notice over the page, with a way to it, and marks Runs in the sidebar.
+const problemLine = /^(▲ Warning:|✖ error:)\s*(.*)/;
+const ansiCodes = /\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+let pendingLine = ''; // output after the last line break, for a line printed in parts
+let notice = null;    // the problem shown: {r, count}
+
+function scanProblems(r, s) {
+  const lines = (pendingLine + s).split(/\r?\n/);
+  pendingLine = lines.pop().slice(-4000);
+  for (const l of lines) {
+    const m = l.replace(ansiCodes, '').trim().match(problemLine);
+    if (m) problem(r, m[1].startsWith('▲') ? 'Warning' : 'Error', m[2]);
+  }
+}
+
+// problem shows title and detail about r's block, unless its page is shown. failed: r's run failed,
+// which names it better than a line it printed (kept as the detail).
+function problem(r, title, detail, failed = false) {
+  if (r.page === page) return;
+  if (r.page === 'runs') document.body.classList.add('runs-problem');
+  const box = $('notice');
+  if (notice && notice.r === r) {
+    if (failed) $('notice-title').textContent = title;
+    if (!$('notice-detail').textContent) $('notice-detail').textContent = detail;
+  } else {
+    notice = { r, count: notice ? notice.count + 1 : 1 };
+    $('notice-title').textContent = title;
+    $('notice-detail').textContent = detail;
+  }
+  $('notice-more').textContent = notice.count > 1 ? `+${notice.count - 1} more on Runs` : '';
+  box.title = [$('notice-title').textContent, $('notice-detail').textContent].filter(Boolean).join(': ');
+  box.hidden = false;
+}
+
+function hideNotice() {
+  $('notice').hidden = true;
+  notice = null;
+}
+
+$('notice-show').onclick = () => {
+  const r = notice?.r;
+  hideNotice();
+  if (!r) return;
+  showPage(r.page);
+  if (!r.el.isConnected) return;
+  r.el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' });
+  // The entrance animation's end set its animation to none (see the end of this file).
+  r.el.classList.remove('flash');
+  r.el.style.animation = '';
+  void r.el.offsetWidth;
+  r.el.classList.add('flash');
+};
+$('notice-close').onclick = hideNotice;
 
 // Questions -------------------------------------------------------------------------------------
 
@@ -545,6 +620,8 @@ async function refresh() {
 $('clear').onclick = () => {
   if (run) return;
   feed.textContent = '';
+  stray = null;
+  if (notice?.r.page === 'runs') hideNotice();
   $('welcome').hidden = false;
   $('clear').hidden = true;
 };

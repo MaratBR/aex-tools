@@ -14,9 +14,12 @@ var (
 	// IsDev is true for a build that knows its source checkout (go build without -trimpath, as
 	// bin\*.ps1 do); release builds (bin\build-exe.ps1) use -trimpath.
 	IsDev bool
-	// Debug is set by --debug (binex.ps1 passes it): tools and widgets for developing aex
+	// Debug is set by --debug (bin\aex.ps1 passes it): tools and widgets for developing aex
 	// (tool.Tool.Debug, the window's debug widgets) can be used only then.
 	Debug bool
+	// FakeError is set by --debug-fake-error: the window prints a made-up error a few seconds after
+	// it opens, outside any run, to see how it shows one (as a widget's call warning would).
+	FakeError bool
 	// AppRoot holds .env: the repo for a dev build, else the folder holding the exe.
 	AppRoot string
 	// DataDir holds app settings (.env.config), the AEXT session and output files.

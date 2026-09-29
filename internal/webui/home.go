@@ -49,6 +49,7 @@ var widgetCatalog = []WidgetInfo{
 	{ID: "google-calendars", Name: "Google Calendar", Summary: "What is on now in a Google calendar you pick, and what comes in the next working days", W: 6, H: 2, Refresh: 60},
 	{ID: "jira-tickets", Name: "Jira tickets", Summary: "Open tickets assigned to you, or where you are in fields you pick", W: 6, H: 2, Refresh: 60},
 	{ID: "cat", Name: "Cat as a service", Summary: "A random cat from cataas.com, a new one on click", W: 3, H: 1},
+	{ID: "2048", Name: "2048", Summary: "The sliding tiles game: join the numbers to get to 2048", W: 4, H: 2},
 }
 
 // widgetAPIs are the calls widgets make with aex.call(name, args). They never prompt: a widget has

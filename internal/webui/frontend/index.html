@@ -119,6 +119,19 @@
       </form>
       <div id="command-error" hidden></div>
     </div>
+
+    <div id="notice" role="alert" hidden>
+      <svg class="notice-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><path class="mark" d="M8 6v3.5M8 11.6v.1"/></svg>
+      <div class="notice-text">
+        <span id="notice-title"></span>
+        <span id="notice-detail"></span>
+        <span id="notice-more"></span>
+      </div>
+      <button id="notice-show" class="btn small" type="button">Show</button>
+      <button id="notice-close" class="icon-btn" type="button" title="Dismiss" aria-label="Dismiss">
+        <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
   </main>
 
   <section id="onboarding" role="dialog" aria-modal="true" aria-labelledby="ob-title" hidden>
