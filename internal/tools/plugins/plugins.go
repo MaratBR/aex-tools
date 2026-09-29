@@ -107,6 +107,13 @@ func printList(plugins []plugin.Info) {
 			}
 			fmt.Printf("  %s %s\n", out.Dim("Access  "), strings.Join(access, ", "))
 		}
+		if len(p.Tools) > 0 {
+			names := make([]string, len(p.Tools))
+			for i, t := range p.Tools {
+				names[i] = t.Name
+			}
+			fmt.Printf("  %s %s\n", out.Dim("Tools   "), strings.Join(names, ", "))
+		}
 		fmt.Printf("  %s %s\n", out.Dim("File    "), p.FileInfo())
 		fmt.Printf("  %s %s\n", out.Dim("SHA-256 "), p.Hash)
 	}

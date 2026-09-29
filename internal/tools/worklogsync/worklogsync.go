@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -352,6 +353,67 @@ func run(args []string) error {
 
 var isoDay = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
+// entryKey identifies an entry: same day, project and description (the issue key) is a duplicate.
+type entryKey struct{ date, project, description string }
+
+func keyOf(date, project, description string) entryKey {
+	return entryKey{date, strings.TrimSpace(project), strings.TrimSpace(description)}
+}
+
+// skipDuplicates drops entries AEXT already has, and says which (with both hours when they differ).
+func skipDuplicates(c *aext.Client, entries []aext.Entry) ([]aext.Entry, error) {
+	from, to := entries[0].Date, entries[0].Date
+	for _, e := range entries {
+		from, to = min(from, e.Date), max(to, e.Date)
+	}
+	existing, err := c.TimeEntries(from, to)
+	if err != nil {
+		return nil, err
+	}
+	keep, skipped := splitDuplicates(entries, existing)
+	for _, s := range skipped {
+		line := fmt.Sprintf("  %s %s %s", s.entry.Date, s.entry.Project, s.entry.Description)
+		if math.Abs(s.entry.HoursTotal-s.logged) > 0.01 {
+			line += ui.Out.Yellow(fmt.Sprintf(" (AEXT has %.2fh, CSV %.2fh)", s.logged, s.entry.HoursTotal))
+		}
+		if s.inCSV {
+			line += ui.Out.Yellow(" (repeated in CSV)")
+		}
+		fmt.Println(line)
+	}
+	if len(skipped) > 0 {
+		fmt.Printf("%s skipped %d entries already logged (above).\n", aextLabel(), len(skipped))
+	}
+	return keep, nil
+}
+
+type skippedEntry struct {
+	entry  aext.Entry
+	logged float64 // hours AEXT (or an earlier CSV row) has for the key
+	inCSV  bool    // duplicate of an earlier CSV row, not of an AEXT entry
+}
+
+// splitDuplicates keeps entries whose key is neither in existing nor an earlier entry.
+func splitDuplicates(entries []aext.Entry, existing []aext.TimeEntry) (keep []aext.Entry, skipped []skippedEntry) {
+	logged := map[entryKey]float64{}
+	for _, e := range existing {
+		logged[keyOf(e.Date, e.Project, e.Description)] += *e.HoursTotal
+	}
+	sent := map[entryKey]float64{}
+	for _, e := range entries {
+		k := keyOf(e.Date, e.Project, e.Description)
+		if h, ok := logged[k]; ok {
+			skipped = append(skipped, skippedEntry{entry: e, logged: h})
+		} else if h, ok := sent[k]; ok {
+			skipped = append(skipped, skippedEntry{entry: e, logged: h, inCSV: true})
+		} else {
+			sent[k] = e.HoursTotal
+			keep = append(keep, e)
+		}
+	}
+	return keep, skipped
+}
+
 // Byte order mark, written as an escape: Go rejects a literal one in source.
 const bom = "\xef\xbb\xbf"
 
@@ -394,6 +456,15 @@ func importCSV(c *aext.Client, file string) error {
 			return fmt.Errorf("%s row %d is invalid: %s", name, i+2, shown)
 		}
 		entries = append(entries, aext.Entry{Date: r["date"], Project: r["project"], Description: r["description"], HoursTotal: hours})
+	}
+
+	entries, err = skipDuplicates(c, entries)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		fmt.Println(aextLabel(), "every entry is already logged, nothing sent.")
+		return nil
 	}
 
 	imported, err := c.ImportEntries(entries)

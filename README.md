@@ -8,18 +8,19 @@ directly (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.ps1`).
 - `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`
 - `menu.go` — menu shared parts (AEXT / Jira login header, plain numbered list, running a tool)
 - `menu_tui.go` — full-screen arrow-key menu ([Bubble Tea](https://github.com/charmbracelet/bubbletea),
-  alternate screen). Tools themselves run in the normal screen, so their output stays in scrollback.
+  alternate screen). Tools themselves run in the normal screen, cleared (with its scrollback) before each tool from the menu.
   Falls back to the numbered list with `--plain`, `AEX_TUI=0`, or when stdin/stdout is not a terminal.
   The header shows who is logged in to AEXT (`/api/auth/me`) and Jira (`/rest/api/3/myself`), both checked
   in parallel and never prompting, then settings and the data folder.
 - `internal/`
-  - `tool` — `Tool` type every tool exports (name, summary, run) and `ParseFlags` (gives `--help`)
+  - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
+    `ParseFlags` (gives `--help`)
   - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
     `datafolder`, `plugins`), each exporting `Tool`; `main.go` lists them in menu order
   - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
     a plugin's own `main`
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
-    `.env.private`, app settings (`.env.config`); auth settings list, prompts for missing ones and saves
+    app settings (`.env.config`), the credential store; auth settings list, prompts for missing ones and saves
     them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
     leave statuses (`config.go`)
   - `dates` — day math and range expressions
@@ -52,12 +53,16 @@ environment variable (real environment only). `data-folder` opens it in Explorer
 Exports Jira worklogs to `<data folder>\output\jira-export\<timestamp>.csv` (`date,project,hours,description`,
 one row per day + issue), then offers to send it to AEXT.
 
+Before sending, rows AEXT already has (`GET /api/time-entries/`: same date, project and description) are
+skipped and listed, with both hours when they differ; so are rows repeated in the CSV.
+
 Range: by default suggested from AEXT (first working day this month with no hours per the AEXT working-days calendar, through today;
 offers an earlier start if last month has gaps). Decline, or use `--manual`, to type one:
 `today`, `yesterday`, `this week`, `last week`, `this month`, `last month`, `2026.09.20`,
 `26.09.20`, `09.20`, `09.20-09.30`. `--range <expr>` skips the prompts.
 
-AEXT login is by emailed code. The session cookie is kept in the credential store (see Credentials).
+AEXT login is by emailed code. When `AEXT_EMAIL` is not set but a saved session is still valid, the email
+AEXT reports for it (`/api/auth/me`, checked by the menu header and `account`) is used and saved to app settings. The session cookie is kept in the credential store (see Credentials).
 Parallel requests share one login.
 
 The CSV is re-read before import, so it can be edited before confirming. After import the quota is shown.
@@ -91,10 +96,23 @@ action directly: `--show`, `--login aext|jira`, `--logout aext|jira`, `--wipe-se
 
 ## configure
 
-`.\bin\configure.ps1` asks for the auth settings `AEXT_EMAIL`, `JIRA_EMAIL` and `JIRA_TOKEN` (hidden input),
-then `HOURS_PER_DAY` and `TZ_OFFSET_HOURS` (validated), and saves them to app settings (`.env.config` in the
-data folder). Empty answer keeps the current value, `-` removes it from app settings (or resets it to its default). Warns when the value is also set in a fallback source, since app settings
-will override it. Offers to log out of AEXT when the email changes.
+`.\bin\configure.ps1` lists the settings with their current values: the auth settings `AEXT_EMAIL`,
+`JIRA_EMAIL` and `JIRA_TOKEN` (hidden input), then `HOURS_PER_DAY` and `TZ_OFFSET_HOURS` (validated). Pick one
+to change it; it is saved to app settings (`.env.config` in the data folder) right away, then the list comes
+back until Done. When some have no value, "Fill in the N not set" asks for just those.
+`configure NAME` asks for one setting; `configure NAME=value` saves it without asking (not for `JIRA_TOKEN`).
+Empty answer keeps the current value, `-` removes it from app settings (or resets it to its default). Warns when
+the value is also set in a fallback source, since app settings will override it. Offers to wipe the AEXT
+session when the email changes.
+
+The menu (or `configure --wipe-settings` / `--wipe-all`) also wipes, after listing what goes and asking you to
+type `CONFIRM`:
+- Wipe all settings: `.env.config`, secret settings (`JIRA_TOKEN`) in the credential store and
+  `plugin-settings/`. App settings get their defaults back.
+- Wipe everything: all settings, the AEXT session, and every entry of the data folder (`output/`, plugin data,
+  anything else). Plugins and their approvals are kept. Refused when the data folder holds the app.
+
+`.env` and environment variables are never touched and still apply as fallbacks.
 
 Tools that need a missing auth setting prompt for it and offer to save it to app settings too.
 
@@ -109,13 +127,42 @@ what to do; else `list` (default), `describe [<name>]` (asks to approve any not 
 `delete <name> [--yes]` (deletes the file and forgets its safe hash and granted access), `open` (opens
 the plugins folder).
 
-## jira-release-handoff (plugin)
+## cm-release (plugin)
 
-`.\bin\jira-release-handoff.ps1 [--epic CM-6996] [--dry-run] [--manual]` hands the epic's child tickets in
+A group of CM release tools (`.\bin\cm-release.ps1 <tool> [args]`). Needs Jira access (see Plugins).
+
+The git tools work on every CM repo at once: `<reposDir>\<repo>` for each of the `repos` settings
+(default `clearmechanic.frontend`, `clearmechanic.siteforappointments`, `cmos.datamigration`, `src`,
+`cmos.microservices`). The repos folder is asked for on first run; both are in the settings menu of
+`jira-handoff --settings`. Branches: `master`, `PROD`, `staging`, `release/VERSION`; tag `vVERSION`.
+
+### pull-all
+
+`.\bin\cm-release.ps1 pull-all` checks every repo is clean (asks to fix and recheck), then fetches
+(`--all --prune`) and pulls master, PROD and staging in each, finishing on staging.
+
+### prepare-release
+
+`.\bin\cm-release.ps1 prepare-release [--version 4.5]` checks every repo is clean, then creates
+`release/VERSION` off staging in each (VERSION asked for when left out). If all repos are already on the
+same release branch, offers to use it. Shows each repo's `git diff --stat PROD...release/VERSION` one at a
+time, then asks before pushing the branch to origin (checking each repo is on it and clean first).
+No tag yet: merge-prod makes it.
+
+### merge-prod
+
+`.\bin\cm-release.ps1 merge-prod` detects VERSION from the `release/VERSION` branch all repos are on
+(confirmed first), then validates each: fetched, on that branch, clean, local PROD equal to `origin/PROD`.
+An existing `vVERSION` tag is shown (where it points, commit details) and, if you agree, deleted locally
+and on origin. After confirming, merges into PROD (`--no-ff`) and tags the merge commit in each repo, then
+asks whether to push PROD and the tag.
+
+### jira-handoff
+
+`.\bin\cm-release.ps1 jira-handoff [--epic CM-6996] [--dry-run] [--manual]` hands the epic's child tickets in
 "Ready for Production" off to QA: comments "Please test in PROD" (To: QA owner, Cc: the always-Cc people
 minus the QA owner; no Cc line when that leaves nobody), assigns the QA owner (`customfield_11215`; none
-means the default QA), then moves the ticket to In Production (transition `111`, always last). Needs Jira
-access (see Plugins).
+means the default QA), then moves the ticket to In Production (transition `111`, always last).
 
 - Epic (`--epic` or asked): key (`CM-7042`), link (`https://…/browse/CM-7042`, `…?selectedIssue=CM-7042`)
   or bare number (`7042` = default prefix + number, shown and confirmed first). A pasted link turns into
@@ -125,8 +172,8 @@ access (see Plugins).
 - Settings (`--settings`, or "Settings" in the first question when run without `--epic`): default
   project prefix (`CM`), default QA (required), always-Cc people, excluded assignees, each excluded one set to "ask each run" or "skip
   automatically". People are found by name or email in Jira. Kept in
-  `<data folder>\plugin-settings\jira-release-handoff.json`; first run writes the defaults (prefix CM, QA Heriberto,
-  Cc Alexander + Heriberto, Bulat excluded with ask).
+  `<data folder>\plugin-settings\cm-release.json` (moved there from `jira-release-handoff.json` if that exists);
+  first run writes the defaults (prefix CM, QA Heriberto, Cc Alexander + Heriberto, Bulat excluded with ask).
 - `[Mobile]` tickets are skipped; `[MobileAPI]` counts as Web. A ticket tagged both `[Mobile]` and
   `[Web]` / `[MobileAPI]` is asked about. Then excluded assignees' tickets are skipped or asked about
   (default no), per their setting.
@@ -141,7 +188,7 @@ access (see Plugins).
   plan is shown and you pick hand off, dry run or cancel. `--dry-run` changes nothing.
 - Stops at the first failure without retrying (the comment may be posted already).
 - Summary lists skipped tickets with links and why; a Markdown report goes to
-  `<data folder>\output\jira-release-handoff\<epic>-<timestamp>[-dry-run].md`.
+  `<data folder>\output\cm-release\jira-handoff\<epic>-<timestamp>[-dry-run].md`.
 
 ## Usage
 
@@ -165,10 +212,10 @@ current folder. Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
 `.\bin\build-exe.ps1` builds `dist\aex.exe` (~8 MB, no runtime needed). Double-click it to open a terminal
 with the menu, or run `aex.exe <tool> [args]`.
 
-- `.env` is embedded at build time. A `.env` or `.env.private` next to the exe is also read.
+- `.env` is embedded at build time. A `.env` next to the exe is also read.
 - Everything else goes to the data folder. Run `configure` first, or missing settings are prompted for on first use.
-- Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` and
-  `.env.private` from the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads them from its own folder.
+- Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` from
+  the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads it from its own folder.
 - Icon and version info come from the committed `rsrc_windows_*.syso`. After changing `assets\logo.ico` or the
   version in `winres\winres.json`, run `go generate` (uses [go-winres](https://github.com/tc-hib/go-winres)).
   To re-render `logo.ico` from `logo.svg`, use any SVG renderer with sizes 16, 24, 32, 48, 64, 128, 256.
@@ -185,6 +232,11 @@ with the menu, or run `aex.exe <tool> [args]`.
 2. Add `foo.Tool` to `builtins` in `main.go`. (Or make it a plugin: see Plugins.)
 3. Copy `bin\worklog-sync.ps1` to `bin\foo.ps1`, change the name.
 
+A tool can instead be a group of tools: `tool.Tool{Name: "foo", Summary: "...", Sub: []tool.Tool{...}}`.
+A group does nothing on its own; `aex foo <tool> [args]` (name or number) runs one of its tools, `aex foo`
+asks which on a terminal, `aex foo --help` lists them. The menu opens a group as a submenu (esc goes back);
+the plain menu lists its tools under it (`7 1 --help`). Groups may nest.
+
 ## Plugins
 
 A plugin is a tool in its own executable in the `plugins` folder next to `aex.exe`. It shows in the menu
@@ -196,7 +248,13 @@ credentials: a plugin never opens the credential store and ignores secret settin
 - Adding one in this repo: create `plugins/foo/main.go` (`package main`) calling
   `plugin.Main(tool.Tool{Name: "foo", Summary: "...", Run: run})`. The build scripts build every
   `plugins/*` into the plugins folder. Optionally copy `bin\worklog-sync.ps1` to `bin\foo.ps1`.
-- Any other executable works too if it answers `--aex-describe` with `{"summary": "..."}` on stdout.
+- A plugin can be a group of tools (see Adding a tool): `plugin.Main(tool.Tool{Name: "foo", Summary: "...",
+  Sub: []tool.Tool{{Name: "bar", ...}}})`. Its tools are named plainly (`bar`, not `foo-bar`); aex runs
+  one as `<plugin> bar [args]`. Access is the plugin's, for all its tools. The menu shows them once the
+  plugin is approved (before that it cannot be described, so it shows as one tool, which asks which of
+  its tools to run).
+- Any other executable works too if it answers `--aex-describe` with `{"summary": "..."}` on stdout,
+  plus `"tools": [{"name": "...", "summary": "..."}]` (each maybe with its own `"tools"`) for a group.
 - Access: a plugin asks for it with `plugin.Main(t, plugin.Jira)` (`"access": ["jira"]` in the describe
   JSON). Before running it aex asks once to allow it; the grant is saved for the file's SHA-256
   (`plugin-access:<path>`), so a changed file asks again. aex then makes sure the settings are set
@@ -223,7 +281,6 @@ credentials: a plugin never opens the credential store and ignores secret settin
 Lowest to highest priority:
 
 - `.env` (repo / next to the exe): shared non-secret config (base URLs), committed (built into the exe).
-- `.env.private` (repo / next to the exe): gitignored fallback for auth settings (template: `.env.private.example`).
 - Real environment variables.
 - App settings, `.env.config` (data folder): where auth settings belong. Written by `configure` and by
   missing-setting prompts. Overrides everything, including real environment variables.
@@ -255,4 +312,4 @@ Saving `JIRA_TOKEN` (configure, `account`, missing-setting prompt) writes the cr
 any `JIRA_TOKEN` line from `.env.config`. A token still in `.env.config` from older versions keeps working
 until saved again. An old `session.txt` is ignored: log in to AEXT again.
 
-`.claude/settings.json` denies Claude Code access to `.env.private`, `.env.config`, `session.txt` and `credentials.json`.
+`.claude/settings.json` denies Claude Code access to `.env.config`, `session.txt` and `credentials.json`.

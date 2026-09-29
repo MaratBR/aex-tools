@@ -1,6 +1,5 @@
-// jira-release-handoff: plugin tool (see internal/plugin), built to plugins\jira-release-handoff.exe
-// next to aex.exe. Hands the "Ready for Production" tickets of an epic over to QA: comments asking
-// to test in PROD, assigns the QA owner, moves the ticket to In Production.
+// jira-handoff, a cm-release tool: hands the "Ready for Production" tickets of an epic over to QA:
+// comments asking to test in PROD, assigns the QA owner, moves the ticket to In Production.
 package main
 
 import (
@@ -15,18 +14,13 @@ import (
 
 	"aex/internal/dates"
 	"aex/internal/jira"
-	"aex/internal/plugin"
 	"aex/internal/settings"
 	"aex/internal/tool"
 	"aex/internal/ui"
 )
 
-func main() {
-	plugin.Main(tool.Tool{Name: "jira-release-handoff", Summary: "Hand off an epic's Ready for Production tickets to QA", Run: run}, plugin.Jira)
-}
-
-const usage = `Usage: jira-release-handoff [--epic <key>] [--dry-run] [--manual]
-       jira-release-handoff --settings
+const handoffUsage = `Usage: cm-release jira-handoff [--epic <key>] [--dry-run] [--manual]
+       cm-release jira-handoff --settings
 
 Finds the epic's child tickets in "Ready for Production" and hands each one off to QA:
 comments "Please test in PROD" (To: QA owner, Cc: the always-Cc people), assigns the QA owner,
@@ -42,14 +36,15 @@ check against; tickets that became Ready for Production after that release's dat
 about, to allow (one or all) or decline.
 
 Default project prefix, default QA, always-Cc people and excluded assignees are settings, kept in
-<data folder>/plugin-settings/jira-release-handoff.json (defaults written on first run).
-A Markdown report is written to <data folder>/output/jira-release-handoff/.
+<data folder>/plugin-settings/cm-release.json (defaults written on first run).
+A Markdown report is written to <data folder>/output/cm-release/jira-handoff/.
 
   --epic      Epic key, link, or number in the default project (6996 means CM-6996 unless the
               default prefix is changed; confirmed first). Asked for when left out.
   --dry-run   Change nothing: only show and report what would be done
   --manual    Confirm each ticket (asked for when left out)
-  --settings  Change the default QA, always-Cc people and excluded assignees`
+  --settings  Change the default QA, always-Cc people and excluded assignees (and the repos
+              folder and repos of the git tools)`
 
 const (
 	qaField                = "customfield_11215"
@@ -111,13 +106,13 @@ type report struct {
 	skipped     []skip
 }
 
-func run(args []string) error {
-	fs := flag.NewFlagSet("jira-release-handoff", flag.ContinueOnError)
+func runHandoff(args []string) error {
+	fs := flag.NewFlagSet("jira-handoff", flag.ContinueOnError)
 	epicFlag := fs.String("epic", "", "")
 	dryRun := fs.Bool("dry-run", false, "")
 	manual := fs.Bool("manual", false, "")
 	settingsFlag := fs.Bool("settings", false, "")
-	if done, err := tool.ParseFlags(fs, args, usage); done || err != nil {
+	if done, err := tool.ParseFlags(fs, args, handoffUsage); done || err != nil {
 		return err
 	}
 	out := ui.Out
@@ -133,7 +128,7 @@ func run(args []string) error {
 	if !*settingsFlag && *epicFlag == "" && ui.IsInteractive() {
 		choice, err := ui.Choose("Release handoff", []ui.Option{
 			{Label: "Hand off an epic's tickets", Value: "handoff"},
-			{Label: "Settings: default QA, always Cc, excluded assignees", Value: "settings"},
+			{Label: "Settings: default QA, always Cc, excluded assignees, repos", Value: "settings"},
 		})
 		if err != nil {
 			return err
@@ -654,7 +649,7 @@ func firstLine(s string) string {
 }
 
 func writeReport(j *jira.Client, r *report) (string, error) {
-	dir := filepath.Join(settings.OutputDir, "jira-release-handoff")
+	dir := filepath.Join(settings.OutputDir, "cm-release", "jira-handoff")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}

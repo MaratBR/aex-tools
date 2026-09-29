@@ -51,12 +51,16 @@ func help() string {
 	var list strings.Builder
 	for _, t := range tools {
 		fmt.Fprintf(&list, "  %-*s%s\n", nameWidth(), t.Name, t.Summary)
+		for _, s := range t.Sub {
+			fmt.Fprintf(&list, "    %-*s%s\n", nameWidth()-2, s.Name, s.Summary)
+		}
 	}
 	return fmt.Sprintf(`Usage: aex [--data-dir <dir>] [--plain] [<tool> [args...]]
 
 Without a tool, opens a menu to pick and run tools until you quit: an arrow-key
 terminal UI, or a numbered list with --plain (or AEX_TUI=0, or when not on a terminal).
 With a tool name, runs that tool once with the given args (try "aex <tool> --help").
+A group of tools (its tools indented below it) runs one: "aex <group> <tool> [args...]".
 
 Tools:
 %s
@@ -65,7 +69,7 @@ Plugins (tools after the built-in ones) are executables in:
 
 Data folder (app settings .env.config, AEXT session, output), set with --data-dir <dir> or AEX_DATA_DIR:
   %s
-.env and .env.private (fallbacks) are read from:
+.env (fallback) is read from:
   %s`, list.String(), pluginDir(), settings.DataDir, settings.AppRoot)
 }
 
@@ -147,5 +151,5 @@ func run(args []string) error {
 	if t == nil {
 		return fmt.Errorf("unknown tool: %s (see aex --help)", args[0])
 	}
-	return t.Run(args[1:])
+	return t.Exec(args[1:])
 }

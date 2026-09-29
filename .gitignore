@@ -1,4 +1,3 @@
-.env.private
 .env.local
 session.txt
 output/

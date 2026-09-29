@@ -14,15 +14,16 @@ var (
 	// IsDev is true for a build that knows its source checkout (go build without -trimpath, as
 	// bin\*.ps1 do); release builds (bin\build-exe.ps1) use -trimpath.
 	IsDev bool
-	// AppRoot holds .env and .env.private: the repo for a dev build, else the folder holding the exe.
+	// AppRoot holds .env: the repo for a dev build, else the folder holding the exe.
 	AppRoot string
 	// DataDir holds app settings (.env.config), the AEXT session and output files.
 	DataDir       string
 	JiraExportDir string
 	// OutputDir holds files tools write for the user, one folder per tool.
-	OutputDir      string
-	SharedEnvFile  string
-	PrivateEnvFile string
+	OutputDir string
+	// PluginSettingsDir holds plugins' settings files, one per plugin.
+	PluginSettingsDir string
+	SharedEnvFile     string
 	// ConfigEnvFile holds app settings: auth settings saved by configure and the prompts, and the
 	// AppSettings defaults written on first start.
 	ConfigEnvFile string
@@ -54,7 +55,6 @@ func TakeGlobalArgs(argv []string) (dataDir string, rest []string, err error) {
 func Init(dataDir, embeddedEnv string) error {
 	AppRoot, IsDev = appRoot()
 	SharedEnvFile = filepath.Join(AppRoot, ".env")
-	PrivateEnvFile = filepath.Join(AppRoot, ".env.private")
 
 	// --data-dir, else AEX_DATA_DIR (real environment only: app settings live in the data folder),
 	// else the per-user default (%APPDATA%\aex on Windows).
@@ -75,6 +75,7 @@ func Init(dataDir, embeddedEnv string) error {
 	DataDir = abs
 	OutputDir = filepath.Join(DataDir, "output")
 	JiraExportDir = filepath.Join(OutputDir, "jira-export")
+	PluginSettingsDir = filepath.Join(DataDir, "plugin-settings")
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 
 	openCredentials()

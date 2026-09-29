@@ -54,3 +54,13 @@ func colorEnabled(f *os.File) bool {
 func Warn(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "%s %s\n", Err.Bold(Err.Yellow("▲ Warning:")), fmt.Sprintf(format, args...))
 }
+
+// ClearScreen clears the terminal and its scrollback, when stdout is a terminal that takes ANSI codes.
+func ClearScreen() {
+	f := os.Stdout
+	if !term.IsTerminal(int(f.Fd())) || !enableVT(f) || os.Getenv("TERM") == "dumb" {
+		return
+	}
+	// Cursor home, clear screen, clear scrollback.
+	fmt.Fprint(f, "\x1b[H\x1b[2J\x1b[3J")
+}

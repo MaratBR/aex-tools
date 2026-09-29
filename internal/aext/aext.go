@@ -238,7 +238,21 @@ func (c *Client) WhoAmI(timeout time.Duration) (*Me, error) {
 	if err != nil || json.Unmarshal(body, &me) != nil || json.Unmarshal(body, &me.Fields) != nil || me.Email == nil {
 		return nil, errors.New("AEXT GET /api/auth/me: unexpected response")
 	}
+	rememberEmail(*me.Email)
 	return &me, nil
+}
+
+// rememberEmail fills in an unset AEXT_EMAIL with the logged-in user's email, and saves it to app
+// settings so the next login does not ask for it. A failed save is ignored (WhoAmI never prints):
+// the email is still set for this run, and a later login offers to save it again.
+func rememberEmail(email string) {
+	if email == "" || settings.Get("AEXT_EMAIL") != "" {
+		return
+	}
+	settings.Set("AEXT_EMAIL", email)
+	if !settings.IsPlugin {
+		_ = settings.SaveAppSettings([]settings.Change{{Name: "AEXT_EMAIL", Value: &email}})
+	}
 }
 
 // HasSession reports whether a session cookie is cached (it may still be expired).

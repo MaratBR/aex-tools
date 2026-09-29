@@ -3,7 +3,10 @@
 // plugin side (Main) is what a plugin's main calls.
 //
 // Protocol: aex runs "<plugin> --aex-describe", which prints {"summary": "...", "access": [...]}
-// as JSON, to list it in the menu (the tool name is the file name without .exe). Running the tool
+// as JSON, to list it in the menu (the tool name is the file name without .exe). A plugin that is a
+// group of tools (see tool.Tool) also lists them: "tools": [{"name": "...", "summary": "..."}],
+// each one maybe a group with its own "tools"; aex runs one as "<plugin> <sub-tool> [args]". Access
+// is the plugin's, for all its tools. Running the tool
 // describes it again, makes sure its access is granted (access.go), then runs it with the tool's
 // args, in the same console, with the environment from settings.PluginEnv. No plugin runs, not
 // even for --aex-describe, until the user approves its file (trust.go).
@@ -35,8 +38,24 @@ const (
 )
 
 type description struct {
-	Summary string   `json:"summary"`
-	Access  []Access `json:"access,omitempty"`
+	Summary string    `json:"summary"`
+	Access  []Access  `json:"access,omitempty"`
+	Tools   []SubTool `json:"tools,omitempty"`
+}
+
+// SubTool is a tool of a plugin that is a group.
+type SubTool struct {
+	Name    string    `json:"name"`
+	Summary string    `json:"summary"`
+	Tools   []SubTool `json:"tools,omitempty"`
+}
+
+func describeTools(tools []tool.Tool) []SubTool {
+	var d []SubTool
+	for _, t := range tools {
+		d = append(d, SubTool{t.Name, t.Summary, describeTools(t.Sub)})
+	}
+	return d
 }
 
 // Dir is the plugins folder: "plugins" next to the running exe.
@@ -59,10 +78,11 @@ type Info struct {
 	Modified time.Time
 	Hash     string // SHA-256 of the file's contents now
 	State    State
-	// Summary and Access are what the plugin describes itself as, only for a safe plugin (else
-	// empty); DescribeErr says why that failed.
+	// Summary, Access and Tools are what the plugin describes itself as, only for a safe plugin
+	// (else empty); DescribeErr says why that failed.
 	Summary     string
 	Access      []Access
+	Tools       []SubTool
 	DescribeErr error
 }
 
@@ -144,7 +164,7 @@ func inspect(name, path string) (Info, error) {
 	if p.State == Safe {
 		var d description
 		d, p.DescribeErr = describe(o, path)
-		p.Summary, p.Access = d.Summary, d.Access
+		p.Summary, p.Access, p.Tools = d.Summary, d.Access, d.Tools
 	}
 	return p, nil
 }
@@ -211,9 +231,19 @@ func Discover(taken []tool.Tool) []tool.Tool {
 			ui.Warn("plugins: skipped %s: %v", p.Path, p.DescribeErr)
 			continue
 		}
-		tools = append(tools, tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path)})
+		tools = append(tools, tool.Tool{Name: p.Name, Summary: summary, Run: runner(p.Name, p.Path, nil), Sub: subTools(p, nil, p.Tools)})
 	}
 	return tools
+}
+
+// subTools are the tools of a plugin that is a group, each run as "<plugin> <names...> [args]".
+func subTools(p Info, names []string, tools []SubTool) []tool.Tool {
+	var subs []tool.Tool
+	for _, t := range tools {
+		path := append(slices.Clip(names), t.Name)
+		subs = append(subs, tool.Tool{Name: t.Name, Summary: t.Summary, Run: runner(p.Name, p.Path, path), Sub: subTools(p, path, t.Tools)})
+	}
+	return subs
 }
 
 // ExitError is a plugin that exited non-zero. It printed its own error.
@@ -224,9 +254,9 @@ type ExitError struct {
 
 func (e *ExitError) Error() string { return fmt.Sprintf("%s exited with code %d", e.Name, e.Code) }
 
-// runner runs the plugin, asking for approval first unless it is safe, and for the access it asks
-// for unless granted.
-func runner(name, path string) func(args []string) error {
+// runner runs the plugin with the sub-tool names (none for the plugin itself) then args, asking for
+// approval first unless it is safe, and for the access it asks for unless granted.
+func runner(name, path string, sub []string) func(args []string) error {
 	return func(args []string) error {
 		o, err := approve(name, path)
 		if err != nil {
@@ -253,7 +283,7 @@ func runner(name, path string) func(args []string) error {
 		if o.hash != approved {
 			return fmt.Errorf("plugin %s changed while starting, run it again", name)
 		}
-		cmd := exec.Command(path, args...)
+		cmd := exec.Command(path, append(slices.Clip(sub), args...)...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Env = env
 		err = o.start(cmd)
@@ -267,11 +297,13 @@ func runner(name, path string) func(args []string) error {
 	}
 }
 
-// Main runs t as a plugin that needs access (see Access): answers --aex-describe, else sets up like
-// aex does and runs t with the command-line args, exiting 1 on error.
+// Main runs t (a tool, or a group of them) as a plugin that needs access (see Access): answers
+// --aex-describe, else sets up like aex does and runs t with the command-line args, exiting 1 on
+// error.
 func Main(t tool.Tool, access ...Access) {
 	if len(os.Args) == 2 && os.Args[1] == describeFlag {
-		if err := json.NewEncoder(os.Stdout).Encode(description{Summary: t.Summary, Access: access}); err != nil {
+		d := description{Summary: t.Summary, Access: access, Tools: describeTools(t.Sub)}
+		if err := json.NewEncoder(os.Stdout).Encode(d); err != nil {
 			os.Exit(1)
 		}
 		return
@@ -282,7 +314,7 @@ func Main(t tool.Tool, access ...Access) {
 		err = settings.InitPlugin(dataDir)
 	}
 	if err == nil {
-		err = t.Run(args)
+		err = t.Exec(args)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s %v\n", ui.Err.Bold(ui.Err.Red("✖ error:")), err)

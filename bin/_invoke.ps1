@@ -1,4 +1,4 @@
-# Shared launcher: builds aex from source (dev build, reads .env / .env.private from the repo) and
+# Shared launcher: builds aex from source (dev build, reads .env from the repo) and
 # runs tool <Name>, forwarding args and exit code. Name "aex" opens the menu. Plugins (plugins\<name>)
 # are built into dist\dev\plugins.
 param(

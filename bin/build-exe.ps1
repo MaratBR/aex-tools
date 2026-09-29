@@ -1,4 +1,4 @@
-# Builds the release exe (default dist\aex.exe): .env built in, reads .env / .env.private next to the exe.
+# Builds the release exe (default dist\aex.exe): .env built in, reads .env next to the exe.
 # -Out <file> builds elsewhere, e.g. while dist\aex.exe is running.
 param([string]$Out)
 $ErrorActionPreference = 'Stop'

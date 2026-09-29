@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -188,9 +189,12 @@ func splitArgs(line string) []string {
 	return args
 }
 
-// runTool runs a tool, printing its errors, and returns a one-line outcome for the menu.
-func runTool(t *tool.Tool, args []string) (status string, ok bool) {
-	fmt.Println(toolBanner(t.Name, args))
+// runTool clears the screen, runs a tool, printing its errors, and returns a one-line outcome for
+// the menu. Each tool starts on a clean screen, without the output of earlier ones.
+// name is the tool's full name, with the groups it is in.
+func runTool(name string, t *tool.Tool, args []string) (status string, ok bool) {
+	ui.ClearScreen()
+	fmt.Println(toolBanner(name, args))
 	fmt.Println()
 	err := func() (err error) {
 		defer func() {
@@ -198,15 +202,15 @@ func runTool(t *tool.Tool, args []string) (status string, ok bool) {
 				err = fmt.Errorf("panic: %v", r)
 			}
 		}()
-		return t.Run(args)
+		return t.Exec(args)
 	}()
 	if err != nil {
 		if _, quiet := errors.AsType[*plugin.ExitError](err); !quiet {
 			printError(err)
 		}
-		return fmt.Sprintf("✖ %s failed: %v", t.Name, err), false
+		return fmt.Sprintf("✖ %s failed: %v", name, err), false
 	}
-	return fmt.Sprintf("✔ %s finished", t.Name), true
+	return fmt.Sprintf("✔ %s finished", name), true
 }
 
 func printMenu() {
@@ -217,9 +221,16 @@ func printMenu() {
 	}
 	for i, t := range tools {
 		fmt.Printf("  %s %-*s%s\n", out.Cyan(fmt.Sprintf("%d)", i+1)), nameWidth(), t.Name, out.Dim(t.Summary))
+		for j, s := range t.Sub {
+			fmt.Printf("     %s %-*s%s\n", out.Cyan(fmt.Sprintf("%d)", j+1)), nameWidth()-3, s.Name, out.Dim(s.Summary))
+		}
 	}
 	fmt.Printf("  %s quit\n", out.Cyan("q)"))
 	fmt.Println(out.Dim(`  Args may follow the choice, e.g. "1 --range yesterday" or "quota --help".`))
+	if i := slices.IndexFunc(tools, func(t tool.Tool) bool { return t.IsGroup() }); i >= 0 {
+		g := tools[i]
+		fmt.Println(out.Dim(fmt.Sprintf(`  A group's tool follows the group, e.g. "%d 1" or "%s %s --help".`, i+1, g.Name, g.Sub[0].Name)))
+	}
 }
 
 func plainMenu() error {
@@ -243,8 +254,7 @@ func plainMenu() error {
 			fmt.Printf("Unknown choice: %s\n\n", args[0])
 			continue
 		}
-		fmt.Println()
-		runTool(t, args[1:])
+		runTool(t.Name, t, args[1:])
 		fmt.Println()
 		loadPlugins()
 	}
@@ -254,25 +264,30 @@ func useTUI() bool {
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("AEX_TUI") != "0"
 }
 
-// tuiMenu shows the full-screen menu until quit. Tools run in the normal screen, so their output
-// stays in the scrollback.
+// tuiMenu shows the full-screen menu until quit. Tools run in the normal screen, cleared first.
 func tuiMenu() error {
-	index := 0
+	path := []int{0}
 	var status string
 	var statusOK bool
 	loginDone := startLoginCheck()
 	for {
-		pick, err := selectTool(index, status, statusOK, loginDone)
+		pick, err := selectTool(path, status, statusOK, loginDone)
 		if err != nil || pick.quit {
 			return err
 		}
-		index = pick.index
-		t := &tools[index]
+		path = pick.path
+		list, groups := menuLevel(path)
+		t := &list[path[len(path)-1]]
+		var names []string
+		for _, g := range groups {
+			names = append(names, g.Name)
+		}
+		name := strings.Join(append(names, t.Name), " ")
 
 		var args []string
 		if pick.withArgs {
 			line, err := ui.Input(ui.Field{
-				Title:       t.Name + " arguments",
+				Title:       name + " arguments",
 				Description: "Space-separated; quote values with spaces. --help lists them.",
 				Placeholder: "--help",
 			})
@@ -281,11 +296,11 @@ func tuiMenu() error {
 			}
 			args = splitArgs(line)
 		}
-		status, statusOK = runTool(t, args)
+		status, statusOK = runTool(name, t, args)
 		fmt.Fprintf(os.Stderr, "\n%s  %s", statusLine(status, statusOK), ui.Err.Dim("press any key to return to the menu"))
 		loginDone = startLoginCheck()
 		loadPlugins()
-		index = min(index, len(tools)-1)
+		path = validPath(path)
 		ui.WaitKey()
 		fmt.Fprintln(os.Stderr)
 	}

@@ -27,7 +27,8 @@ type Setting struct {
 	Credential string
 }
 
-// AuthSettings belong in app settings; .env.private, .env and real env still work as fallbacks.
+// AuthSettings belong in app settings (secret ones in the credential store); .env and real env
+// still work as fallbacks.
 var AuthSettings = []Setting{
 	{Name: "AEXT_EMAIL", Hint: "Email you log in to AEXT with"},
 	{Name: "JIRA_EMAIL", Hint: "Email of your Atlassian (Jira) account"},
@@ -84,7 +85,6 @@ func Layers() []Layer {
 	}
 	return append(layers,
 		Layer{".env", readEnvFile(SharedEnvFile)},
-		Layer{".env.private", readEnvFile(PrivateEnvFile)},
 		Layer{"environment variables", realEnv},
 		Layer{"app settings", readEnvFile(ConfigEnvFile)},
 		credentialLayer(),
@@ -259,7 +259,7 @@ func setLine(text, name string, value *string) (string, error) {
 	return strings.Join(lines, "\n") + "\n", nil
 }
 
-const appSettingsHeader = "# aex app settings. Edit here or run \"aex configure\". Overrides .env, .env.private and env vars.\n"
+const appSettingsHeader = "# aex app settings. Edit here or run \"aex configure\". Overrides .env and env vars.\n"
 
 // Change sets Name to *Value, or removes it when Value is nil.
 type Change struct {

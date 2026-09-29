@@ -41,6 +41,9 @@ type config struct {
 	Cc []person `json:"cc"`
 	// Excluded are people whose tickets are left alone (Mode says whether to ask first).
 	Excluded []excluded `json:"excluded"`
+	// ReposDir is the folder holding Repos, the CM repos the git tools work on (asked for when empty).
+	ReposDir string   `json:"reposDir"`
+	Repos    []string `json:"repos"`
 }
 
 // Written on first run.
@@ -50,16 +53,27 @@ func defaultConfig() config {
 		heriberto = person{"Heriberto Barajas", "5ff603a7849d6401114c6e23"}
 		bulat     = person{"Bulat Khaydurov", "628c196bf2261e00682999df"}
 	)
-	return config{DefaultPrefix: "CM", DefaultQA: heriberto, Cc: []person{alexander, heriberto}, Excluded: []excluded{{bulat, modeAsk}}}
+	return config{DefaultPrefix: "CM", DefaultQA: heriberto, Cc: []person{alexander, heriberto}, Excluded: []excluded{{bulat, modeAsk}},
+		Repos: []string{"clearmechanic.frontend", "clearmechanic.siteforappointments", "cmos.datamigration", "src", "cmos.microservices"}}
 }
 
 func configFile() string {
-	return filepath.Join(settings.DataDir, "plugin-settings", "jira-release-handoff.json")
+	return filepath.Join(settings.PluginSettingsDir, "cm-release.json")
+}
+
+// oldConfigFile is where the settings were kept before the plugin was renamed to cm-release.
+func oldConfigFile() string {
+	return filepath.Join(settings.PluginSettingsDir, "jira-release-handoff.json")
 }
 
 // loadConfig reads the settings, writing the defaults first when there are none yet.
 func loadConfig() (*config, error) {
 	file := configFile()
+	if _, err := os.Stat(file); errors.Is(err, os.ErrNotExist) {
+		if err := os.Rename(oldConfigFile(), file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
 	data, err := os.ReadFile(file)
 	if errors.Is(err, os.ErrNotExist) {
 		c := defaultConfig()
@@ -77,8 +91,13 @@ func loadConfig() (*config, error) {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	// Settings added since the file was written get their defaults.
-	if c.DefaultPrefix == "" {
-		c.DefaultPrefix = defaultConfig().DefaultPrefix
+	if c.DefaultPrefix == "" || c.Repos == nil {
+		if c.DefaultPrefix == "" {
+			c.DefaultPrefix = defaultConfig().DefaultPrefix
+		}
+		if c.Repos == nil {
+			c.Repos = defaultConfig().Repos
+		}
 		if err := c.save(); err != nil {
 			return nil, err
 		}
@@ -109,6 +128,11 @@ func (c *config) validate() error {
 		}
 		if e.Mode != modeAsk && e.Mode != modeSkip {
 			return fmt.Errorf("excluded %q: mode must be %q or %q, got %q", e.Name, modeAsk, modeSkip, e.Mode)
+		}
+	}
+	for _, r := range c.Repos {
+		if strings.TrimSpace(r) == "" {
+			return errors.New("repos must not have empty names")
 		}
 	}
 	return nil
@@ -160,6 +184,8 @@ func editConfig(j *jira.Client, c *config) error {
 			{Label: "Default QA: " + c.DefaultQA.Name, Value: "qa"},
 			{Label: "Always Cc: " + names(c.Cc), Value: "cc"},
 			{Label: "Excluded assignees: " + strings.Join(ex, ", "), Value: "excluded"},
+			{Label: "Repos folder (git tools): " + orNotSet(c.ReposDir), Value: "reposDir"},
+			{Label: "Repos (git tools): " + orNotSet(strings.Join(c.Repos, ", ")), Value: "repos"},
 			{Label: "Done", Value: "done"},
 		})
 		if err != nil {
@@ -198,9 +224,51 @@ func editConfig(j *jira.Client, c *config) error {
 			if err := editExcluded(j, c); err != nil {
 				return err
 			}
+		case "reposDir":
+			if err := askReposDir(c); err != nil {
+				return err
+			}
+		case "repos":
+			if err := editRepos(c); err != nil {
+				return err
+			}
 		}
 		if err := c.save(); err != nil {
 			return err
+		}
+	}
+}
+
+func orNotSet(s string) string {
+	if s == "" {
+		return "not set"
+	}
+	return s
+}
+
+func editRepos(c *config) error {
+	for {
+		options := []ui.Option{{Label: "Add a repo", Value: "add"}}
+		for i, r := range c.Repos {
+			options = append(options, ui.Option{Label: "Remove " + r, Value: fmt.Sprint(i)})
+		}
+		options = append(options, ui.Option{Label: "Back", Value: "back"})
+		choice, err := ui.Choose("Repos: folders in the repos folder", options)
+		if err != nil || choice == "back" {
+			return err
+		}
+		if choice != "add" {
+			var i int
+			fmt.Sscan(choice, &i)
+			c.Repos = slices.Delete(c.Repos, i, i+1)
+			continue
+		}
+		name, err := ui.Input(ui.Field{Title: "Repo folder name", Description: "Empty: cancel"})
+		if err != nil {
+			return err
+		}
+		if name != "" && !slices.Contains(c.Repos, name) {
+			c.Repos = append(c.Repos, name)
 		}
 	}
 }

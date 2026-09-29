@@ -98,3 +98,21 @@ func TestMentions(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseVersion(t *testing.T) {
+	for _, c := range []struct {
+		branches []string
+		version  string
+		err      error
+	}{
+		{[]string{"release/4.5", "release/4.5"}, "4.5", nil},
+		{[]string{"staging", "PROD"}, "", errNoneOnRelease},
+		{[]string{"release/4.5", "staging"}, "", errNotAllRelease},
+		{[]string{"release/4.5", "release/4.6"}, "", errMixedRelease},
+	} {
+		v, err := releaseVersion(c.branches)
+		if v != c.version || err != c.err {
+			t.Errorf("releaseVersion(%q) = %q, %v, want %q, %v", c.branches, v, err, c.version, c.err)
+		}
+	}
+}

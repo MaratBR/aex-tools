@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"aex/internal/tool"
 	"aex/internal/ui"
 )
 
@@ -37,7 +39,8 @@ const (
 type loginChecked struct{}
 
 type menuModel struct {
-	index     int
+	// path is the selected tool: its index in tools, then in each group opened on the way to it.
+	path      []int
 	status    string
 	statusOK  bool
 	width     int
@@ -49,20 +52,66 @@ type menuModel struct {
 }
 
 type menuPick struct {
-	index    int
+	path     []int
 	withArgs bool
 	quit     bool
 }
 
-// selectTool shows the menu until a tool is picked or the menu is quit.
-func selectTool(index int, status string, statusOK bool, loginDone <-chan struct{}) (menuPick, error) {
-	m := menuModel{index: index, status: status, statusOK: statusOK, width: 80, height: 24, loginDone: loginDone}
+// selectTool shows the menu until a tool (not a group, those open) is picked or the menu is quit.
+func selectTool(path []int, status string, statusOK bool, loginDone <-chan struct{}) (menuPick, error) {
+	m := menuModel{path: slices.Clone(path), status: status, statusOK: statusOK, width: 80, height: 24, loginDone: loginDone}
 	final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseAllMotion()).Run()
 	if err != nil {
 		return menuPick{}, err
 	}
 	m = final.(menuModel)
-	return menuPick{index: m.index, withArgs: m.withArgs, quit: !m.chosen}, nil
+	return menuPick{path: m.path, withArgs: m.withArgs, quit: !m.chosen}, nil
+}
+
+// menuLevel is the tools listed at the depth of path (the last index picks one of them), and the
+// groups opened to get there.
+func menuLevel(path []int) (list []tool.Tool, groups []*tool.Tool) {
+	list = tools
+	for _, i := range path[:len(path)-1] {
+		groups = append(groups, &list[i])
+		list = list[i].Sub
+	}
+	return list, groups
+}
+
+// validPath is path cut back to what still exists after the tools changed.
+func validPath(path []int) []int {
+	list := tools
+	for depth, i := range path {
+		if len(list) == 0 {
+			return path[:depth]
+		}
+		path[depth] = min(i, len(list)-1)
+		list = list[path[depth]].Sub
+	}
+	if len(path) == 0 {
+		return []int{0}
+	}
+	return path
+}
+
+func (m *menuModel) index() int { return m.path[len(m.path)-1] }
+func (m *menuModel) move(i int) { m.path[len(m.path)-1] = i }
+func (m *menuModel) back() bool { return len(m.path) > 1 }
+func (m *menuModel) list() []tool.Tool {
+	list, _ := menuLevel(m.path)
+	return list
+}
+
+// choose runs the tool at index i, or opens it if it is a group.
+func (m menuModel) choose(i int, withArgs bool) (tea.Model, tea.Cmd) {
+	m.move(i)
+	if m.list()[i].IsGroup() {
+		m.path = append(m.path, 0)
+		return m, nil
+	}
+	m.chosen, m.withArgs = true, withArgs
+	return m, tea.Quit
 }
 
 func (m menuModel) Init() tea.Cmd {
@@ -78,47 +127,57 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.MouseMsg:
+		n := len(m.list())
 		switch {
 		case msg.Button == tea.MouseButtonWheelUp:
-			m.index = max(m.index-1, 0)
+			m.move(max(m.index()-1, 0))
 		case msg.Button == tea.MouseButtonWheelDown:
-			m.index = min(m.index+1, len(tools)-1)
+			m.move(min(m.index()+1, n-1))
 		default:
 			i, ok := m.layout().toolAt(msg.X, msg.Y)
 			if !ok {
 				break
 			}
-			m.index = i // hover selects
+			m.move(i) // hover selects
 			if msg.Action == tea.MouseActionPress && (msg.Button == tea.MouseButtonLeft || msg.Button == tea.MouseButtonRight) {
 				// Left click runs, right click runs with args.
-				m.chosen, m.withArgs = true, msg.Button == tea.MouseButtonRight
-				return m, tea.Quit
+				return m.choose(i, msg.Button == tea.MouseButtonRight)
 			}
 		}
 	case tea.KeyMsg:
+		n := len(m.list())
 		switch msg.String() {
 		case "up", "k":
-			m.index = (m.index - 1 + len(tools)) % len(tools)
+			m.move((m.index() - 1 + n) % n)
 		case "down", "j":
-			m.index = (m.index + 1) % len(tools)
+			m.move((m.index() + 1) % n)
 		case "home", "g":
-			m.index = 0
+			m.move(0)
 		case "end", "G":
-			m.index = len(tools) - 1
+			m.move(n - 1)
 		case "enter":
-			m.chosen = true
-			return m, tea.Quit
+			return m.choose(m.index(), false)
+		case "right", "l":
+			if m.list()[m.index()].IsGroup() {
+				return m.choose(m.index(), false)
+			}
 		case "a":
-			m.chosen, m.withArgs = true, true
-			return m, tea.Quit
-		case "q", "esc", "ctrl+c":
+			return m.choose(m.index(), true)
+		case "esc", "backspace", "left", "h":
+			if m.back() {
+				m.path = m.path[:len(m.path)-1]
+				return m, nil
+			}
+			if msg.String() == "esc" {
+				return m, tea.Quit
+			}
+		case "q", "ctrl+c":
 			return m, tea.Quit
 		default:
 			// A tool's number picks and runs it.
-			for i := range tools {
+			for i := range n {
 				if msg.String() == fmt.Sprint(i+1) {
-					m.index, m.chosen = i, true
-					return m, tea.Quit
+					return m.choose(i, false)
 				}
 			}
 		}
@@ -170,22 +229,37 @@ func (m menuModel) layout() menuLayout {
 	}
 	lines = append(lines, "", faint.Render(strings.Repeat("─", inner)), "")
 
+	// In a group: which one, and the way back.
+	list, groups := menuLevel(m.path)
+	if len(groups) > 0 {
+		var names []string
+		for _, g := range groups {
+			names = append(names, g.Name)
+		}
+		group := groups[len(groups)-1]
+		lines = append(lines, fit(faint.Render("‹ ")+strong.Render(strings.Join(names, " › "))+"  "+faint.Render(group.Summary)), "")
+	}
+
 	// Drop the gaps between tools when the window is too short for them.
-	gaps := len(lines)+3*len(tools)-1 <= bodyHeight
+	gaps := len(lines)+3*len(list)-1 <= bodyHeight
 	rows := map[int]int{}
-	for i, t := range tools {
+	for i, t := range list {
 		num := fmt.Sprintf("%d", i+1)
+		name := t.Name
+		if t.IsGroup() {
+			name += " ›"
+		}
 		rows[frameY+len(lines)], rows[frameY+len(lines)+1] = i, i
-		if i == m.index {
+		if i == m.index() {
 			lines = append(lines,
-				selName.Width(inner).Render(ansi.Truncate(" ▶ "+num+"  "+t.Name, inner, "…")),
+				selName.Width(inner).Render(ansi.Truncate(" ▶ "+num+"  "+name, inner, "…")),
 				selInfo.Width(inner).Render(ansi.Truncate("      "+t.Summary, inner, "…")))
 		} else {
 			lines = append(lines,
-				fit("   "+faint.Render(num)+"  "+t.Name),
+				fit("   "+faint.Render(num)+"  "+name),
 				fit("      "+faint.Render(t.Summary)))
 		}
-		if gaps && i < len(tools)-1 {
+		if gaps && i < len(list)-1 {
 			lines = append(lines, "")
 		}
 	}
@@ -201,10 +275,14 @@ func (m menuModel) layout() menuLayout {
 		status = "  " + style.Render(ansi.Truncate(m.status, inner+2, "…"))
 	}
 	hint := func(k, what string) string { return strong.Render(k) + " " + faint.Render(what) }
-	footer := "  " + strings.Join([]string{
-		hint("↑↓", "move"), hint("enter/click", "run"), hint("1-"+fmt.Sprint(len(tools)), "pick"),
-		hint("a/right-click", "run with args"), hint("q", "quit"),
-	}, faint.Render("  ·  "))
+	hints := []string{
+		hint("↑↓", "move"), hint("enter/click", "run"), hint("1-"+fmt.Sprint(len(list)), "pick"),
+		hint("a/right-click", "run with args"),
+	}
+	if len(groups) > 0 {
+		hints = append(hints, hint("esc", "back"))
+	}
+	footer := "  " + strings.Join(append(hints, hint("q", "quit")), faint.Render("  ·  "))
 
 	return menuLayout{view: box + "\n" + status + "\n" + ansi.Truncate(footer, m.width, "…"), width: m.width, rows: rows}
 }
