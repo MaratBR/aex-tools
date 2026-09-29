@@ -1,5 +1,7 @@
 package ui
 
+import "io"
+
 // Remote, when set, answers every prompt instead of the terminal: the GUI sets it, and tools keep
 // calling Input, Confirm, Choose, PickTool and WaitKey as they do on a console.
 var Remote Prompter
@@ -13,4 +15,13 @@ type Prompter interface {
 	PickTool(title string, tools []Option) (string, error)
 	WaitKey()
 	ClearScreen()
+}
+
+// TerminalHost is a Prompter that can also show a program running in a pseudo-console
+// (internal/pty) as a terminal: the window.
+type TerminalHost interface {
+	// OpenTerminal shows a terminal in the run: what is typed there is written to input, and its
+	// size changes (columns, rows) go to resize. The program's screen (VT, UTF-8) is written to the
+	// result, closed once the program exited.
+	OpenTerminal(input io.Writer, resize func(cols, rows int)) io.WriteCloser
 }

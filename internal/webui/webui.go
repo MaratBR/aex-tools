@@ -53,7 +53,7 @@ type Segment struct {
 
 // Run opens the window and returns when it is closed.
 func Run(title string, host Host) error {
-	a := &App{host: host, waiting: map[int]chan answer{}, fields: map[int]ui.Field{}}
+	a := &App{host: host, waiting: map[int]chan answer{}, fields: map[int]ui.Field{}, terminals: map[int]*terminal{}}
 	sub, err := fs.Sub(assets, "frontend")
 	if err != nil {
 		return err
@@ -87,7 +87,8 @@ type App struct {
 	readyDone bool
 	nextID    int
 	waiting   map[int]chan answer
-	fields    map[int]ui.Field // Input prompts still open, for Describe
+	fields    map[int]ui.Field  // Input prompts still open, for Describe
+	terminals map[int]*terminal // terminal views of programs still running (terminal.go)
 }
 
 type answer struct {

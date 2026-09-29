@@ -2,14 +2,17 @@ package custom
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"aex/internal/plugin"
+	"aex/internal/pty"
 	"aex/internal/secrets"
 	"aex/internal/settings"
 	"aex/internal/ui"
@@ -97,25 +100,46 @@ func TestRun(t *testing.T) {
 	}
 }
 
-// fakeRemote answers Input prompts as the window would, recording them.
-type fakeRemote struct{ asked []ui.Field }
-
-func (r *fakeRemote) Input(f ui.Field) (string, error) {
-	r.asked = append(r.asked, f)
-	if f.Secret {
-		return "s3cret", nil
-	}
-	return "Юля O'Brien", nil
+// fakeRemote is the window showing a terminal: it types each answer once its question is on screen.
+type fakeRemote struct {
+	answers [][2]string // question, keys
+	mu      sync.Mutex
+	screen  strings.Builder
+	input   io.Writer
+	resized bool
+	closed  bool
 }
+
+func (r *fakeRemote) OpenTerminal(input io.Writer, resize func(cols, rows int)) io.WriteCloser {
+	r.input = input
+	resize(80, 20)
+	r.resized = true
+	return r
+}
+
+func (r *fakeRemote) Write(b []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.screen.Write(b)
+	if len(r.answers) > 0 && strings.Contains(r.screen.String(), r.answers[0][0]) {
+		io.WriteString(r.input, r.answers[0][1])
+		r.answers = r.answers[1:]
+	}
+	return len(b), nil
+}
+
+func (r *fakeRemote) Close() error { r.closed = true; return nil }
+
+func (r *fakeRemote) Input(ui.Field) (string, error)               { return "", nil }
 func (r *fakeRemote) Confirm(string, bool) (bool, error)           { return false, nil }
 func (r *fakeRemote) Choose(string, []ui.Option) (string, error)   { return "", nil }
 func (r *fakeRemote) PickTool(string, []ui.Option) (string, error) { return "", nil }
 func (r *fakeRemote) WaitKey()                                     {}
 func (r *fakeRemote) ClearScreen()                                 {}
 
-func TestReadHostInWindow(t *testing.T) {
-	if _, err := exec.LookPath("powershell.exe"); err != nil {
-		t.Skip("no Windows PowerShell")
+func TestTerminalInWindow(t *testing.T) {
+	if _, err := exec.LookPath("powershell.exe"); err != nil || !pty.Supported {
+		t.Skip("no Windows PowerShell or ConPTY")
 	}
 	dir := t.TempDir()
 	settings.CustomToolsFile = filepath.Join(dir, "custom-tools.json")
@@ -124,9 +148,10 @@ func TestReadHostInWindow(t *testing.T) {
 	src := `$name = Read-Host 'Your name'
 $pw = Read-Host -Prompt 'Password' -AsSecureString
 $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pw))
-"hello $name / $plain / $([bool]$env:AEX_PROMPT_TOKEN)"
+"hello $name / $plain"
+exit 5
 `
-	if err := os.WriteFile(script, []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(script, append([]byte{0xEF, 0xBB, 0xBF}, src...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	e, err := Add(script, "ask")
@@ -139,19 +164,21 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServ
 	}
 	settings.Credentials.Set("plugin-safe-sha256:"+strings.ToLower(filepath.Clean(script)), info.Hash)
 
-	remote := &fakeRemote{}
+	remote := &fakeRemote{answers: [][2]string{{"Your name", "Юля O'Brien\r"}, {"Password", "s3cret\r"}}}
 	ui.Remote = remote
 	defer func() { ui.Remote = nil }()
-	out := capture(t, func() {
-		if err := runner(e)(nil); err != nil {
-			t.Error(err)
+	capture(t, func() {
+		err := runner(e)(nil)
+		if exit, ok := errors.AsType[*plugin.ExitError](err); !ok || exit.Code != 5 {
+			t.Errorf("exit: %v", err)
 		}
 	})
-	if !strings.Contains(out, "hello Юля O'Brien / s3cret / False") {
-		t.Errorf("output %q", out)
+	screen := remote.screen.String()
+	if !strings.Contains(screen, "hello Юля O'Brien / s3cret") || strings.Count(screen, "s3cret") != 1 {
+		t.Errorf("screen %q", screen)
 	}
-	if len(remote.asked) != 2 || remote.asked[0].Title != "Your name" || remote.asked[0].Secret || remote.asked[1].Title != "Password" || !remote.asked[1].Secret {
-		t.Errorf("asked %+v", remote.asked)
+	if !remote.resized || !remote.closed || len(remote.answers) > 0 {
+		t.Errorf("resized %v, closed %v, unanswered %v", remote.resized, remote.closed, remote.answers)
 	}
 }
 

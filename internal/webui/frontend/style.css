@@ -241,6 +241,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
   overflow-x: auto;
 }
 .line { min-height: 1.5em; }
+/* A program's terminal (term.js): xterm.js draws it, sized in rows. */
+.run .term { padding: 8px 10px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 .5px var(--sep); }
+.run .term .xterm-viewport { background: transparent !important; }
 .fail-note { color: var(--fail); }
 
 /* A question the tool asks, answered in place; once answered it keeps the answer. */

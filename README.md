@@ -24,6 +24,7 @@ directly in the terminal (`aex <tool> [args]`) or from PowerShell (`bin\<tool>.p
     `--help`); `adapter/powershell` — the PowerShell one
   - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed
   - `proc` — starting console programs without a console window (from the window)
+  - `pty` — running a console program in a pseudo-console (ConPTY) the window shows as a terminal
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
     app settings (`.env.config`), the credential store; auth settings list, prompts for missing ones and saves
     them to app settings; `HoursPerDay()` / `TZOffsetHours()`, Jira→CSV project map, calendar country,
@@ -348,7 +349,7 @@ added to `custom.Adapters`:
   PowerShell: `[IO.FileInfo]` / `[IO.DirectoryInfo]`, or a string named `…File` / `…Path` (file) or
   `…Folder` / `…Dir` / `…Directory` (folder).
 - `Command(path, description, args, rest, session)` — the command that runs it with those values. The
-  session says whether it has the terminal and, when not, whether its questions go to aex.
+  session says whether it has aex's terminal, or a terminal of its own in the window (see below).
 - The description's `Interactive`: whether the script may ask questions while it runs (the adapter
   decides; PowerShell: always).
 
@@ -369,14 +370,13 @@ aex does the rest the same for every adapter:
   (top folder and origin URL, credentials removed), branch and HEAD commit, the last commit that changed the
   script, and its changes not committed (untracked, ignored, staged or not, with +/− lines since HEAD).
 - It gets the same environment as a plugin (data folder, app root) with no secret settings.
-- In the window it has no terminal: its output goes to the run. An interactive one asks its questions
-  there, over the connection plugins use (aex listens on a loopback port for it alone, with a token);
-  the adapter makes the script's own way of asking use it. A script that is not interactive gets no
-  input.
-- PowerShell in the window: `Read-Host` (also `-AsSecureString` / `-MaskInput`, asked hidden) is replaced
-  by a function that asks aex; cancelling it throws. Other ways of reading the console (`$Host.UI.ReadLine()`,
-  `PromptForChoice`, `Get-Credential`, `pause`, native programs reading stdin) get no input. In a terminal
-  the script has the console as usual.
+- In a terminal it has the console as usual. In the window, an interactive one runs in a pseudo-console
+  (`internal/pty`, Windows ConPTY) shown in its run as a terminal (xterm.js, `frontend/vendor/`): it
+  works as in a console — `Read-Host` (hidden with `-AsSecureString`), `PromptForChoice`, `pause`,
+  colors, progress. Click it and type; Ctrl+C goes to the script. A file dropped on the window while no
+  question takes a path is typed into it. Once the script exits the terminal stays, shrunk to the lines
+  used. A script that is not interactive (or where there is no ConPTY) has its output in the run as text
+  and no input.
 
 PowerShell: parameters come from the `param()` block through the PowerShell parser (types,
 `[Parameter(Mandatory)]`, `HelpMessage`, `[ValidateSet]`, `[Alias]`, defaults) and comment-based help

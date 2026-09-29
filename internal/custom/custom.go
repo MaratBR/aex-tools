@@ -13,6 +13,7 @@ package custom
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 	"aex/internal/adapter/powershell"
 	"aex/internal/gitinfo"
 	"aex/internal/plugin"
+	"aex/internal/pty"
 	"aex/internal/settings"
 	"aex/internal/tool"
 	"aex/internal/ui"
@@ -239,28 +241,53 @@ func runner(e Entry) func(args []string) error {
 		if err != nil {
 			return err
 		}
-		// In the window the script has no console: an interactive one asks aex its questions.
+		// In the window the script has no console: an interactive one gets a terminal there.
 		s := adapter.Session{Console: ui.Remote == nil}
-		if !s.Console && i.Desc.Interactive {
-			stop, promptEnv, err := plugin.ServePrompts(env)
-			if err != nil {
-				return err
-			}
-			defer stop()
-			env, s.Prompts = promptEnv, true
-		}
+		host, canShow := ui.Remote.(ui.TerminalHost)
+		s.Terminal = !s.Console && i.Desc.Interactive && canShow && pty.Supported
 		cmd, err := a.Command(e.Path, i.Desc, bound, rest, s)
 		if err != nil {
 			return err
 		}
 		cmd.Env = env
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		err = cmd.Run()
-		if exit, ok := errors.AsType[*exec.ExitError](err); ok {
-			return &plugin.ExitError{Name: e.Name, Code: exit.ExitCode()}
+		code := 0
+		if s.Terminal {
+			code, err = runInTerminal(host, cmd)
+		} else {
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			err = cmd.Run()
+			if exit, ok := errors.AsType[*exec.ExitError](err); ok {
+				code, err = exit.ExitCode(), nil
+			}
+		}
+		if err == nil && code != 0 {
+			return &plugin.ExitError{Name: e.Name, Code: code}
 		}
 		return err
 	}
+}
+
+// Terminal size to start with: the window fits the columns to its width right away.
+const termCols, termRows = 120, 24
+
+// runInTerminal runs cmd in a pseudo-console that host shows, until it exits; code is its exit code.
+func runInTerminal(host ui.TerminalHost, cmd *exec.Cmd) (code int, err error) {
+	p, err := pty.Start(cmd, termCols, termRows)
+	if err != nil {
+		return 0, err
+	}
+	defer p.Close()
+	screen := host.OpenTerminal(p, func(cols, rows int) { p.Resize(cols, rows) })
+	shown := make(chan struct{})
+	go func() {
+		io.Copy(screen, p)
+		close(shown)
+	}()
+	code, err = p.Wait()
+	// Wait closed the pseudo-console, which flushes the rest of the screen and ends it.
+	<-shown
+	screen.Close()
+	return code, err
 }
 
 // runLine says what runs: the script, its runner and where it stands in git.

@@ -6,8 +6,8 @@
 // -Command "& '<path>' -Name 'value' ...": values are quoted literals, so switches and bools take
 // $false and lists are arrays, which -File cannot pass.
 //
-// Scripts are Interactive: in a terminal they have its console; in the window, Read-Host is
-// replaced (prompts.ps1) by one that asks aex, which asks in the window.
+// Scripts are Interactive (Read-Host can be anywhere): in the window they run in a pseudo-console
+// the window shows as a terminal, so everything PowerShell asks works as in a console.
 //
 // It runs with Windows PowerShell (powershell.exe) on Windows, else PowerShell 7 (pwsh); also pwsh
 // when the script says #Requires -PSEdition Core, or when only pwsh can parse it.
@@ -35,9 +35,6 @@ import (
 
 //go:embed describe.ps1
 var describeScript string
-
-//go:embed prompts.ps1
-var promptsScript string
 
 const describeTimeout = 20 * time.Second
 
@@ -170,17 +167,21 @@ func (powershell) Command(path string, d adapter.Description, args []adapter.Arg
 		return nil, errors.New("no PowerShell to run it")
 	}
 	cmd := exec.Command(d.Runner, append(flags(s), "-Command", invocation(path, args, rest, s))...)
-	if !s.Console {
+	if piped(s) {
 		proc.HideConsole(cmd)
 	}
 	return cmd, nil
 }
 
-// flags are PowerShell's own options. Without a console and without aex answering its questions,
-// -NonInteractive makes a question fail instead of waiting on an input that never comes.
+// piped reports whether the script's output goes to a pipe, with no input: neither aex's console
+// nor a terminal of its own.
+func piped(s adapter.Session) bool { return !s.Console && !s.Terminal }
+
+// flags are PowerShell's own options. Piped, -NonInteractive makes a question fail instead of
+// waiting on an input that never comes.
 func flags(s adapter.Session) []string {
 	f := []string{"-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass"}
-	if !s.Console && !s.Prompts {
+	if piped(s) {
 		f = append(f, "-NonInteractive")
 	}
 	return f
@@ -188,15 +189,13 @@ func flags(s adapter.Session) []string {
 
 // invocation is the -Command text that runs the script with args and rest, exiting with the
 // script's exit code. -Command rather than -EncodedCommand, which writes errors to stderr as
-// CLIXML. With s.Prompts, prompts.ps1 comes first: Read-Host then asks aex.
+// CLIXML.
 func invocation(path string, args []adapter.Arg, rest []string, s adapter.Session) string {
 	var b strings.Builder
-	if !s.Console {
-		// Output goes to a pipe, in the console code page unless told otherwise.
+	if piped(s) {
+		// Output goes to a pipe, in the console code page unless told otherwise. (A pseudo-console
+		// gives UTF-8 whatever the code page.)
 		b.WriteString("[Console]::OutputEncoding = [Text.Encoding]::UTF8; ")
-	}
-	if s.Prompts {
-		b.WriteString(promptsScript + "\n")
 	}
 	b.WriteString("$global:LASTEXITCODE = 0; & " + quote(path))
 	for _, a := range args {

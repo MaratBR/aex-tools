@@ -31,13 +31,12 @@ type Adapter interface {
 
 // Session is where a script runs.
 type Session struct {
-	// Console is true when the script has the terminal. Else (the window) its output goes to a pipe
-	// and it has no input.
+	// Console is true when the script has aex's terminal.
 	Console bool
-	// Prompts is true for an Interactive script without a console: its environment then has where
-	// to send its questions (plugin.ServePrompts, the protocol plugins use), and the adapter makes the
-	// script's own way of asking (e.g. Read-Host) use it.
-	Prompts bool
+	// Terminal is true when, without a console (the window), the script runs in a pseudo-console
+	// the window shows as a terminal (internal/pty): it can ask and read keys as in a console. Only
+	// for an Interactive script. Without either, its output goes to a pipe and it has no input.
+	Terminal bool
 }
 
 // Description is a script's help and parameters, as the adapter reads them.
@@ -49,7 +48,8 @@ type Description struct {
 	// Runner is what runs the script, e.g. "powershell.exe".
 	Runner string
 	// Interactive is true when the script may ask questions while it runs, as the adapter decides
-	// (PowerShell: always, Read-Host can be anywhere). Without a console aex answers them (Session).
+	// (PowerShell: always, Read-Host can be anywhere). Without a console it then gets a terminal
+	// (Session.Terminal).
 	Interactive bool
 	// Notes are things the adapter could not model, e.g. parameter sets.
 	Notes []string
