@@ -4,12 +4,14 @@
 //   - prepare-release (prepare.go): creates and pushes release/VERSION off staging in every CM repo.
 //   - merge-prod (merge.go): merges release/VERSION into PROD and tags it in every CM repo.
 //   - jira-handoff (handoff.go): hands an epic's "Ready for Production" tickets over to QA.
+//   - the cm-repos-state widget (state.go): the git state of every CM repo on the home page.
 //
 // The git tools share git.go. Widgets for the window's home page are in widgets/.
 package main
 
 import (
 	_ "embed"
+	"encoding/json"
 
 	"aex/internal/plugin"
 	"aex/internal/tool"
@@ -31,7 +33,8 @@ func main() {
 			{Name: "jira-handoff", Summary: "Hand off an epic's Ready for Production tickets to QA", Run: runHandoff},
 		},
 	}, plugin.Jira, plugin.Widget{
-		ID: "cm-repos-state", Name: "CM repos state", Summary: "The CM repos at a glance (nothing yet)",
-		W: 2, H: 1, HTML: reposStatePage,
+		ID: "cm-repos-state", Name: "CM repos state", Summary: "Git state of every CM repo: clean or pending changes",
+		W: 2, H: 2, HTML: reposStatePage,
+		Calls: map[string]func(json.RawMessage) (any, error){"state": stateCall},
 	})
 }

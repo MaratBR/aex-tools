@@ -328,7 +328,10 @@ Widgets so far:
   ahead, due by today, hours/day to finish, working days without hours with a button to run
   worklog-sync) and whether last month is complete. One row high it shows only the numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
-- `cm-release/cm-repos-state` (cm-release plugin) — CM repos state; a placeholder for now.
+- `cm-release/cm-repos-state` (cm-release plugin) — CM repos state: each repo's branch and uncommitted
+  changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
+  (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
+  One row high it shows only the verdict.
 
 ## Adding a tool
 

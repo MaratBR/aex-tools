@@ -4,13 +4,136 @@
   <meta charset="utf-8">
   <title>CM repos state</title>
   <style>
-    body { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; }
-    .title { font-weight: 600; }
-    .empty { margin: auto 0; color: var(--muted); font-size: 13px; }
+    body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+    .head { display: flex; align-items: center; gap: 8px; }
+    .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .loading #refresh svg { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .verdict { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .verdict.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+    .verdict.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+
+    .repos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto; gap: 3px 12px; font-size: 13px; min-height: 0; overflow: hidden; }
+    .repos > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .branch { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+    .state { text-align: right; font-variant-numeric: tabular-nums; }
+    .state.good { color: var(--ok); }
+    .state.warn { color: var(--warn); font-weight: 600; }
+    .state.bad { color: var(--fail); }
+
+    .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+
+    /* One row high: the verdict only. */
+    @media (max-height: 200px) { .repos { display: none; } }
+    @media (max-width: 300px) { .repos .branch { display: none; } .repos { grid-template-columns: minmax(0, 1fr) auto; } }
   </style>
 </head>
 <body>
-  <div class="title">CM repos state</div>
-  <div class="empty">Nothing here yet.</div>
+  <div class="head">
+    <div class="title">CM repos state</div>
+    <span class="verdict" id="verdict" hidden></span>
+    <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    // The git state of every CM repo (state.go: stateCall), from what git knows locally: Clean when
+    // no repo has uncommitted changes or unpushed commits, Pending changes otherwise.
+    const content = document.getElementById('content');
+    const verdictEl = document.getElementById('verdict');
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    // repoState is a repo's state in a few characters, and how it reads.
+    function repoState(r) {
+      if (r.error) return { cls: 'bad', text: 'error', title: r.error };
+      const parts = [];
+      if (r.changed) parts.push(r.changed + (r.changed === 1 ? ' change' : ' changes'));
+      if (r.ahead) parts.push('↑' + r.ahead);
+      if (r.behind) parts.push('↓' + r.behind);
+      const pending = r.changed > 0 || r.ahead > 0;
+      let title = r.upstream ? '' : 'no upstream branch';
+      if (r.behind) title = `${r.behind} commit${r.behind === 1 ? '' : 's'} to pull (as of the last fetch)`;
+      if (r.ahead) title = `${r.ahead} commit${r.ahead === 1 ? '' : 's'} to push` + (title ? ', ' + title : '');
+      return { cls: pending ? 'warn' : parts.length ? '' : 'good', text: parts.join(' ') || 'clean', title };
+    }
+
+    function setVerdict(clean) {
+      verdictEl.hidden = clean == null;
+      if (clean == null) return;
+      verdictEl.className = 'verdict ' + (clean ? 'good' : 'warn');
+      verdictEl.textContent = clean ? 'Clean' : 'Pending changes';
+    }
+
+    function render(s) {
+      content.className = 'repos';
+      content.textContent = '';
+      setVerdict(s.clean);
+      for (const r of s.repos) {
+        const st = repoState(r);
+        const name = node('span', null, r.name);
+        name.title = s.reposDir + '\\' + r.name;
+        const branch = node('span', 'branch', r.branch || '');
+        branch.title = r.branch || '';
+        const state = node('span', 'state ' + st.cls, st.text);
+        if (st.title) state.title = st.title;
+        content.append(name, branch, state);
+      }
+    }
+
+    function notice(text, error, action) {
+      setVerdict(null);
+      content.className = 'notice';
+      content.textContent = '';
+      content.append(node('div', null, text));
+      if (error) content.append(node('div', 'error', error));
+      if (action) {
+        const b = node('button', 'btn primary', action.label);
+        b.type = 'button';
+        b.onclick = action.run;
+        content.append(b);
+      }
+    }
+
+    let seq = 0, shown = false;
+    async function load() {
+      const n = ++seq;
+      document.body.classList.add('loading');
+      if (!shown) notice('Loading…');
+      try {
+        const s = await aex.call('state');
+        if (n !== seq) return;
+        if (!s.reposDir) {
+          shown = false;
+          notice('The repos folder is not set yet.', '', { label: 'Set it', run: () => aex.run('cm-release jira-handoff --settings') });
+        } else if (!s.repos.length) {
+          shown = false;
+          notice('No repos are set.', '', { label: 'Settings', run: () => aex.run('cm-release jira-handoff --settings') });
+        } else {
+          render(s);
+          shown = true;
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        shown = false;
+        notice('Could not read the repos.', e.message, { label: 'Try again', run: load });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    document.getElementById('refresh').onclick = load;
+    aex.onRefresh(load);
+    load();
+  </script>
 </body>
 </html>
