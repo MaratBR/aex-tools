@@ -51,20 +51,24 @@ const debugGroup = "debug"
 var tools = withDebug(builtins)
 
 func init() {
-	// A custom tool cannot take a built-in tool's or a plugin's name.
+	// A custom tool cannot take a built-in tool's, a plugin's or an adapter's (its group's) name.
 	custom.Reserved = func(name string) bool {
-		return strings.EqualFold(name, debugGroup) ||
+		return strings.EqualFold(name, debugGroup) || custom.IsAdapter(name) ||
 			slices.ContainsFunc(builtins, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) }) ||
 			slices.ContainsFunc(plugin.Names(), func(n string) bool { return strings.EqualFold(n, name) })
 	}
 }
 
+// customGroups are the custom tools, one group per adapter, as loadPlugins found them.
+var customGroups []tool.Tool
+
 // loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder and the
-// custom tools added.
+// custom tools added (grouped by adapter).
 func loadPlugins() {
 	base := withDebug(builtins)
 	withPlugins := append(slices.Clip(base), plugin.Discover(base)...)
-	tools = append(withPlugins, custom.Discover(withPlugins)...)
+	customGroups = custom.Discover(withPlugins)
+	tools = append(withPlugins, customGroups...)
 }
 
 // withDebug takes the debug tools out of list, and with --debug puts them in the debug group at
@@ -105,7 +109,8 @@ Tools:
 %s
 Plugins (tools after the built-in ones) are executables in:
   %s
-Custom tools (after the plugins) are scripts added with "aex custom-tools add <path>".
+Custom tools (after the plugins) are scripts added with "aex custom-tools add <path>", grouped by
+the adapter that runs them: "aex powershell <name>" (or just "aex <name>").
 
 Data folder (app settings .env.config, AEXT session, output), set with --data-dir <dir> or AEX_DATA_DIR:
   %s
@@ -197,6 +202,10 @@ func run(args []string) error {
 	if t == nil {
 		loadPlugins()
 		t = findTool(args[0])
+	}
+	if t == nil {
+		// A custom tool also runs without its adapter's group: "aex <name>".
+		t = custom.Find(customGroups, args[0])
 	}
 	if t == nil {
 		return fmt.Errorf("unknown tool: %s (see aex --help)", args[0])

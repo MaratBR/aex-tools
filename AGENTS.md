@@ -29,7 +29,7 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `custom` — custom tools (see Custom tools): the list of scripts added, their approval, parameter
     prompts, running them through their adapter
   - `adapter` — the tool adapter interface and the parameter model every adapter shares (binding args,
-    `--help`); `adapter/powershell` — the PowerShell one
+    `--help`); `adapter/powershell` — the PowerShell one, `adapter/autohotkey` — the AutoHotkey v2 one
   - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed;
     a repo's state (branch, changes, commits to push and pull) for the Git status widget
   - `gitclient` — the git client installed on the device (Fork, GitHub Desktop, …): finds it, opens it,
@@ -537,8 +537,12 @@ credentials: a plugin never opens the credential store and ignores secret settin
 ## Custom tools
 
 A custom tool is a script anywhere on disk, added with `custom-tools add <path>`, run by the tool
-adapter for its kind of file. It shows in the window after the plugins and runs as `aex <name> [args]`.
-Adapters so far: `powershell` (`.ps1`). A new one implements `adapter.Adapter` (`internal/adapter`) and is
+adapter for its kind of file. Custom tools are grouped by adapter: a group named after it (`powershell`,
+`autohotkey`, in the order of `custom.Adapters`, only with tools in it) shows in the window after the
+plugins, and a tool runs as `aex <adapter> <name> [args]` (or `aex <name> [args]`, found in the groups
+when no tool has that name). No custom tool can be named like an adapter; a group named like a
+built-in tool or a plugin is skipped with a warning.
+Adapters so far: `powershell` (`.ps1`), `autohotkey` (`.ahk`, `.ah2`: AutoHotkey v2). A new one implements `adapter.Adapter` (`internal/adapter`) and is
 added to `custom.Adapters`:
 
 - `Handles(path)` — whether it runs this file (by extension); `FileTypes()` — its files for the file
@@ -605,6 +609,19 @@ apply in the open window:
   file timestamps): `auto` follows the device's (daylight saving included), a number pins a UTC offset;
   quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list, each offset
   named by well-known places on it now (`tzZones` in `settings.js`, daylight saving included), e.g.
+AutoHotkey v2 (Windows only): scripts declare no parameters, so args are passed on as given (the
+script's `A_Args`). The summary is the `;@Ahk2Exe-SetDescription` directive, else the first paragraph
+of the comment at the top (`;` lines or a `/* */` block, after `#` directives). Nothing of the script
+runs to read it (not even `/Validate`, since `#DllLoad` would load a DLL). `#Requires AutoHotkey v1` is
+refused; `#Requires … 32-bit` runs it with `AutoHotkey32.exe`. It runs as `AutoHotkey64.exe
+/ErrorStdOut=UTF-8 <path> <args…>`, from the `v2` folder of the install (`InstallDir` under
+`Software\AutoHotkey` in the registry, else `Program Files\AutoHotkey` or `%LOCALAPPDATA%\Programs\AutoHotkey`),
+else from PATH (a portable copy). Not found: describing fails with how to install it
+(`winget install AutoHotkey.AutoHotkey` or the download page), shown by `custom-tools add` / `list`, in
+the window's tool list and on a run. Not interactive: it asks in its own windows (`InputBox`, `MsgBox`),
+its output to `*` (`FileAppend`) shows in the run; a script that stays running (hotkeys, a Gui) keeps
+its run going until it exits.
+
   "Berlin, Paris, Madrid, Rome (UTC+2)", and the device's timezone by its place; it warns when a pinned
   offset is not the device's. The setting stays an offset: a pinned one does not follow daylight saving.
 

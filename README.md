@@ -25,7 +25,9 @@ In a terminal: `aex <tool> --help` shows what a tool takes, and `aex --help` lis
 - **configure** changes settings (the Settings page in the window). It can also start aex when you log
   in, add aex to the Start menu, and wipe settings or all data.
 - **plugins** manages the tools in the `plugins` folder.
-- **custom-tools** adds your own scripts (PowerShell `.ps1`) as tools. aex asks for their parameters.
+- **custom-tools** adds your own scripts (PowerShell `.ps1`, AutoHotkey v2 `.ahk`) as tools, grouped by
+  kind (`aex powershell <name>`).
+  aex asks for their parameters.
 - **cm-release** (a plugin) has the CM release steps: `pull-all`, `prepare-release`, `merge-prod` and
   `jira-handoff`.
 

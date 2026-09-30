@@ -49,7 +49,11 @@ func TestRun(t *testing.T) {
 		t.Error("name taken ignoring case was accepted")
 	}
 
-	tools := Discover(nil)
+	groups := Discover(nil)
+	if len(groups) != 1 || groups[0].Name != "powershell" || Find(groups, "Say-Hi") != &groups[0].Sub[0] {
+		t.Fatalf("groups = %+v", groups)
+	}
+	tools := groups[0].Sub
 	if len(tools) != 1 || tools[0].Summary != "Greets someone." || !strings.Contains(tools[0].Warn, "not approved") {
 		t.Fatalf("tools = %+v", tools)
 	}

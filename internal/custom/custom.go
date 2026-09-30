@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"aex/internal/adapter"
+	"aex/internal/adapter/autohotkey"
 	"aex/internal/adapter/powershell"
 	"aex/internal/gitinfo"
 	"aex/internal/plugin"
@@ -33,7 +35,7 @@ import (
 )
 
 // Adapters are the tool adapters; a script is run by the first that handles it.
-var Adapters = []adapter.Adapter{powershell.Adapter}
+var Adapters = []adapter.Adapter{powershell.Adapter, autohotkey.Adapter}
 
 func adapterFor(path string) adapter.Adapter {
 	for _, a := range Adapters {
@@ -149,16 +151,21 @@ func List(withGit bool) ([]Info, error) {
 	return infos, nil
 }
 
-// Discover is the custom tools as tools. Ones named like a tool in taken are skipped with a warning.
+// Discover is the custom tools as tools, in one group per adapter (named after it, e.g.
+// "powershell"), in the order of Adapters; an adapter with no custom tools has no group. A group
+// named like a tool in taken is skipped with a warning, as are custom tools named like one.
 func Discover(taken []tool.Tool) []tool.Tool {
 	infos, err := List(false)
 	if err != nil {
 		ui.Warn("custom tools: %v", err)
 		return nil
 	}
-	var tools []tool.Tool
+	isTaken := func(name string) bool {
+		return slices.ContainsFunc(taken, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) })
+	}
+	byAdapter := map[string][]tool.Tool{}
 	for _, i := range infos {
-		if slices.ContainsFunc(taken, func(t tool.Tool) bool { return strings.EqualFold(t.Name, i.Name) }) {
+		if isTaken(i.Name) {
 			ui.Warn("custom tools: skipped %s, another tool has that name", i.Name)
 			continue
 		}
@@ -173,9 +180,49 @@ func Discover(taken []tool.Tool) []tool.Tool {
 		case i.State != plugin.Safe:
 			warn = fmt.Sprintf("Custom tool %v: running it asks to approve it first", i.State)
 		}
-		tools = append(tools, tool.Tool{Name: i.Name, Summary: summary, Run: runner(i.Entry), Warn: warn})
+		byAdapter[i.Adapter] = append(byAdapter[i.Adapter], tool.Tool{Name: i.Name, Summary: summary, Run: runner(i.Entry), Warn: warn})
 	}
-	return tools
+	var groups []tool.Tool
+	add := func(name, summary string) {
+		sub := byAdapter[name]
+		delete(byAdapter, name)
+		if len(sub) == 0 {
+			return
+		}
+		if isTaken(name) {
+			ui.Warn("custom tools: skipped the %s ones, another tool is called %s", name, name)
+			return
+		}
+		groups = append(groups, tool.Tool{Name: name, Summary: summary, Sub: sub})
+	}
+	for _, a := range Adapters {
+		types, _ := a.FileTypes()
+		add(a.Name(), "Custom tools: "+types)
+	}
+	// Tools of an adapter aex no longer has (they cannot run, and say why).
+	for _, name := range slices.Sorted(maps.Keys(byAdapter)) {
+		add(name, "Custom tools: "+name+" scripts")
+	}
+	return groups
+}
+
+// Find is the custom tool called name in the groups Discover made, nil if none: so
+// "aex <name>" runs it as well as "aex <adapter> <name>".
+func Find(groups []tool.Tool, name string) *tool.Tool {
+	for g := range groups {
+		for i, t := range groups[g].Sub {
+			if t.Name == name {
+				return &groups[g].Sub[i]
+			}
+		}
+	}
+	return nil
+}
+
+// IsAdapter reports whether name is an adapter's name (ignoring case), which is its custom tools'
+// group.
+func IsAdapter(name string) bool {
+	return slices.ContainsFunc(Adapters, func(a adapter.Adapter) bool { return strings.EqualFold(a.Name(), name) })
 }
 
 // Details are the lines about a custom tool shown when approving it and by custom-tools: adapter,
