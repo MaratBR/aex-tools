@@ -359,6 +359,9 @@ Widgets so far:
     search fails, what Jira finds wrong with the query (`/rest/api/3/jql/parse`) is shown.
 
   The + button adds a tab: the widget then shows tabs in place of its title, each a list of its own
+  In every list, a ticket in a To Do status (status category `new`) not updated for over 2 weeks is
+  muted (faded), unless it is marked New.
+
   (any of the above, with its own name and how many at most) with its count; the filter button changes
   the tab shown or removes it, and with one tab left the tabs go away. All lists load at once.
 

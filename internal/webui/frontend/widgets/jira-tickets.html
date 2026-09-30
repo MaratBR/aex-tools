@@ -43,6 +43,9 @@
     .ticket.new:hover { background: color-mix(in srgb, var(--warn) 24%, transparent); }
     .ticket.new .summary { font-weight: 600; }
     .ticket.new .key { color: var(--warn); }
+    /* Stale: still to do and not updated for 2 weeks. */
+    .ticket.stale { opacity: .55; }
+    .ticket.stale:hover { opacity: .85; }
     .pill { flex: none; max-width: 40%; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       color: var(--muted); background: var(--fill); }
     .pill.indeterminate { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
@@ -248,6 +251,12 @@
       render(r, l);
     }
 
+    // A ticket in a To Do status (category "new") not updated for over 2 weeks.
+    const staleMs = 14 * 24 * 3600 * 1000;
+    function isStale(t) {
+      return t.category === 'new' && t.updated && Date.now() - new Date(t.updated) > staleMs;
+    }
+
     function render(r, l) {
       // Newly assigned ones first, the rest in the order Jira gave.
       const fresh = r.tickets.filter(t => t.new);
@@ -268,7 +277,8 @@
       }
       content.className = 'list';
       for (const t of tickets) {
-        const b = button('ticket' + (t.new ? ' new' : ''), null, () => open(t.key));
+        const stale = !t.new && isStale(t);
+        const b = button('ticket' + (t.new ? ' new' : '') + (stale ? ' stale' : ''), null, () => open(t.key));
         const what = node('div', 'what');
         what.append(node('div', 'summary', t.summary || '(no summary)'));
         const meta = node('div', 'meta');
@@ -279,7 +289,7 @@
         b.append(what);
         if (t.new) b.append(node('span', 'pill new', 'New'));
         b.append(node('span', 'pill ' + (t.category || ''), t.status));
-        b.title = `${t.key} ${t.summary}\n${t.status}${t.new ? ' · newly assigned to you' : ''}\nOpen in the browser`;
+        b.title = `${t.key} ${t.summary}\n${t.status}${t.new ? ' · newly assigned to you' : ''}${stale ? ' · not updated for over 2 weeks' : ''}\nOpen in the browser`;
         const li = node('div');
         li.append(b);
         content.append(li);
