@@ -198,9 +198,15 @@
       if (shown) shown.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
-    function showTab(i) {
+    // showTab shows tab i once it is saved: aex.settings has it only then.
+    async function showTab(i) {
       if (editing || i === current()) return;
-      aex.saveSettings({ ...aex.settings, tab: i }).catch(() => {});
+      try {
+        await aex.saveSettings({ ...aex.settings, tab: i });
+      } catch (e) {
+        return notice('Could not switch the tab.', e.message, { label: 'Back', run: show });
+      }
+      if (editing) return;
       head();
       show();
     }
