@@ -16,27 +16,27 @@
     .list { flex: 1; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; font-size: 13px; }
     .picks > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
 
-    /* The events: on now first, as tinted cards in the calendar's color (--cal), then the upcoming
-       ones by day. */
-    .section { display: flex; align-items: baseline; gap: 6px; padding: 8px 0 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    /* The events: on now first, as tinted cards in the calendar's color (--cal) with the time left,
+       then the upcoming ones by day, one line each with their start and length. */
+    .section { display: flex; align-items: baseline; gap: 6px; padding: 6px 0 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
     .section:first-child { padding-top: 0; }
     .section .live { width: 7px; height: 7px; border-radius: 50%; background: var(--cal); align-self: center; animation: pulse 2s ease-in-out infinite; }
     @keyframes pulse { 50% { opacity: .35; } }
-    .event { display: flex; align-items: center; gap: 10px; margin: 3px 0; padding: 6px 10px 6px 0; border-radius: 8px; background: color-mix(in srgb, var(--cal) 9%, transparent); overflow: hidden; }
-    .event .what { flex: 1; min-width: 0; }
-    .event .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .event .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .event .when { flex: none; text-align: right; font-variant-numeric: tabular-nums; }
-    .event .until { font-weight: 600; }
-    .event .left { color: var(--muted); font-size: 12px; }
-    .event .bar { flex: none; align-self: stretch; width: 4px; border-radius: 0 3px 3px 0; background: var(--cal); }
+    .event { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 3px 8px 3px 0; border-radius: 6px; overflow: hidden; }
+    .event .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .event .start { flex: none; min-width: 3.4em; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .event .long { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .event .bar { flex: none; align-self: stretch; width: 3px; border-radius: 0 3px 3px 0; background: var(--cal); }
     .event.tentative .bar { background: repeating-linear-gradient(var(--cal) 0 3px, transparent 3px 6px); }
-    .event.now { padding-top: 8px; padding-bottom: 8px; background: color-mix(in srgb, var(--cal) 18%, transparent); }
-    .event.now .name { font-size: 14px; }
+    .event.now { margin: 3px 0; padding: 6px 10px 6px 0; border-radius: 8px; background: color-mix(in srgb, var(--cal) 16%, transparent); }
+    .event.now .name { font-weight: 600; font-size: 14px; }
+    .event .when { flex: none; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.25; }
+    .event .left { font: 600 16px/1.2 var(--display); letter-spacing: -.01em; }
+    .event .ends { color: var(--muted); font-size: 12px; }
     .event.soon { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--cal) 55%, transparent); }
-    .event.soon .left { color: var(--cal); font-weight: 600; }
-    .event.free, .event.free.now { background: var(--fill); }
-    .event.free .name, .event.free .until { font-weight: 400; color: var(--muted); }
+    .event.soon .start { color: var(--cal); font-weight: 600; }
+    .event.free .name, .event.free .long, .event.free .left { font-weight: 400; color: var(--muted); }
+    .event.free.now { background: var(--fill); }
     .event.free .bar { background: var(--muted); opacity: .4; }
     .quiet { padding: 2px 0; font-size: 13px; font-weight: 600; color: var(--ok); }
     .quiet.muted { font-weight: 400; color: var(--muted); }
@@ -53,6 +53,17 @@
     .tag { flex: none; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
     .actions { display: flex; gap: 6px; }
 
+    /* The filter: a regular expression over event titles. */
+    .filter { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .filter input[type=text] { width: 100%; padding: 5px 8px; border: 0; border-radius: 6px; font: 13px var(--mono); color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
+    .filter input[type=text]:focus { outline: none; box-shadow: var(--ring); }
+    .filter label { display: flex; align-items: center; gap: 6px; }
+    .filter input[type=radio] { margin: 0; accent-color: var(--accent); }
+    .filter .modes { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .filter .error { color: var(--fail); font-size: 12px; overflow-wrap: anywhere; }
+    .filter .error:empty { display: none; }
+    #filter.on { color: var(--accent); }
+
     .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
     .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
 
@@ -66,6 +77,9 @@
 <body>
   <div class="head">
     <div class="title"><span class="dot" id="dot" hidden></span><span class="text" id="title">Google Calendar</span></div>
+    <button class="icon-btn" id="filter" type="button" title="Filter events" aria-label="Filter events" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.5V19l-4-2v-4.5z"/></svg>
+    </button>
     <button class="icon-btn" id="change" type="button" title="Change calendar" aria-label="Change calendar" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
     </button>
@@ -79,10 +93,12 @@
     // What is on now in one Google calendar and when each event ends, then what comes until the end
     // of the third working day after today (home.go: googleNowAPI). The
     // calendar is picked the first time (home.go: googleCalendarsAPI) and kept in this placement's
-    // settings (aex.settings.calendar), so each copy of the widget can show another one.
+    // settings (aex.settings.calendar), so each copy of the widget can show another one. Each copy can
+    // also filter the events by a regular expression over their titles (aex.settings.filter, ignoring
+    // case), showing only the ones that match or hiding them (aex.settings.filterMode: "only", "hide").
     const content = document.getElementById('content');
     const titleEl = document.getElementById('title'), dotEl = document.getElementById('dot');
-    const changeBtn = document.getElementById('change');
+    const changeBtn = document.getElementById('change'), filterBtn = document.getElementById('filter');
 
     function node(tag, cls, text) {
       const e = document.createElement(tag);
@@ -134,13 +150,7 @@
       return 'until ' + (sameDay(end, now) ? clock(end) : shortDay(end) + ' ' + clock(end));
     }
 
-    function since(e, now) {
-      const start = startOf(e);
-      if (e.allDay) return sameDay(start, now) ? 'today' : 'since ' + shortDay(start);
-      return 'since ' + (sameDay(start, now) ? clock(start) : shortDay(start) + ' ' + clock(start));
-    }
-
-    // inTime is how long until an event starts, for the ones starting today.
+    // inTime is how long until an event starts, for the ones starting within SOON.
     function inTime(ms) {
       const min = Math.max(1, Math.ceil(ms / 60000));
       if (min < 60) return 'in ' + min + ' min';
@@ -169,23 +179,106 @@
       return h + 'h' + (m ? ' ' + m + 'm' : '');
     }
 
+    // Filter ----------------------------------------------------------------------------------
+
+    // filterRe is the filter's regular expression, null when there is none (or it does not compile).
+    function filterRe() {
+      const f = aex.settings.filter;
+      if (!f) return null;
+      try { return new RegExp(f, 'i'); } catch { return null; }
+    }
+
+    function shown(e) {
+      const re = filterRe();
+      if (!re) return true;
+      return re.test(e.title || '') === (aex.settings.filterMode !== 'hide');
+    }
+
+    // markFilter tints the filter button while a filter is on, and says which in its tooltip.
+    function markFilter() {
+      const on = !!filterRe();
+      filterBtn.classList.toggle('on', on);
+      filterBtn.title = on
+        ? 'Filter: ' + (aex.settings.filterMode === 'hide' ? 'hiding' : 'only') + ' /' + aex.settings.filter + '/'
+        : 'Filter events';
+    }
+
+    // editFilter asks for the filter, checking it compiles before keeping it.
+    function editFilter() {
+      ++seq;
+      picking = 'filter';
+      changeBtn.hidden = filterBtn.hidden = true;
+      document.body.classList.remove('loading');
+      content.className = 'filter';
+      content.textContent = '';
+      content.style.display = '';
+      const box = node('input');
+      box.type = 'text';
+      box.placeholder = 'e.g. standup|1:1';
+      box.value = aex.settings.filter || '';
+      box.spellcheck = false;
+      const modes = node('div', 'modes');
+      const mode = aex.settings.filterMode === 'hide' ? 'hide' : 'only';
+      const radios = [['only', 'Show only matching'], ['hide', 'Hide matching']].map(([v, text]) => {
+        const l = node('label'), b = node('input');
+        b.type = 'radio';
+        b.name = 'mode';
+        b.value = v;
+        b.checked = v === mode;
+        l.append(b, node('span', null, text));
+        modes.append(l);
+        return b;
+      });
+      const error = node('div', 'error');
+      const row = node('div', 'actions');
+      const save = node('button', 'btn primary', 'Save'), clear = node('button', 'btn', 'Clear'), cancel = node('button', 'btn', 'Cancel');
+      [save, clear, cancel].forEach(b => { b.type = 'button'; row.append(b); });
+      content.append(node('div', 'muted', 'Filter events by title: a regular expression, ignoring case'), box, modes, error, row);
+      box.focus();
+
+      const done = () => {
+        picking = false;
+        markFilter();
+        if (reply) renderNow();
+        load();
+      };
+      async function keep(filter, filterMode) {
+        try {
+          await aex.saveSettings({ ...aex.settings, filter, filterMode });
+        } catch (e) {
+          error.textContent = 'Could not keep the filter: ' + e.message;
+          return;
+        }
+        done();
+      }
+      save.onclick = () => {
+        const f = box.value.trim();
+        if (f) {
+          try { new RegExp(f, 'i'); } catch (e) { error.textContent = e.message; return; }
+        }
+        keep(f, radios.find(b => b.checked).value);
+      };
+      clear.onclick = () => keep('', mode);
+      cancel.onclick = done;
+      box.onkeydown = ev => {
+        if (ev.key === 'Enter') save.onclick();
+        else if (ev.key === 'Escape') done();
+      };
+    }
+
     // Views -----------------------------------------------------------------------------------
 
     let reply = null; // the last googleNow reply, counted down between loads
     const SOON = 15 * 60000; // an event starting within this is outlined
 
-    function eventRow(e, cls, notes, main, sub, title) {
+    // eventRow is one event: its bar in the calendar's color, then before (or nothing), its name and
+    // the rest.
+    function eventRow(e, cls, title, before, ...rest) {
       const li = node('div', 'event' + (cls ? ' ' + cls : '') + (e.free ? ' free' : '') + (e.tentative ? ' tentative' : ''));
-      const what = node('div', 'what');
-      what.append(node('div', 'name', e.title || '(no title)'));
-      if (e.tentative) notes.push('tentative');
-      if (e.free) notes.push('free');
-      if (notes.length) what.append(node('div', 'note', notes.join(' · ')));
-      const when = node('div', 'when');
-      when.append(node('div', 'until', main));
-      if (sub) when.append(node('div', 'left', sub));
-      li.append(node('span', 'bar'), what, when);
-      li.title = (e.title || '(no title)') + '\n' + title;
+      const name = node('span', 'name', e.title || '(no title)');
+      li.append(node('span', 'bar'), ...(before ? [before] : []), name, ...rest);
+      const marks = [e.tentative && 'tentative', e.free && 'free'].filter(Boolean);
+      li.title = (e.title || '(no title)') + '\n' + title + (marks.length ? '\n' + marks.join(', ') : '');
       return li;
     }
 
@@ -196,49 +289,55 @@
       return s;
     }
 
+    // span is when an event is, for its tooltip: Wed Sep 30 10:00–11:30 (1h 30m).
+    function span(e) {
+      const start = startOf(e), end = endOf(e);
+      if (e.allDay) {
+        const last = new Date(end.getTime() - 86400000);
+        return shortDay(start) + (sameDay(last, start) ? '' : ' – ' + shortDay(last)) + ' (' + duration(e) + ')';
+      }
+      return shortDay(start) + ' ' + clock(start) + '–' + (sameDay(end, start) ? '' : shortDay(end) + ' ') + clock(end) + ' (' + duration(e) + ')';
+    }
+
     function renderNow() {
       const now = new Date();
       content.className = 'list';
       content.textContent = '';
       content.style.display = '';
       // Events move from upcoming to now as they start, between loads.
-      const all = reply.events.concat(reply.upcoming || []).filter(e => endOf(e) > now);
+      const all = reply.events.concat(reply.upcoming || []).filter(e => endOf(e) > now && shown(e));
       const on = all.filter(e => startOf(e) <= now), next = all.filter(e => startOf(e) > now);
 
+      // On now: how long until it ends, then when it ends.
       if (on.length) {
         content.append(section('Now', true));
         for (const e of on) {
-          const long = duration(e) === 'all day' ? [] : [duration(e)];
-          content.append(eventRow(e, 'now', [since(e, now), ...long], until(e, now), e.allDay ? '' : left(endOf(e) - now),
-            since(e, now) + ', ' + until(e, now) + ' (' + duration(e) + ')'));
+          const when = node('div', 'when');
+          // An all-day event ending today: "all day" when it is only today, else "last day".
+          const endsToday = e.allDay && sameDay(new Date(endOf(e).getTime() - 86400000), now);
+          const lastDay = endsToday && !sameDay(startOf(e), now);
+          when.append(node('div', 'left', lastDay ? 'last day' : endsToday ? 'all day' : left(endOf(e) - now)));
+          if (!endsToday) when.append(node('div', 'ends', until(e, now)));
+          content.append(eventRow(e, 'now', span(e), null, when));
         }
       } else {
-        content.append(node('div', 'quiet', 'Nothing on now'));
+        content.append(node('div', 'quiet', 'Nothing on now' + (filterRe() ? ' (filtered)' : '')));
       }
 
+      // Upcoming: when it starts, and how long it is.
       let day = null;
       for (const e of next) {
-        const start = startOf(e), end = endOf(e);
+        const start = startOf(e);
         if (!day || !sameDay(day, start)) {
           day = start;
           content.append(section(dayLabel(start, now)));
         }
-        let main, sub, title;
-        if (e.allDay) {
-          const last = new Date(end.getTime() - 86400000);
-          main = duration(e);
-          sub = sameDay(last, start) ? '' : 'until ' + shortDay(last);
-          title = shortDay(start) + (sub ? ' ' + sub : '') + ' (' + duration(e) + ')';
-        } else {
-          const endText = sameDay(end, start) ? clock(end) : shortDay(end) + ' ' + clock(end);
-          main = clock(start) + '–' + endText;
-          sub = (sameDay(start, now) ? inTime(start - now) + ' · ' : '') + duration(e);
-          title = shortDay(start) + ' ' + main + ' (' + duration(e) + ')';
-        }
-        content.append(eventRow(e, !e.allDay && start - now <= SOON ? 'soon' : '', [], main, sub, title));
+        const soon = !e.allDay && start - now <= SOON;
+        const at = node('span', 'start', e.allDay ? '' : soon ? inTime(start - now) : clock(start));
+        content.append(eventRow(e, soon ? 'soon' : '', span(e), at, node('span', 'long', duration(e))));
       }
       if (!next.length) {
-        content.append(node('div', 'quiet muted', 'Nothing else' + (reply.until ? ' through ' + shortDay(parseDate(reply.until)) : '') + '.'));
+        content.append(node('div', 'quiet muted', 'Nothing else' + (filterRe() ? ' matching the filter' : '') + (reply.until ? ' through ' + shortDay(parseDate(reply.until)) : '') + '.'));
       }
     }
 
@@ -275,8 +374,8 @@
     // pick lists the account's calendars to choose the one to show.
     async function pick() {
       const n = ++seq;
-      picking = true;
-      changeBtn.hidden = true;
+      picking = 'calendar';
+      changeBtn.hidden = filterBtn.hidden = true;
       document.body.classList.add('loading');
       notice('Loading calendars…');
       try {
@@ -345,7 +444,7 @@
       try {
         const r = await aex.call('googleNow', { calendar: id });
         if (n !== seq) return;
-        changeBtn.hidden = false;
+        changeBtn.hidden = filterBtn.hidden = false;
         if (problem(r)) {
           reply = null;
         } else if (r.missing) {
@@ -360,7 +459,7 @@
       } catch (e) {
         if (n !== seq) return;
         reply = null;
-        changeBtn.hidden = false;
+        changeBtn.hidden = filterBtn.hidden = false;
         notice('Could not reach Google Calendar.', e.message, { label: 'Try again', run: load });
       } finally {
         if (n === seq) document.body.classList.remove('loading');
@@ -374,7 +473,9 @@
     }, 30000);
 
     changeBtn.onclick = pick;
-    document.getElementById('refresh').onclick = () => (picking ? pick() : load());
+    filterBtn.onclick = editFilter;
+    markFilter();
+    document.getElementById('refresh').onclick = () => (picking === 'filter' ? null : picking ? pick() : load());
     aex.onRefresh(() => (picking ? null : load()));
     load();
   </script>

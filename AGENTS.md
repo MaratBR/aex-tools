@@ -333,13 +333,16 @@ Widgets so far:
   worklog-sync), a button to sync this week (`worklog-sync --range "this week"`: Monday through today)
   and whether last month is complete. One row high it shows only the numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
-- `google-calendars` (every minute) — Google Calendar: the events on now in one calendar, each with when
-  it started, when it ends, how long it is and the time left, then the upcoming ones through the third
-  working day after today (AEXT working-days calendar with a session, else Monday to Friday), by day,
-  with their times and length (and time to the start today; outlined within 15 minutes). Events are
+- `google-calendars` (every minute) — Google Calendar: the events on now in one calendar, each with the
+  time left and (smaller) when it ends (an all-day one: "all day", or "last day" on the last of several), then the upcoming ones through the third working day after today
+  (AEXT working-days calendar with a session, else Monday to Friday), by day, one line each: start time,
+  name and length (time to the start instead when within 15 minutes, outlined). Hovering an event shows
+  its full times. Events are
   tinted in the calendar's color; cancelled ones and ones you declined are left out; free and tentative
   ones are marked. The first time it lists the account's calendars to pick one, kept in its placement's
-  settings, so each copy can show another; the calendar button changes it. It counts down between
+  settings, so each copy can show another; the calendar button changes it. The filter button sets a
+  regular expression over event titles (ignoring case), also per placement, to show only the events
+  that match or hide them; the button is tinted while one is on. It counts down between
   refreshes. Without a Google login it offers to log in (`account --login google`).
 - `jira-tickets` (every minute) — Jira tickets: open tickets (status not Done, 50 most recently
   updated, `jirawidget.go`), each with its key, summary, type, priority, when it was updated and its
