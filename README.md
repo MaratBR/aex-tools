@@ -68,7 +68,8 @@ only the logins you allow it to use.
 
 aex is licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). **Settings > About**
 shows the version, when and from which commit it was built, the plugins pre-approved in it, and the
-licenses of the open source it includes.
+licenses of the open source it includes. It and the bottom of the sidebar also say how many commits
+the build is behind master on GitHub (checked every few hours, or with Check now).
 
 ## Working on aex
 

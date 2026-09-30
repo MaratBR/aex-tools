@@ -440,6 +440,13 @@ aex is Apache-2.0 (`LICENSE`, `NOTICE` at the root). Settings > About (`frontend
   time, marked so), the git commit with a link to it on GitHub (`about.Repo`), its time and whether the
   checkout had changes not committed (the `vcs.*` settings Go stamps into the exe; none with `go run`),
   Go version, platform.
+- Updates (`about.CachedBehind`, `App.Behind`): how many commits the build's commit is behind `master`
+  on GitHub (`GET api.github.com/repos/…/compare/<commit>...master`, no login), with a link to the
+  comparison; also the last row of the sidebar (`#behind`, click opens About), not shown for a build
+  without a commit. The answer is kept in `update-check.json` in the data folder for 6 hours (a failed
+  check for 1 hour: not pushed, offline, GitHub's limit) and asked again only after that, or for another
+  commit; Check now asks again unless the last check is under a minute old. The window reads it at start
+  and after every run.
 - Pre-approved plugins (`plugin.PreApprovedList`): each hash built in (see Plugins), with the file in
   the plugins folder that has it now (hashed, not run).
 - aex's license and NOTICE, and every third-party component with its version, license (SPDX) and

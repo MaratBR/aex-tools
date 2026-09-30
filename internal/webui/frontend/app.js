@@ -615,7 +615,43 @@ async function refresh() {
   if (page === 'settings') renderSettingsNav();
   renderInfo(await api().Header(false));
   renderInfo(await api().Header(true));
+  loadBehind(false);
 }
+
+// Behind: how many commits this build is behind master on GitHub (about.go, Behind), kept in the
+// data folder so GitHub is asked at most every few hours. Shown at the bottom of the sidebar and in
+// Settings > About.
+
+let behind = null;
+
+// behindText says how the build compares with master, and the state for its dot.
+function behindText(b) {
+  if (b.error) return { state: 'error', text: b.error };
+  if (b.behind) return { state: 'out', text: `${b.behind} commit${b.behind === 1 ? '' : 's'} behind ${b.branch}` };
+  if (b.ahead) return { state: 'in', text: `Up to date, ${b.ahead} ahead of ${b.branch}` };
+  return { state: 'in', text: 'Up to date' };
+}
+
+async function loadBehind(force) {
+  try {
+    behind = await api().Behind(force);
+  } catch (e) {
+    return;
+  }
+  const row = $('behind');
+  const known = behind.commit; // no commit (go run): nothing to compare
+  row.hidden = !known;
+  if (known) {
+    const { state, text } = behindText(behind);
+    row.className = 'info-row link login ' + state;
+    row.textContent = '';
+    row.append(el('span', 'label', 'Updates'), el('span', 'text', text));
+    row.title = text + ' (checked ' + new Date(behind.checkedAt).toLocaleString() + ')';
+  }
+  if (typeof renderAboutBehind === 'function') renderAboutBehind();
+}
+
+$('behind').onclick = () => openSettings('about');
 
 $('clear').onclick = () => {
   if (run) return;

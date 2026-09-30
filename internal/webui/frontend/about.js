@@ -41,6 +41,33 @@ function aboutSection(title, foot) {
 }
 
 let aboutLoaded = false;
+let aboutBehind = null; // the Updates row of Build
+let checkingBehind = false;
+
+// renderAboutBehind fills the Updates row from the last check (behind, app.js).
+function renderAboutBehind() {
+  if (!aboutBehind) return;
+  const v = aboutBehind.querySelector('.about-value');
+  v.textContent = '';
+  if (!behind) {
+    v.append(el('span', 'dim', 'Not checked yet'));
+  } else {
+    const { state, text } = behindText(behind);
+    v.append(el('span', state === 'in' ? null : 'about-warn', text));
+    if (behind.compareURL && behind.behind) v.append(' ', link(behind.compareURL, 'see what changed'));
+    v.append(el('span', 'dim', ` · checked ${fullDate(behind.checkedAt)} `));
+  }
+  const btn = el('button', 'btn small', checkingBehind ? 'Checking…' : 'Check now');
+  btn.type = 'button';
+  btn.disabled = checkingBehind;
+  btn.title = 'Ask GitHub now (at most once a minute; else every few hours)';
+  btn.onclick = async () => {
+    checkingBehind = true;
+    renderAboutBehind();
+    try { await loadBehind(true); } finally { checkingBehind = false; renderAboutBehind(); }
+  };
+  v.append(btn);
+}
 
 async function loadAbout() {
   if (aboutLoaded) return;
@@ -73,6 +100,11 @@ async function loadAbout() {
     card.append(aboutRow('Commit', ...commit));
   } else card.append(aboutRow('Commit', el('span', 'dim', 'Not recorded (built without git info, e.g. go run)')));
   card.append(aboutRow('Source', link(b.repo)));
+  if (b.commit) {
+    aboutBehind = aboutRow('Updates');
+    card.append(aboutBehind);
+    renderAboutBehind();
+  }
   card.append(aboutRow('Go', b.go));
   card.append(aboutRow('Platform', b.platform));
 

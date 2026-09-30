@@ -1,6 +1,9 @@
 package webui
 
 import (
+	"context"
+	"time"
+
 	"aex/internal/about"
 	"aex/internal/plugin"
 	"aex/internal/settings"
@@ -22,4 +25,12 @@ func (a *App) About() (AboutInfo, error) {
 		return AboutInfo{}, err
 	}
 	return AboutInfo{Build: about.Info(), Dev: settings.IsDev, Licenses: l, PreApproved: plugin.PreApprovedList()}, nil
+}
+
+// Behind gives how many commits this build is behind aex's master on GitHub, kept in the data
+// folder so GitHub is asked at most every few hours (force: Check now, at most every minute).
+func (a *App) Behind(force bool) about.Behind {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return about.CachedBehind(ctx, settings.DataDir, force)
 }
