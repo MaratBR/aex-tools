@@ -5,7 +5,9 @@ also runs in a terminal as `aex-cli <tool> [args]` (`aex` on macOS and Linux).
 
 ## Get started
 
-1. Build it: see [BUILD.md](BUILD.md). You get `dist\aex.exe` (the window), `dist\aex-cli.exe` (the
+1. Run the installer (`aex-<version>-windows-<arch>-setup.exe`, in the release zip): it installs aex for you
+   only, no admin needed, into `%LOCALAPPDATA%\Programs\aex`, and adds it to the Start menu. Or build it:
+   see [BUILD.md](BUILD.md). You get `dist\aex.exe` (the window), `dist\aex-cli.exe` (the
    terminal) and `dist\plugins\`. Keep them together. It needs the WebView2 runtime, which Windows 11 already has.
 2. Double-click `aex.exe`. On first start it asks a few questions, such as whether to start with Windows
    and whether to add it to the Start menu.

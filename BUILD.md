@@ -109,9 +109,19 @@ a terminal (without a tool it opens the window too). Given a tool, `aex.exe` onl
 ## Distribution
 
 `.\bin\dist.ps1` runs `go vet ./...` and `go test ./...`, builds the release exe and plugins (as
-`build-exe.ps1`), and zips them with `LICENSE` and `NOTICE` to `dist\aex-<version>-windows-<arch>.zip`
-(version from `ProductVersion` in `winres\winres.json`). `-Arch arm64` for ARM Windows (default `amd64`),
-`-SkipTests` to skip vet and tests. Stops at the first failure.
+`build-exe.ps1`), builds the installer from them with `LICENSE` and `NOTICE` (`installer\aex.iss`), and
+zips `aex-<version>-windows-<arch>-setup.exe` with `SHA256SUMS` (the installer, `aex.exe`, `aex-cli.exe`
+and `plugins/*.exe`, in `sha256sum -c` format) to `dist\aex-<version>-windows-<arch>.zip` (version from
+`ProductVersion` in `winres\winres.json`). `-Arch arm64` for ARM Windows (default `amd64`), `-SkipTests`
+to skip vet and tests. Stops at the first failure.
+
+Needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`): `ISCC.exe`
+on `PATH` or in its usual install folder.
+
+The installer installs for the current user (no admin) into `%LOCALAPPDATA%\Programs\aex`, adds aex to
+the Start menu (and, if picked, the desktop), and can open aex at the end. Silent: `/VERYSILENT`,
+`/DIR=<folder>`. Uninstalling (Settings > Apps) removes the files, the shortcuts and starting on login;
+the data folder stays.
 
 ## Tests
 
