@@ -83,9 +83,10 @@ func CheckName(name string) error {
 	return nil
 }
 
-// CheckPath says why the file at path cannot be a custom tool, and else returns its absolute path
-// and the adapter that runs it. Quotes around a pasted path are dropped.
-func CheckPath(path string) (string, adapter.Adapter, error) {
+// CheckPath says why the file at path cannot be a custom tool run by the adapter called
+// adapterName ("" for the first supported one that handles the file), and else returns its absolute path and
+// that adapter. Quotes around a pasted path are dropped.
+func CheckPath(path, adapterName string) (string, adapter.Adapter, error) {
 	path = strings.Trim(strings.TrimSpace(path), `"'`)
 	if path == "" {
 		return "", nil, errors.New("enter the script's path")
@@ -101,9 +102,24 @@ func CheckPath(path string) (string, adapter.Adapter, error) {
 	if !info.Mode().IsRegular() {
 		return "", nil, fmt.Errorf("%s is not a file", abs)
 	}
-	a := adapterFor(abs)
-	if a == nil {
-		return "", nil, fmt.Errorf("no tool adapter runs %s files (adapters: %s)", filepath.Ext(abs), adapterNames())
+	var a adapter.Adapter
+	if adapterName == "" {
+		if a = adapterFor(abs); a == nil {
+			for _, u := range Unsupported() {
+				if u.Adapter.Handles(abs) {
+					return "", nil, fmt.Errorf("%s files need the %s tool adapter, not supported here: %s", filepath.Ext(abs), u.Adapter.Name(), u.Why)
+				}
+			}
+			return "", nil, fmt.Errorf("no tool adapter runs %s files (adapters: %s)", filepath.Ext(abs), AdapterNames())
+		}
+	} else {
+		if a, err = adapterNamed(adapterName); err != nil {
+			return "", nil, err
+		}
+		if !a.Handles(abs) {
+			types, patterns := a.FileTypes()
+			return "", nil, fmt.Errorf("the %s adapter does not run %s: it runs %s (%s)", a.Name(), filepath.Base(abs), types, strings.Join(patterns, ", "))
+		}
 	}
 	entries, err := Load()
 	if err != nil {
@@ -115,9 +131,10 @@ func CheckPath(path string) (string, adapter.Adapter, error) {
 	return abs, a, nil
 }
 
-// Add adds the script at path as the custom tool name ("" for DefaultName).
-func Add(path, name string) (Entry, error) {
-	abs, a, err := CheckPath(path)
+// Add adds the script at path as the custom tool name ("" for DefaultName), run by the adapter
+// called adapterName ("" for the first that handles the file).
+func Add(path, name, adapterName string) (Entry, error) {
+	abs, a, err := CheckPath(path, adapterName)
 	if err != nil {
 		return Entry{}, err
 	}

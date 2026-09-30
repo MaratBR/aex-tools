@@ -35,15 +35,21 @@ func TestRun(t *testing.T) {
 	if err := os.WriteFile(script, src, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e, err := Add(script, "")
+	e, err := Add(script, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if e.Name != "Say-Hi" || e.Adapter != "powershell" {
 		t.Errorf("added %+v", e)
 	}
-	if _, err := Add(script, "other"); err == nil {
+	if _, err := Add(script, "other", ""); err == nil {
 		t.Error("added the same script twice")
+	}
+	if _, _, err := CheckPath(script, "autohotkey"); err == nil || !strings.Contains(err.Error(), "does not run") {
+		t.Errorf("autohotkey for a .ps1: %v", err)
+	}
+	if _, _, err := CheckPath(script, "nope"); err == nil || !strings.Contains(err.Error(), "no tool adapter") {
+		t.Errorf("unknown adapter: %v", err)
 	}
 	if err := CheckName("say-hi"); err == nil {
 		t.Error("name taken ignoring case was accepted")
@@ -66,11 +72,15 @@ func TestRun(t *testing.T) {
 	if info.Git != nil || info.State != plugin.NotApproved || info.Err != nil {
 		t.Errorf("info %+v", info)
 	}
-	key := filepath.Clean(script)
-	if runtime.GOOS == "windows" {
-		key = strings.ToLower(key)
+	if err := Approve(e, strings.Repeat("0", 64)); err == nil {
+		t.Error("approved with another hash")
 	}
-	settings.Credentials.Set("plugin-safe-sha256:"+key, info.Hash)
+	if err := Approve(e, info.Hash); err != nil {
+		t.Fatal(err)
+	}
+	if i := Inspect(e, false); i.State != plugin.Safe {
+		t.Errorf("state after approving %v", i.State)
+	}
 
 	out := capture(t, func() {
 		if err := run([]string{"-Name", "bob smith", "-Loud", "-Items", "x,y"}); err != nil {
@@ -158,7 +168,7 @@ exit 5
 	if err := os.WriteFile(script, append([]byte{0xEF, 0xBB, 0xBF}, src...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	e, err := Add(script, "ask")
+	e, err := Add(script, "ask", "")
 	if err != nil {
 		t.Fatal(err)
 	}

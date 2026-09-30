@@ -1,6 +1,10 @@
 package plugin
 
-import "os"
+import (
+	"os"
+
+	"aex/internal/settings"
+)
 
 // Custom tools (internal/custom), scripts run by a tool adapter, are approved like plugins: the
 // SHA-256 of the file's contents is saved as its safe hash under its path, and forget-all forgets
@@ -32,6 +36,15 @@ func (l *Locked) Approve(name, path string, details [][2]string) error {
 		return err
 	}
 	return askApproval("Custom tool", name, path, l.o, s, details)
+}
+
+// Trust saves the locked file's hash as the safe hash of the file at path, without asking: for
+// when it was already shown and approved.
+func (l *Locked) Trust(path string) error {
+	if err := settings.Credentials.Set(hashKey(path), l.o.hash); err != nil {
+		return err
+	}
+	return setApproved(path, true)
 }
 
 // Forget forgets the safe hash of the file at path.

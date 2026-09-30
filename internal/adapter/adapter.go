@@ -16,6 +16,10 @@ import (
 type Adapter interface {
 	// Name is the adapter's name, e.g. "powershell", kept with each custom tool.
 	Name() string
+	// Supported reports whether the adapter can ever work on this device (e.g. its OS), and if not,
+	// why. Something missing that can be installed (AutoHotkey) does not make it unsupported: that
+	// is for Describe to say. An unsupported adapter is not offered and its custom tools do not run.
+	Supported() (ok bool, why string)
 	// Handles reports whether the adapter runs the file at path (by its extension).
 	Handles(path string) bool
 	// FileTypes names the files it runs and their patterns, for file dialogs: "PowerShell scripts",

@@ -45,6 +45,9 @@ type powershell struct{}
 
 func (powershell) Name() string { return "powershell" }
 
+// Supported: PowerShell 7 (pwsh) can be installed on every OS aex runs on.
+func (powershell) Supported() (bool, string) { return true, "" }
+
 func (powershell) Handles(path string) bool { return strings.EqualFold(filepath.Ext(path), ".ps1") }
 
 func (powershell) FileTypes() (string, []string) { return "PowerShell scripts", []string{"*.ps1"} }

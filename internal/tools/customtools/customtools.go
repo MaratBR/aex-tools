@@ -16,10 +16,10 @@ import (
 )
 
 // Tool is the custom-tools tool.
-var Tool = tool.Tool{Name: "custom-tools", Summary: "Add scripts (PowerShell) as tools; list, describe and remove them", Run: run}
+var Tool = tool.Tool{Name: "custom-tools", Summary: "Add scripts (PowerShell, AutoHotkey) as tools; list, describe and remove them", Run: run}
 
 func run(args []string) error {
-	usage := fmt.Sprintf(`Usage: custom-tools [list | describe <name> | add <path> [--name <name>] | remove <name> [--yes]]
+	usage := fmt.Sprintf(`Usage: custom-tools [list | describe <name> | add <path> [--name <name>] [--adapter <adapter>] [--approve] | remove <name> [--yes]]
 
 A custom tool is a script run by a tool adapter for its kind of file (adapters: %s). Its
 parameters are read without running it; "aex <name> [args]" parses args against them and asks for
@@ -29,12 +29,14 @@ When the script is in a git repo, its repo, commit and changes not committed are
 
   list            List the custom tools with file, SHA-256, state, parameters and git info (default)
   describe <name> A custom tool's parameters (its --help) and info
-  add <path>      Add the script at path, named after its file unless --name
+  add <path>      Add the script at path, named after its file unless --name, run by the adapter
+                  for its kind of file unless --adapter; --approve also saves its SHA-256 as safe
+                  (else it asks to be approved on its first run)
   remove <name>   Remove a custom tool and forget its safe hash (the script is kept); asks first
                   unless --yes
 
 Without args on a terminal: lists them, then asks what to do. Kept in:
-  %s`, adapterNames(), settings.CustomToolsFile)
+  %s`, custom.AdapterNames(), settings.CustomToolsFile)
 
 	cmd, rest := "", args
 	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
@@ -47,6 +49,8 @@ Without args on a terminal: lists them, then asks what to do. Kept in:
 	fs := flag.NewFlagSet("custom-tools", flag.ContinueOnError)
 	yes := fs.Bool("yes", false, "")
 	name := fs.String("name", "", "")
+	adapterName := fs.String("adapter", "", "")
+	approve := fs.Bool("approve", false, "")
 	if done, err := tool.ParseFlags(fs, rest, usage); done || err != nil {
 		return err
 	}
@@ -74,7 +78,7 @@ Without args on a terminal: lists them, then asks what to do. Kept in:
 		if err := needs("the script's path"); err != nil {
 			return err
 		}
-		return add(target, *name)
+		return add(target, *name, *adapterName, *approve)
 	case "remove":
 		if err := needs("a custom tool name"); err != nil {
 			return err
@@ -82,14 +86,6 @@ Without args on a terminal: lists them, then asks what to do. Kept in:
 		return remove(target, *yes)
 	}
 	return fmt.Errorf("unknown command %q (see --help)", cmd)
-}
-
-func adapterNames() string {
-	names := make([]string, len(custom.Adapters))
-	for i, a := range custom.Adapters {
-		names[i] = a.Name()
-	}
-	return strings.Join(names, ", ")
 }
 
 func list() error {
@@ -168,14 +164,34 @@ func describe(name string) error {
 	return nil
 }
 
-func add(path, name string) error {
-	e, err := custom.Add(path, name)
+// add adds the script at path and, with approve, approves it. Asked (default no) on a terminal
+// when not approved.
+func add(path, name, adapterName string, approve bool) error {
+	e, err := custom.Add(path, name, adapterName)
 	if err != nil {
 		return err
 	}
-	fmt.Println(ui.Out.Green("Added custom tool "+e.Name+".") + " It asks to be approved on its first run.")
+	fmt.Println(ui.Out.Green("Added custom tool " + e.Name + "."))
 	fmt.Println()
-	printInfo(custom.Inspect(e, true))
+	i := custom.Inspect(e, true)
+	printInfo(i)
+	if i.Hash == "" || i.State == plugin.Safe {
+		return nil
+	}
+	if !approve && ui.IsInteractive() {
+		fmt.Println()
+		if approve, err = ui.Confirm(fmt.Sprintf("Approve %s now? Its SHA-256 above is saved as safe, so it runs with your rights without asking (until the file changes).", e.Name), false); err != nil {
+			return err
+		}
+	}
+	if !approve {
+		fmt.Println(ui.Out.Dim("It asks to be approved on its first run."))
+		return nil
+	}
+	if err := custom.Approve(e, i.Hash); err != nil {
+		return err
+	}
+	fmt.Println(ui.Out.Green("Approved " + e.Name + "."))
 	return nil
 }
 
@@ -217,6 +233,9 @@ func manage() error {
 				ui.Option{Label: "Describe a custom tool", Value: "describe"},
 				ui.Option{Label: "Remove a custom tool", Value: "remove"})
 		}
+		if len(custom.Unsupported()) > 0 {
+			options = append(options, ui.Option{Label: "View unsupported adapters", Value: "unsupported"})
+		}
 		action, err := ui.Choose("What now?", options)
 		if err != nil {
 			return err
@@ -226,6 +245,8 @@ func manage() error {
 			return nil
 		case "add":
 			err = askAdd()
+		case "unsupported":
+			showUnsupported()
 		case "describe", "remove":
 			var name string
 			if name, err = pick(entries); err == nil && name != "" {
@@ -243,17 +264,40 @@ func manage() error {
 	}
 }
 
+// showUnsupported lists the tool adapters that cannot work on this device, and why.
+func showUnsupported() {
+	fmt.Println(ui.Out.Bold("Tool adapters not supported here"))
+	for _, u := range custom.Unsupported() {
+		types, patterns := u.Adapter.FileTypes()
+		fmt.Printf("  %s  %s\n", u.Adapter.Name(), ui.Out.Dim(types+" ("+strings.Join(patterns, ", ")+")"))
+		fmt.Printf("    %s\n", ui.Out.Yellow(u.Why))
+	}
+}
+
 func askAdd() error {
+	options := []ui.Option{{Label: "Pick by the file (" + custom.AdapterNames() + ")", Value: ""}}
+	for _, a := range custom.Adapters() {
+		types, patterns := a.FileTypes()
+		options = append(options, ui.Option{Label: fmt.Sprintf("%s  %s", a.Name(), ui.Err.Dim(types+" ("+strings.Join(patterns, ", ")+")")), Value: a.Name()})
+	}
+	adapterName, err := ui.Choose("Which adapter runs it?", options)
+	if err != nil {
+		return err
+	}
+	description := "Adapters: " + custom.AdapterNames()
+	if adapterName != "" {
+		description = "Run by " + adapterName
+	}
 	path, err := ui.Input(ui.Field{
 		Title:       "Script path",
-		Description: "Adapters: " + adapterNames(),
-		Hint:        scriptHint(),
-		Validate:    func(s string) error { _, _, err := custom.CheckPath(s); return err },
+		Description: description,
+		Hint:        scriptHint(adapterName),
+		Validate:    func(s string) error { _, _, err := custom.CheckPath(s, adapterName); return err },
 	})
 	if err != nil {
 		return err
 	}
-	abs, _, err := custom.CheckPath(path)
+	abs, _, err := custom.CheckPath(path, adapterName)
 	if err != nil {
 		return err
 	}
@@ -274,13 +318,17 @@ func askAdd() error {
 	if name == "" {
 		name = def
 	}
-	return add(abs, name)
+	return add(abs, name, adapterName, false)
 }
 
-// scriptHint asks for a file some adapter runs: a dialog offers each adapter's files.
-func scriptHint() ui.Hint {
+// scriptHint asks for a file the adapter called adapterName runs ("" for any adapter): a dialog
+// offers its files, or each adapter's.
+func scriptHint(adapterName string) ui.Hint {
 	h := ui.Hint{Kind: ui.HintFile}
-	for _, a := range custom.Adapters {
+	for _, a := range custom.Adapters() {
+		if adapterName != "" && a.Name() != adapterName {
+			continue
+		}
 		name, patterns := a.FileTypes()
 		h.Filters = append(h.Filters, ui.FileFilter{Name: name, Patterns: patterns})
 	}

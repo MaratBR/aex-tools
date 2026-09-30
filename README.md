@@ -27,13 +27,16 @@ In a terminal: `aex <tool> --help` shows what a tool takes, and `aex --help` lis
 - **plugins** manages the tools in the `plugins` folder.
 - **custom-tools** adds your own scripts (PowerShell `.ps1`, AutoHotkey v2 `.ahk`) as tools, grouped by
   kind (`aex powershell <name>`).
-  aex asks for their parameters.
+  aex asks for their parameters. Adding one asks which adapter runs it (or picks it by the file) and
+  offers to approve it right away. Adapters that cannot work on your OS (AutoHotkey off Windows) are
+  hidden; its menu's "View unsupported adapters" says why.
 - **cm-release** (a plugin) has the CM release steps: `pull-all`, `prepare-release`, `merge-prod` and
   `jira-handoff`.
 
 ## Home
 
-Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move or resize them. A widget
+Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move or resize them: drag a
+widget to any cell, leaving gaps if you like; widgets in the way move down. A widget
 this aex does not have (e.g. from another version) stays on the page with a warning, to remove in Edit.
 
 - **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that

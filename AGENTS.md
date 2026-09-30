@@ -190,10 +190,18 @@ approvals are in that list too, so `forget-all` forgets them as well.
 ## custom-tools
 
 `.\bin\aex.ps1 custom-tools` manages custom tools (see Custom tools). Without args on a terminal (or
-from the window) it lists them and asks what to do: add a script (asks its path and a name), describe or
-remove one. Else `list` (default: file, SHA-256, state, adapter, parameters, git info), `describe <name>`
-(that plus its `--help`), `add <path> [--name <name>]` (named after the file by default, e.g.
-`Deploy App.ps1` → `Deploy-App`), `remove <name> [--yes]` (forgets its safe hash; the script is kept).
+from the window) it lists them and asks what to do: add a script (asks which adapter runs it, or to pick
+it by the file; then its path, the file dialog offering that adapter's files, and a name), describe or
+remove one, or view the adapters not supported here, with why (shown only when there are some). Else `list` (default: file, SHA-256, state, adapter, parameters, git info), `describe <name>`
+(that plus its `--help`), `add <path> [--name <name>] [--adapter <adapter>] [--approve]` (named after the
+file by default, e.g. `Deploy App.ps1` → `Deploy-App`; run by the first adapter that handles the file
+unless `--adapter`, which must handle it too), `remove <name> [--yes]` (forgets its safe hash; the script
+is kept).
+
+After adding, the tool's info is shown (path, SHA-256, adapter, parameters, git) and, on a terminal, it
+asks whether to approve it now (default no): yes saves that SHA-256 as its safe hash
+(`custom.Approve`, refused if the file changed since it was shown), so its first run does not ask.
+`--approve` does so without asking; otherwise it asks to be approved on its first run.
 
 ## cm-release (plugin)
 
@@ -538,13 +546,20 @@ credentials: a plugin never opens the credential store and ignores secret settin
 
 A custom tool is a script anywhere on disk, added with `custom-tools add <path>`, run by the tool
 adapter for its kind of file. Custom tools are grouped by adapter: a group named after it (`powershell`,
-`autohotkey`, in the order of `custom.Adapters`, only with tools in it) shows in the window after the
+`autohotkey`, in the order of `allAdapters` in `internal/custom`, only with tools in it) shows in the window after the
 plugins, and a tool runs as `aex <adapter> <name> [args]` (or `aex <name> [args]`, found in the groups
 when no tool has that name). No custom tool can be named like an adapter; a group named like a
 built-in tool or a plugin is skipped with a warning.
 Adapters so far: `powershell` (`.ps1`), `autohotkey` (`.ahk`, `.ah2`: AutoHotkey v2). A new one implements `adapter.Adapter` (`internal/adapter`) and is
-added to `custom.Adapters`:
+added to `allAdapters` in `internal/custom`:
 
+- `Supported()` — whether it can ever work on this device, and if not why (AutoHotkey: only on
+  Windows). Something that can be installed does not count: AutoHotkey not installed is supported,
+  and describing its scripts says how to install it. An unsupported adapter is left out everywhere
+  (`custom.Adapters()`): not offered by `custom-tools add` or its file dialog, adding a file only it
+  handles fails with why, and custom tools of it (e.g. from another device's data folder) are not in
+  the tool list and fail with why; `custom-tools list` still shows them. Only the `custom-tools`
+  menu's "View unsupported adapters" lists them (`custom.Unsupported()`). Its name stays reserved.
 - `Handles(path)` — whether it runs this file (by extension); `FileTypes()` — its files for the file
   dialog of `custom-tools add` (e.g. "PowerShell scripts", `*.ps1`).
 - `Describe(path)` — summary and parameters, read without running the script: name, kind (string, int,
@@ -591,6 +606,19 @@ policy), exiting with the script's exit code. Windows PowerShell on Windows, els
 `#Requires -PSEdition Core` or a script only `pwsh` can parse. Parameter sets and dynamic parameters are
 not modelled (noted in `--help`).
 
+AutoHotkey v2 (Windows only): scripts declare no parameters, so args are passed on as given (the
+script's `A_Args`). The summary is the `;@Ahk2Exe-SetDescription` directive, else the first paragraph
+of the comment at the top (`;` lines or a `/* */` block, after `#` directives). Nothing of the script
+runs to read it (not even `/Validate`, since `#DllLoad` would load a DLL). `#Requires AutoHotkey v1` is
+refused; `#Requires … 32-bit` runs it with `AutoHotkey32.exe`. It runs as `AutoHotkey64.exe
+/ErrorStdOut=UTF-8 <path> <args…>`, from the `v2` folder of the install (`InstallDir` under
+`Software\AutoHotkey` in the registry, else `Program Files\AutoHotkey` or `%LOCALAPPDATA%\Programs\AutoHotkey`),
+else from PATH (a portable copy). Not found: describing fails with how to install it
+(`winget install AutoHotkey.AutoHotkey` or the download page), shown by `custom-tools add` / `list`, in
+the window's tool list and on a run. Not interactive: it asks in its own windows (`InputBox`, `MsgBox`),
+its output to `*` (`FileAppend`) shows in the run; a script that stays running (hotkeys, a Gui) keeps
+its run going until it exits.
+
 ## Config
 
 Lowest to highest priority:
@@ -609,19 +637,6 @@ apply in the open window:
   file timestamps): `auto` follows the device's (daylight saving included), a number pins a UTC offset;
   quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list, each offset
   named by well-known places on it now (`tzZones` in `settings.js`, daylight saving included), e.g.
-AutoHotkey v2 (Windows only): scripts declare no parameters, so args are passed on as given (the
-script's `A_Args`). The summary is the `;@Ahk2Exe-SetDescription` directive, else the first paragraph
-of the comment at the top (`;` lines or a `/* */` block, after `#` directives). Nothing of the script
-runs to read it (not even `/Validate`, since `#DllLoad` would load a DLL). `#Requires AutoHotkey v1` is
-refused; `#Requires … 32-bit` runs it with `AutoHotkey32.exe`. It runs as `AutoHotkey64.exe
-/ErrorStdOut=UTF-8 <path> <args…>`, from the `v2` folder of the install (`InstallDir` under
-`Software\AutoHotkey` in the registry, else `Program Files\AutoHotkey` or `%LOCALAPPDATA%\Programs\AutoHotkey`),
-else from PATH (a portable copy). Not found: describing fails with how to install it
-(`winget install AutoHotkey.AutoHotkey` or the download page), shown by `custom-tools add` / `list`, in
-the window's tool list and on a run. Not interactive: it asks in its own windows (`InputBox`, `MsgBox`),
-its output to `*` (`FileAppend`) shows in the run; a script that stays running (hotkeys, a Gui) keeps
-its run going until it exits.
-
   "Berlin, Paris, Madrid, Rome (UTC+2)", and the device's timezone by its place; it warns when a pinned
   offset is not the device's. The setting stays an offset: a pinned one does not follow daylight saving.
 

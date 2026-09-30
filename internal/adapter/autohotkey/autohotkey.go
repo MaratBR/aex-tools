@@ -10,7 +10,7 @@
 // running (hotkeys, #Persistent, a Gui) keeps its run going until it exits.
 //
 // It runs with AutoHotkey64.exe (AutoHotkey32.exe for a script that #Requires 32-bit) from the v2
-// folder of the AutoHotkey install, else the first found on PATH. Windows only. When none is found,
+// folder of the AutoHotkey install, else the first found on PATH. Windows only (Supported). When none is found,
 // Describe fails saying how to install it, which shows wherever the custom tool is listed or run.
 package autohotkey
 
@@ -39,6 +39,13 @@ type autohotkey struct{}
 
 func (autohotkey) Name() string { return "autohotkey" }
 
+func (autohotkey) Supported() (bool, string) {
+	if runtime.GOOS != "windows" {
+		return false, "AutoHotkey runs only on Windows"
+	}
+	return true, ""
+}
+
 func (autohotkey) Handles(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".ahk" || ext == ".ah2"
@@ -56,9 +63,6 @@ func (autohotkey) Describe(path string) (adapter.Description, error) {
 	h := read(string(src))
 	if h.major != 0 && h.major != 2 {
 		return adapter.Description{}, fmt.Errorf("it is an AutoHotkey v%d script (#Requires): only v2 scripts can run", h.major)
-	}
-	if runtime.GOOS != "windows" {
-		return adapter.Description{}, errors.New("AutoHotkey runs only on Windows")
 	}
 	exe := find(h.bits)
 	switch {

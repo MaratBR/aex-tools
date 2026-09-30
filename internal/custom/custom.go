@@ -34,11 +34,52 @@ import (
 	"aex/internal/ui"
 )
 
-// Adapters are the tool adapters; a script is run by the first that handles it.
-var Adapters = []adapter.Adapter{powershell.Adapter, autohotkey.Adapter}
+// allAdapters are every tool adapter, supported here or not; a script is run by the first
+// supported one that handles it.
+var allAdapters = []adapter.Adapter{powershell.Adapter, autohotkey.Adapter}
 
+// Adapters are the tool adapters supported on this device (adapter.Adapter.Supported), in order.
+// Only these are offered and run custom tools.
+func Adapters() []adapter.Adapter {
+	var supported []adapter.Adapter
+	for _, a := range allAdapters {
+		if ok, _ := a.Supported(); ok {
+			supported = append(supported, a)
+		}
+	}
+	return supported
+}
+
+// UnsupportedAdapter is a tool adapter that cannot work on this device, and why.
+type UnsupportedAdapter struct {
+	Adapter adapter.Adapter
+	Why     string
+}
+
+// Unsupported are the tool adapters not supported on this device, with why.
+func Unsupported() []UnsupportedAdapter {
+	var list []UnsupportedAdapter
+	for _, a := range allAdapters {
+		if ok, why := a.Supported(); !ok {
+			list = append(list, UnsupportedAdapter{a, why})
+		}
+	}
+	return list
+}
+
+// unsupported is why the adapter called name is not supported here, "" when it is or there is none.
+func unsupported(name string) string {
+	for _, u := range Unsupported() {
+		if u.Adapter.Name() == name {
+			return u.Why
+		}
+	}
+	return ""
+}
+
+// adapterFor is the first supported adapter that handles the file at path, nil if none.
 func adapterFor(path string) adapter.Adapter {
-	for _, a := range Adapters {
+	for _, a := range Adapters() {
 		if a.Handles(path) {
 			return a
 		}
@@ -47,18 +88,22 @@ func adapterFor(path string) adapter.Adapter {
 }
 
 func adapterNamed(name string) (adapter.Adapter, error) {
-	for _, a := range Adapters {
+	for _, a := range Adapters() {
 		if a.Name() == name {
 			return a, nil
 		}
 	}
-	return nil, fmt.Errorf("no tool adapter %q (adapters: %s)", name, adapterNames())
+	if why := unsupported(name); why != "" {
+		return nil, fmt.Errorf("the %s tool adapter is not supported here: %s", name, why)
+	}
+	return nil, fmt.Errorf("no tool adapter %q (adapters: %s)", name, AdapterNames())
 }
 
-func adapterNames() string {
-	names := make([]string, len(Adapters))
-	for i, a := range Adapters {
-		names[i] = a.Name()
+// AdapterNames lists the supported adapters' names, comma-separated.
+func AdapterNames() string {
+	var names []string
+	for _, a := range Adapters() {
+		names = append(names, a.Name())
 	}
 	return strings.Join(names, ", ")
 }
@@ -136,6 +181,20 @@ func Inspect(e Entry, withGit bool) Info {
 	return i
 }
 
+// Approve saves hash as the custom tool's safe hash, without asking: for right after it was shown
+// (custom-tools add). Refused when the script no longer has that hash.
+func Approve(e Entry, hash string) error {
+	l, err := plugin.Lock(e.Path)
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	if l.Hash() != hash {
+		return fmt.Errorf("%s changed since it was shown (SHA-256 now %s): not approved", e.Path, l.Hash())
+	}
+	return l.Trust(e.Path)
+}
+
 // List inspects every custom tool, in parallel.
 func List(withGit bool) ([]Info, error) {
 	entries, err := Load()
@@ -153,7 +212,8 @@ func List(withGit bool) ([]Info, error) {
 
 // Discover is the custom tools as tools, in one group per adapter (named after it, e.g.
 // "powershell"), in the order of Adapters; an adapter with no custom tools has no group. A group
-// named like a tool in taken is skipped with a warning, as are custom tools named like one.
+// named like a tool in taken is skipped with a warning, as are custom tools named like one. Custom
+// tools of an adapter not supported here are left out (custom-tools list still shows them).
 func Discover(taken []tool.Tool) []tool.Tool {
 	infos, err := List(false)
 	if err != nil {
@@ -165,6 +225,9 @@ func Discover(taken []tool.Tool) []tool.Tool {
 	}
 	byAdapter := map[string][]tool.Tool{}
 	for _, i := range infos {
+		if unsupported(i.Adapter) != "" {
+			continue
+		}
 		if isTaken(i.Name) {
 			ui.Warn("custom tools: skipped %s, another tool has that name", i.Name)
 			continue
@@ -195,7 +258,7 @@ func Discover(taken []tool.Tool) []tool.Tool {
 		}
 		groups = append(groups, tool.Tool{Name: name, Summary: summary, Sub: sub})
 	}
-	for _, a := range Adapters {
+	for _, a := range Adapters() {
 		types, _ := a.FileTypes()
 		add(a.Name(), "Custom tools: "+types)
 	}
@@ -220,9 +283,9 @@ func Find(groups []tool.Tool, name string) *tool.Tool {
 }
 
 // IsAdapter reports whether name is an adapter's name (ignoring case), which is its custom tools'
-// group.
+// group; supported here or not, so a name stays free of an adapter on every device.
 func IsAdapter(name string) bool {
-	return slices.ContainsFunc(Adapters, func(a adapter.Adapter) bool { return strings.EqualFold(a.Name(), name) })
+	return slices.ContainsFunc(allAdapters, func(a adapter.Adapter) bool { return strings.EqualFold(a.Name(), name) })
 }
 
 // Details are the lines about a custom tool shown when approving it and by custom-tools: adapter,
