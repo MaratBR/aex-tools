@@ -376,6 +376,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .cell-problem-name { font-weight: 600; margin-bottom: auto; }
 .cell-problem-text { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .cell-problem .btn { margin-bottom: auto; }
+/* A widget aex does not have: a warning. */
+.cell-problem.unknown { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); }
+.cell-problem.unknown .cell-problem-text { color: var(--ink); }
 
 /* Edit mode: each widget under a cover to drag it, resize it or remove it. */
 .cell-edit {

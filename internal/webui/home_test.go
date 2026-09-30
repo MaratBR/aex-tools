@@ -25,7 +25,8 @@ func TestCleanWidgets(t *testing.T) {
 	got := cleanWidgets([]HomeWidget{
 		{ID: "a", Widget: "quota", W: 99, H: 0},
 		{ID: "a", Widget: "quota", W: 1, H: 1},    // repeated id
-		{ID: "b", Widget: "nope", W: 1, H: 1},     // unknown widget
+		{ID: "b", Widget: "nope", W: 1, H: 1},     // unknown widget: kept, it shows as unknown
+		{ID: "b2", Widget: "No Pe", W: 1, H: 1},   // not a widget id
 		{ID: "../x", Widget: "quota", W: 1, H: 1}, // bad id
 		{ID: "c", Widget: "quota", W: 2, H: 3},
 		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1}, // a plugin's: kept, whether or not it is there
@@ -34,7 +35,8 @@ func TestCleanWidgets(t *testing.T) {
 		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
 		{ID: "h", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`[1]`)}, // not an object: dropped
 	})
-	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1}, {ID: "c", Widget: "quota", W: 2, H: 3},
+	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1}, {ID: "b", Widget: "nope", W: 1, H: 1},
+		{ID: "c", Widget: "quota", W: 2, H: 3},
 		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1},
 		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
 		{ID: "h", Widget: "quota", W: 1, H: 1}}
@@ -53,8 +55,8 @@ func TestHomeSaveLoad(t *testing.T) {
 	if err != nil || len(l.Widgets) != 0 {
 		t.Fatalf("no file: got %+v, %v; want empty", l, err)
 	}
-	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "nope", W: 1, H: 1}}}); err == nil {
-		t.Fatal("unknown widget saved")
+	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "../nope", W: 1, H: 1}}}); err == nil {
+		t.Fatal("bad widget id saved")
 	}
 	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`"s"`)}}}); err == nil {
 		t.Fatal("settings that are not an object saved")
@@ -100,5 +102,29 @@ func TestNthWorkingDay(t *testing.T) {
 	working := map[string]bool{"2026-10-02": false, "2026-10-03": true, "2026-10-04": false, "2026-10-05": true}
 	if got, complete := nthWorkingDay("2026-10-01", 2, working); got != "2026-10-05" || !complete {
 		t.Fatalf("calendar: got %s, %v; want 2026-10-05, true", got, complete)
+	}
+}
+
+func TestUnknownWidget(t *testing.T) {
+	a := &App{}
+	p, err := a.WidgetPage("nope")
+	if err != nil || !p.Unknown || p.Problem == "" || p.HTML != "" {
+		t.Fatalf("got %+v, %v; want an unknown widget problem", p, err)
+	}
+	if _, err := a.WidgetPage("No Pe"); err == nil {
+		t.Fatal("bad widget id: no error")
+	}
+	if _, err := a.WidgetCall("nope", "quota", nil); err == nil {
+		t.Fatal("unknown widget: call ran")
+	}
+}
+
+func TestUnknownDebugWidget(t *testing.T) {
+	w := unknownDebugWidget()
+	if !w.Debug || knownWidget(w.ID) || !validWidgetID(w.ID) || !validSettings(w.Settings) {
+		t.Fatalf("got %+v; want a valid id aex does not know, with settings", w)
+	}
+	if unknownDebugWidget().ID == w.ID {
+		t.Fatal("same id twice")
 	}
 }

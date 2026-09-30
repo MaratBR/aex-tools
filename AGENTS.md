@@ -294,8 +294,13 @@ Home is a grid of widgets (12 columns, 6 or 1 when the window is narrow, a widge
 when it is wider than that; rows 150 px). Add widget picks one (a widget can be added more than once);
 Edit puts a cover on each widget to drag it elsewhere, move it earlier or later, change its width
 (1–12 columns) and height (1–4 rows), with the steppers or by dragging its right edge, bottom edge or
-corner, or remove it. Every change is saved to `home.json` in the data folder (`App.SaveHome`; unknown
-built-in widgets are dropped and sizes clamped on load; plugins' widgets stay, see below). A
+corner, or remove it. Every change is saved to `home.json` in the data folder (`App.SaveHome`; sizes
+are clamped on load; plugins' widgets stay, see below). A placement of a widget aex does not have
+(removed, renamed without `renamedWidgets`, or from a newer aex) stays too, and shows a warning in its
+cell: unknown widget, with its id, to remove in Edit (`WidgetPage.Unknown`); only ids that are not a
+widget id at all are dropped. With `--debug`, Add widget also offers "Unknown widget"
+(`unknownDebugWidget`): a made-up id (`debug-unknown-…`) and settings, new each time, to see how one
+looks. A
 `home.json` from the 4-column grid (no `"columns": 12`) has its widths multiplied by 3 on load. A
 plugin's widget sizes (`plugin.Widget.W`) are still in quarters of the width, multiplied by 3 too.
 

@@ -31,7 +31,8 @@ In a terminal: `aex <tool> --help` shows what a tool takes, and `aex --help` lis
 
 ## Home
 
-Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move or resize them.
+Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move or resize them. A widget
+this aex does not have (e.g. from another version) stays on the page with a warning, to remove in Edit.
 
 - **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that
   syncs this week (Monday through today).

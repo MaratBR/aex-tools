@@ -2,6 +2,7 @@ package webui
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +43,8 @@ type WidgetInfo struct {
 	// Debug marks a widget for developing aex or a plugin: offered, and usable, only with --debug
 	// (settings.Debug).
 	Debug bool `json:"debug,omitempty"`
+	// Settings are the settings a placement starts with; none: {}.
+	Settings json.RawMessage `json:"settings,omitempty"`
 }
 
 var widgetCatalog = []WidgetInfo{
@@ -150,11 +153,24 @@ func (a *App) Widgets() WidgetList {
 			list.Widgets = append(list.Widgets, info)
 		}
 	}
+	if settings.Debug {
+		list.Widgets = append(list.Widgets, unknownDebugWidget())
+	}
 	return list
 }
 
+// unknownDebugWidget is a widget aex does not know, offered with --debug to see how one looks on the
+// home page (as after a downgrade, or with a widget removed from aex): a made-up id and settings,
+// new each time.
+func unknownDebugWidget() WidgetInfo {
+	id := "debug-unknown-" + strings.ToLower(rand.Text()[:8])
+	s, _ := json.Marshal(map[string]any{"note": "made up by the Unknown widget debug entry", "seed": rand.Text()})
+	return WidgetInfo{ID: id, Name: "Unknown widget", Summary: "A widget aex does not know, with made-up settings: to see how one shows",
+		W: 3, H: 1, Debug: true, Settings: s}
+}
+
 // Home gives the home page as saved in the data folder (settings.HomeFile); empty when there is none.
-// Built-in widgets no longer known are left out; plugins' stay, and say so when they cannot load.
+// Widgets no longer known (built-in or plugins') stay, and say so when they cannot load.
 func (a *App) Home() (HomeLayout, error) {
 	layout := HomeLayout{Widgets: []HomeWidget{}}
 	b, err := os.ReadFile(settings.HomeFile)
@@ -184,8 +200,8 @@ func (a *App) Home() (HomeLayout, error) {
 // SaveHome saves the home page to the data folder.
 func (a *App) SaveHome(layout HomeLayout) error {
 	for _, w := range layout.Widgets {
-		if !knownWidget(w.Widget) {
-			return fmt.Errorf("unknown widget: %q", w.Widget)
+		if !validWidgetID(w.Widget) {
+			return fmt.Errorf("bad widget: %q", w.Widget)
 		}
 		if !placementID.MatchString(w.ID) {
 			return fmt.Errorf("bad widget id: %q", w.ID)
@@ -217,6 +233,15 @@ var placementID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 // pluginWidget matches a plugin's widget id: <plugin>/<id>.
 var pluginWidget = regexp.MustCompile(`^([^/\:*?"<>|]{1,128})/([a-z0-9][a-z0-9_-]{0,63})$`)
 
+// builtinWidget matches a built-in widget's id, whether or not aex has it.
+var builtinWidget = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// validWidgetID reports whether id looks like a widget's, built-in or a plugin's: a placement of a
+// widget aex does not know (any more, or yet) is kept, and shows that it is unknown.
+func validWidgetID(id string) bool {
+	return builtinWidget.MatchString(id) || pluginWidget.MatchString(id) && !strings.HasPrefix(id, ".")
+}
+
 // knownWidget reports whether id is a built-in widget or looks like a plugin's.
 func knownWidget(id string) bool {
 	return slices.ContainsFunc(widgetCatalog, func(w WidgetInfo) bool { return w.ID == id }) ||
@@ -234,13 +259,13 @@ func validSettings(s json.RawMessage) bool {
 	return len(s) <= maxSettings && json.Unmarshal(s, &m) == nil && m != nil
 }
 
-// cleanWidgets drops unknown widgets and repeated ids, clamps sizes to the grid, and compacts
+// cleanWidgets drops bad widget ids and repeated placement ids, clamps sizes to the grid, and compacts
 // settings, dropping those that are not a JSON object or too big.
 func cleanWidgets(list []HomeWidget) []HomeWidget {
 	out := []HomeWidget{}
 	seen := map[string]bool{}
 	for _, w := range list {
-		if !knownWidget(w.Widget) || !placementID.MatchString(w.ID) || seen[w.ID] || len(out) == maxWidgets {
+		if !validWidgetID(w.Widget) || !placementID.MatchString(w.ID) || seen[w.ID] || len(out) == maxWidgets {
 			continue
 		}
 		seen[w.ID] = true
@@ -265,6 +290,8 @@ type WidgetPage struct {
 	// not granted its access. Plugin names it, for the window to offer "plugins allow".
 	Problem string `json:"problem,omitempty"`
 	Plugin  string `json:"plugin,omitempty"`
+	// Unknown is set when aex has no widget with that id: Problem says so, shown as a warning.
+	Unknown bool `json:"unknown,omitempty"`
 }
 
 // WidgetPage gives the page of widget (WidgetInfo.ID).
@@ -286,6 +313,9 @@ func (a *App) WidgetPage(widget string) (WidgetPage, error) {
 		return WidgetPage{}, err
 	}
 	if !knownWidget(widget) {
+		if validWidgetID(widget) {
+			return WidgetPage{Problem: fmt.Sprintf("unknown widget: this aex has no widget %q, it may come from another version. Remove it in Edit", widget), Unknown: true}, nil
+		}
 		return WidgetPage{}, fmt.Errorf("unknown widget: %q", widget)
 	}
 	if debugWidget(widget) {

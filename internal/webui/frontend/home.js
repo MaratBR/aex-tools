@@ -335,11 +335,21 @@ function widgetDoc(html, [tokens, base, sdk], settings) {
 }
 
 // showProblem puts why a widget cannot show in its cell, with a way to fix it when there is one.
-function showProblem(cell, text, plugin) {
+// An unknown widget (one aex does not have) shows as a warning.
+function showProblem(cell, text, plugin, unknown) {
   const box = cell.querySelector('.cell-problem');
   box.textContent = '';
-  box.append(el('div', 'cell-problem-name', widgetName(layout.find(x => x.id === cell.dataset.id)?.widget || '')),
-    el('div', 'cell-problem-text', text.charAt(0).toUpperCase() + text.slice(1) + '.'));
+  const name = el('div', 'cell-problem-name');
+  if (unknown) {
+    const icon = el('span', 'warn-icon');
+    icon.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 15 14H1z"/><path class="mark" d="M8 6v3.5M8 11.6v.1"/></svg>';
+    icon.setAttribute('role', 'img');
+    icon.setAttribute('aria-label', 'Warning');
+    name.appendChild(icon);
+  }
+  name.append(widgetName(layout.find(x => x.id === cell.dataset.id)?.widget || ''));
+  box.classList.toggle('unknown', !!unknown);
+  box.append(name, el('div', 'cell-problem-text', text.charAt(0).toUpperCase() + text.slice(1) + '.'));
   if (plugin) {
     box.append(button('Review ' + plugin, 'btn small primary', () => runLine('plugins allow ' + plugin)));
   }
@@ -354,7 +364,7 @@ async function loadWidget(w, cell) {
   let page;
   try {
     const [p, k] = await Promise.all([api().WidgetPage(w.widget), widgetKit()]);
-    if (p.problem) return showProblem(cell, p.problem, p.plugin);
+    if (p.problem) return showProblem(cell, p.problem, p.plugin, p.unknown);
     page = widgetDoc(p.html, k, w.settings);
   } catch (e) {
     return showProblem(cell, 'could not load: ' + e);
@@ -489,6 +499,7 @@ function openPicker() {
     const item = button('', 'picker-item', () => {
       closePicker();
       const placed = { id: newID(), widget: w.id, w: w.w, h: w.h };
+      if (w.settings) placed.settings = w.settings;
       layout.push(placed);
       renderHome();
       save();
