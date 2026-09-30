@@ -186,6 +186,22 @@ func Search[F any](c *Client, jql string, fields []string) ([]Issue[F], error) {
 	return issues, err
 }
 
+// JQLErrors checks jql (POST /rest/api/3/jql/parse, strict) and returns what Jira finds wrong with
+// it: nothing when it is valid.
+func JQLErrors(c *Client, jql string) ([]string, error) {
+	type parsed struct {
+		Queries *[]struct {
+			Errors []string `json:"errors"`
+		} `json:"queries"`
+	}
+	r, err := request(c, "POST", "/rest/api/3/jql/parse", url.Values{"validation": {"strict"}},
+		map[string][]string{"queries": {jql}}, func(p parsed) bool { return p.Queries != nil && len(*p.Queries) == 1 })
+	if err != nil {
+		return nil, err
+	}
+	return (*r.Queries)[0].Errors, nil
+}
+
 // SearchMax returns the first max issues matching jql (all of them when max is 0), with fields
 // decoded into F; more says there were more.
 func SearchMax[F any](c *Client, jql string, fields []string, max int) (issues []Issue[F], more bool, err error) {

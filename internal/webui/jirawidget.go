@@ -13,12 +13,13 @@ import (
 	"aex/internal/tool"
 )
 
-// The jira-tickets widget (frontend/widgets/jira-tickets.html): open tickets assigned to you, or
-// where you are in people fields you pick (custom fields of one person or several).
+// The jira-tickets widget (frontend/widgets/jira-tickets.html): open tickets assigned to you, where
+// you are in people fields you pick (custom fields of one person or several), or matching a JQL query.
 
 const (
-	maxTickets  = 50
-	jiraTimeout = 10 * time.Second
+	defaultTickets = 20  // shown when args.max is not given
+	maxTickets     = 100 // args.max at most
+	jiraTimeout    = 10 * time.Second
 )
 
 // JiraFieldsReply is the jiraFields API's result: the custom fields that hold people.
@@ -66,8 +67,10 @@ var customField = regexp.MustCompile(`^customfield_([0-9]{1,12})$`)
 type TicketsReply struct {
 	NotConfigured bool     `json:"notConfigured,omitempty"` // no JIRA_EMAIL / JIRA_TOKEN: nothing else is set
 	NeedLogin     bool     `json:"needLogin,omitempty"`     // Jira rejects the token: nothing else is set
+	JQLErrors     []string `json:"jqlErrors,omitempty"`     // what Jira finds wrong with mode "jql"'s query: nothing else is set
 	Tickets       []Ticket `json:"tickets"`
-	More          bool     `json:"more,omitempty"` // there are more than maxTickets
+	More          bool     `json:"more,omitempty"` // there are more than Max
+	Max           int      `json:"max"`            // how many at most
 	// NewHours is how far back an assignment counts as new: 24 h, or 72 h on a Monday (over the
 	// weekend). Only for mode "assigned".
 	NewHours int `json:"newHours,omitempty"`
@@ -104,7 +107,8 @@ type ticketFields struct {
 
 var ticketFieldNames = []string{"summary", "status", "issuetype", "priority", "updated"}
 
-// ticketsJQL is the search for args: mode "assigned", or "field" with fields (custom field ids).
+// ticketsJQL is the search for args: mode "assigned", "field" with fields (custom field ids), or
+// "jql" with jql, taken as it is.
 func ticketsJQL(args map[string]any) (string, error) {
 	const open = " AND statusCategory != Done ORDER BY updated DESC"
 	switch args["mode"] {
@@ -126,8 +130,23 @@ func ticketsJQL(args map[string]any) (string, error) {
 			return "", errors.New("no fields given")
 		}
 		return "(" + strings.Join(in, " OR ") + ")" + open, nil
+	case "jql":
+		jql, _ := args["jql"].(string)
+		if strings.TrimSpace(jql) == "" {
+			return "", errors.New("no query given")
+		}
+		return jql, nil
 	}
 	return "", fmt.Errorf("unknown mode %q", args["mode"])
+}
+
+// ticketsMax is args.max: defaultTickets when not given, 1 to maxTickets.
+func ticketsMax(args map[string]any) int {
+	n, ok := args["max"].(float64)
+	if !ok {
+		return defaultTickets
+	}
+	return min(max(int(n), 1), maxTickets)
 }
 
 // newHours is how far back an assignment counts as new at now: over the weekend on a Monday.
@@ -138,8 +157,9 @@ func newHours(now time.Time) int {
 	return 24
 }
 
-// jiraTicketsAPI gives the open tickets for args (ticketsJQL), most recently updated first. For
-// mode "assigned" it marks those assigned to you within newHours (or created so).
+// jiraTicketsAPI gives the first ticketsMax tickets for args (ticketsJQL): open ones, most recently
+// updated first, but for mode "jql" as its query says. For mode "assigned" it marks those assigned
+// to you within newHours (or created so).
 func jiraTicketsAPI(args map[string]any) (any, error) {
 	jql, err := ticketsJQL(args)
 	if err != nil {
@@ -152,20 +172,26 @@ func jiraTicketsAPI(args map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	issues, more, err := jira.SearchMax[ticketFields](c, jql, ticketFieldNames, maxTickets)
+	limit := ticketsMax(args)
+	issues, more, err := jira.SearchMax[ticketFields](c, jql, ticketFieldNames, limit)
 	if err != nil {
 		if rejected() {
 			return TicketsReply{NeedLogin: true}, nil
 		}
+		if args["mode"] == "jql" {
+			if errs, perr := jira.JQLErrors(c, jql); perr == nil && len(errs) > 0 {
+				return TicketsReply{JQLErrors: errs, Tickets: []Ticket{}}, nil
+			}
+		}
 		return nil, err
 	}
-	reply := TicketsReply{Tickets: []Ticket{}, More: more}
+	reply := TicketsReply{Tickets: []Ticket{}, More: more, Max: limit}
 	fresh := map[string]bool{}
 	if args["mode"] == "assigned" && len(issues) > 0 {
 		reply.NewHours = newHours(dates.Now())
 		since := fmt.Sprintf(`"-%dh"`, reply.NewHours)
 		newJQL := fmt.Sprintf("assignee = currentUser() AND statusCategory != Done AND (assignee CHANGED TO currentUser() AFTER %s OR created >= %s)", since, since)
-		recent, _, err := jira.SearchMax[struct{}](c, newJQL, []string{"summary"}, maxTickets)
+		recent, _, err := jira.SearchMax[struct{}](c, newJQL, []string{"summary"}, limit)
 		if err != nil {
 			return nil, err
 		}

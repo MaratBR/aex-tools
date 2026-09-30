@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Clock</title>
+  <style>
+    body { position: relative; display: flex; padding: 12px 16px; }
+
+    /* The clocks: side by side, or one under the other when the widget is taller than wide. Sizes
+       follow the widget (vw, vh are its frame's) and how many clocks it shows (--n). */
+    #clocks { --n: 1; flex: 1; min-width: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 16px; }
+    @media (max-aspect-ratio: 1/1) { #clocks { grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: 1fr; } }
+    .clock { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+    .clock + .clock { box-shadow: -8px 0 0 -7.5px var(--sep); }
+    @media (max-aspect-ratio: 1/1) { .clock + .clock { box-shadow: 0 -8px 0 -7.5px var(--sep); } }
+    .place { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+    .place .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .place .zone { flex: none; font-weight: 400; color: var(--muted); font-size: 12px; }
+    .time {
+      font: 600 clamp(22px, min(calc(19vw / var(--n)), 34vh), 88px)/1.05 var(--display);
+      letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    .time .ampm { font-size: .42em; font-weight: 500; margin-left: .2em; color: var(--muted); letter-spacing: 0; }
+    .day { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day .other { padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+    @media (max-aspect-ratio: 1/1) { .time { font-size: clamp(22px, min(22vw, calc(30vh / var(--n))), 88px); } }
+
+    /* The settings button: shown on hover, at the top right. */
+    #edit { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s, background-color .15s, color .15s; }
+    body:hover #edit, #edit:focus-visible { opacity: 1; }
+
+    /* Settings: the time zones and the hour format. */
+    #settings { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; overflow-y: auto; }
+    #settings label { display: flex; align-items: center; gap: 8px; }
+    #settings .lbl { flex: none; width: 5.5em; color: var(--muted); }
+    #settings select { flex: 1; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px; font: inherit; color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
+    #settings select:focus { outline: none; box-shadow: var(--ring); }
+    #settings input[type=checkbox] { margin: 0; accent-color: var(--accent); }
+    #settings .error { color: var(--fail); font-size: 12px; }
+    #settings .error:empty { display: none; }
+    .actions { display: flex; gap: 6px; }
+  </style>
+</head>
+<body>
+  <div id="clocks"></div>
+  <div id="settings" hidden>
+    <label><span class="lbl">Time zone</span><select id="zone1"></select></label>
+    <label><span class="lbl">Second one</span><select id="zone2"></select></label>
+    <label><input type="checkbox" id="h24"><span>24-hour clock</span></label>
+    <div class="error" id="error"></div>
+    <div class="actions">
+      <button class="btn primary" id="save" type="button">Save</button>
+      <button class="btn" id="cancel" type="button">Cancel</button>
+    </div>
+  </div>
+  <button class="icon-btn" id="edit" type="button" title="Time zones and format" aria-label="Time zones and format">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>
+  </button>
+
+  <script>
+    // The time now in one or two time zones (aex.settings.zones, IANA names; Central Time by
+    // default), with the day when it is not today here, and the hour format (aex.settings.h24, 24-hour
+    // by default). Both are changed in the widget itself and kept in this placement's settings.
+    const clocksEl = document.getElementById('clocks'), settingsEl = document.getElementById('settings');
+    const editBtn = document.getElementById('edit');
+    const zone1 = document.getElementById('zone1'), zone2 = document.getElementById('zone2');
+    const h24Box = document.getElementById('h24'), errorEl = document.getElementById('error');
+    const defaultZones = ['America/Chicago'];
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    const validZone = z => { try { new Intl.DateTimeFormat('en', { timeZone: z }); return true; } catch { return false; } };
+    const zones = () => {
+      const z = (Array.isArray(aex.settings.zones) ? aex.settings.zones : []).filter(validZone).slice(0, 2);
+      return z.length ? z : defaultZones;
+    };
+    const h24 = () => aex.settings.h24 !== false;
+
+    // place is a zone's place name: America/New_York is New York.
+    const place = zone => zone.split('/').pop().replace(/_/g, ' ');
+
+    // parts is the date and time now in a zone, as numbers, plus its short name (CDT, GMT+5).
+    function parts(zone, now) {
+      const p = {};
+      for (const { type, value } of new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', hourCycle: 'h23', timeZoneName: 'short',
+      }).formatToParts(now)) p[type] = value;
+      return { y: +p.year, m: +p.month, d: +p.day, h: +p.hour, min: +p.minute, name: p.timeZoneName };
+    }
+
+    // offsetMinutes is how far a zone is ahead of UTC now.
+    const offsetMinutes = (t, now) => Math.round((Date.UTC(t.y, t.m - 1, t.d, t.h, t.min) - Math.floor(now / 60000) * 60000) / 60000);
+
+    // diff is how far a zone is from this device, e.g. +3h, −5h 30m; empty when the same.
+    function diff(minutes) {
+      if (!minutes) return '';
+      const abs = Math.abs(minutes), h = Math.floor(abs / 60), m = abs % 60;
+      return (minutes < 0 ? '−' : '+') + (h ? h + 'h' : '') + (h && m ? ' ' : '') + (m ? m + 'm' : '');
+    }
+
+    function render() {
+      const now = new Date(), list = zones();
+      const here = { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
+      const hereOffset = -now.getTimezoneOffset();
+      clocksEl.style.setProperty('--n', list.length);
+      clocksEl.textContent = '';
+      for (const zone of list) {
+        const t = parts(zone, now);
+        const c = node('div', 'clock');
+        const head = node('div', 'place');
+        const off = diff(offsetMinutes(t, now) - hereOffset);
+        head.append(node('span', 'name', place(zone)), node('span', 'zone', t.name + (off ? ' · ' + off : '')));
+        head.title = zone;
+
+        const time = node('div', 'time');
+        const mm = String(t.min).padStart(2, '0');
+        if (h24()) time.textContent = String(t.h).padStart(2, '0') + ':' + mm;
+        else {
+          time.textContent = ((t.h + 11) % 12 + 1) + ':' + mm;
+          time.append(node('span', 'ampm', t.h < 12 ? 'AM' : 'PM'));
+        }
+
+        // The day, marked when it is not today on this device.
+        const dayEl = node('div', 'day');
+        const date = new Date(Date.UTC(t.y, t.m - 1, t.d));
+        const label = date.toLocaleDateString('en', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+        const days = Math.round((date - Date.UTC(here.y, here.m - 1, here.d)) / 86400000);
+        if (days) {
+          dayEl.append(node('span', 'other', days === 1 ? 'Tomorrow' : days === -1 ? 'Yesterday' : label), ' ');
+          if (Math.abs(days) === 1) dayEl.append(label);
+        } else dayEl.textContent = label;
+
+        c.append(head, time, dayEl);
+        clocksEl.append(c);
+      }
+    }
+
+    // tick renders now and again at the start of every minute.
+    let timer;
+    function tick() {
+      render();
+      clearTimeout(timer);
+      timer = setTimeout(tick, 60000 - Date.now() % 60000 + 50);
+    }
+
+    // Settings --------------------------------------------------------------------------------
+
+    function offsetLabel(minutes) {
+      const abs = Math.abs(minutes), h = Math.floor(abs / 60), m = abs % 60;
+      return 'UTC' + (minutes < 0 ? '-' : '+') + h + (m ? ':' + String(m).padStart(2, '0') : '');
+    }
+
+    // fillZones lists every time zone the web view knows, with its offset now.
+    let zoneList;
+    function fillZones() {
+      if (!zoneList) {
+        let names = [];
+        try { names = Intl.supportedValuesOf('timeZone'); } catch { names = ['UTC', ...defaultZones]; }
+        const now = new Date();
+        zoneList = names.map(z => [z, `${z.replace(/_/g, ' ')} (${offsetLabel(offsetMinutes(parts(z, now), now))})`]);
+      }
+      for (const [select, none] of [[zone1, false], [zone2, true]]) {
+        select.textContent = '';
+        if (none) select.append(Object.assign(node('option', null, 'None'), { value: '' }));
+        for (const [z, text] of zoneList) select.append(Object.assign(node('option', null, text), { value: z }));
+      }
+      const [a, b] = zones();
+      // A zone missing from the list (an alias) still shows as picked.
+      for (const [select, z] of [[zone1, a], [zone2, b]]) {
+        if (z && ![...select.options].some(o => o.value === z)) select.append(Object.assign(node('option', null, z), { value: z }));
+        select.value = z || '';
+      }
+    }
+
+    function edit() {
+      fillZones();
+      h24Box.checked = h24();
+      errorEl.textContent = '';
+      clocksEl.hidden = editBtn.hidden = true;
+      settingsEl.hidden = false;
+      zone1.focus();
+    }
+
+    function close() {
+      settingsEl.hidden = true;
+      clocksEl.hidden = editBtn.hidden = false;
+      tick();
+    }
+
+    document.getElementById('save').onclick = async () => {
+      const list = [zone1.value, zone2.value].filter((z, i, all) => z && all.indexOf(z) === i);
+      try {
+        await aex.saveSettings({ ...aex.settings, zones: list, h24: h24Box.checked });
+      } catch (e) {
+        errorEl.textContent = 'Could not keep the settings: ' + e.message;
+        return;
+      }
+      close();
+    };
+    document.getElementById('cancel').onclick = close;
+    settingsEl.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    editBtn.onclick = edit;
+
+    // The device's time zone can change (travel, daylight saving) while the window is open.
+    aex.onRefresh(() => { if (settingsEl.hidden) tick(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && settingsEl.hidden) tick(); });
+    tick();
+  </script>
+</body>
+</html>

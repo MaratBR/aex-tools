@@ -4,62 +4,87 @@
   <meta charset="utf-8">
   <title>Jira tickets</title>
   <style>
-    body { display: flex; flex-direction: column; padding: 14px 16px 14px; gap: 10px; }
-    .head { display: flex; align-items: center; gap: 8px; }
+    body { display: flex; flex-direction: column; padding: 10px 12px; gap: 6px; }
+    .head { display: flex; align-items: center; gap: 4px; min-height: 26px; }
     .title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; font-weight: 600; }
     .title .text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .title .count { flex: none; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .count { flex: none; font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
     .loading #refresh svg { animation: spin .9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Tabs, in place of the title once there are several lists. */
+    .tabs { flex: 1; min-width: 0; display: flex; gap: 2px; overflow: auto hidden; scrollbar-width: none; }
+    .tab { flex: none; display: flex; align-items: baseline; gap: 5px; max-width: 12em; padding: 3px 8px; border: 0; border-radius: 6px; background: none; font-size: 13px; color: var(--muted); cursor: pointer; }
+    .tab:hover { background: var(--hover); color: var(--ink); }
+    .tab.current { background: var(--fill); color: var(--ink); font-weight: 600; }
+    .tab .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tab .count { font-size: 12px; }
+    .tab.has-new .count { color: var(--warn); font-weight: 700; }
+
     /* Tickets assigned to you lately. */
-    .warning { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 9px; font-size: 13px; font-weight: 600;
-      color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+    .warning { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: var(--bg); background: var(--warn); }
     .warning svg { flex: none; width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
     /* The list reaches 6px past the text on each side, for the rows' hover backgrounds: rows wider
        than it would scroll it sideways. */
-    .list { flex: 1; min-height: 0; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; }
+    .list { flex: 1; min-height: 0; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; line-height: 1.3; }
+    .list, .setup { scrollbar-width: thin; scrollbar-color: var(--faint) transparent; }
     .list > * + * { box-shadow: inset 0 .5px 0 var(--sep); }
-    .ticket { display: flex; align-items: center; gap: 10px; padding: 5px 6px; margin: 0 -6px; width: calc(100% + 12px);
+    .ticket { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0 -6px; width: calc(100% + 12px);
       border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer; }
     .ticket:hover { background: var(--hover); }
     .ticket .what { flex: 1; min-width: 0; }
     .ticket .summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ticket .meta { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ticket .key { font-weight: 600; font-variant-numeric: tabular-nums; }
+    /* Newly assigned: tinted, with a bar at the start, listed first. */
+    .ticket.new { background: color-mix(in srgb, var(--warn) 16%, transparent); box-shadow: inset 3px 0 0 var(--warn); padding-left: 9px; }
+    .ticket.new:hover { background: color-mix(in srgb, var(--warn) 24%, transparent); }
     .ticket.new .summary { font-weight: 600; }
-    .pill { flex: none; max-width: 40%; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    .ticket.new .key { color: var(--warn); }
+    .pill { flex: none; max-width: 40%; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
       color: var(--muted); background: var(--fill); }
     .pill.indeterminate { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
-    .pill.new { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
-    .more { padding: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .pill.new { color: var(--bg); background: var(--warn); text-transform: uppercase; letter-spacing: .04em; }
+    .more { padding: 4px 0 0; color: var(--muted); font-size: 12px; }
     .nothing { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
     .nothing .big { font: 600 20px/1.2 var(--display); letter-spacing: -.02em; color: var(--ok); }
     .nothing .muted { font-size: 13px; }
 
     /* Choosing which tickets to show. */
-    .setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; }
+    .setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; margin: 0 -6px; padding: 0 6px; overflow: hidden auto; font-size: 13px; }
     .setup-head { color: var(--muted); }
-    .choice { width: 100%; display: block; padding: 7px 10px; border: 0; border-radius: 9px; background: var(--fill); text-align: left; cursor: pointer; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .row > span { color: var(--muted); }
+    .setup input[type=text], .setup input[type=number], .setup textarea { padding: 4px 8px; border: 0; border-radius: 6px; font: inherit; color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
+    .setup input[type=text] { flex: 1; min-width: 8em; }
+    .setup input[type=number] { width: 5em; font-variant-numeric: tabular-nums; }
+    .setup textarea { width: 100%; min-height: 4.5em; resize: vertical; font: 12px/1.4 var(--mono); }
+    .setup input:focus, .setup textarea:focus { outline: none; box-shadow: var(--ring); }
+    .choice { width: 100%; display: block; padding: 5px 10px; border: 0; border-radius: 8px; background: var(--fill); text-align: left; cursor: pointer; }
     .choice:hover { background: var(--hover); }
+    .choice.current { box-shadow: inset 0 0 0 1.5px var(--accent); }
     .choice .name { display: block; font-weight: 600; }
-    .choice .summary { display: block; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .choice .summary { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
     .fields { display: flex; flex-direction: column; }
-    .field { display: flex; align-items: center; gap: 8px; padding: 3px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+    .field { display: flex; align-items: center; gap: 8px; padding: 2px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
     .field:hover { background: var(--hover); }
     .field input { margin: 0; accent-color: var(--accent); }
     .field .name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .field .kind { flex: none; color: var(--faint); font-size: 11px; }
-    .actions { display: flex; gap: 6px; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .actions .end { margin-left: auto; }
     .btn:disabled { opacity: .5; cursor: default; }
+    .setup .error { color: var(--fail); font-size: 12px; overflow-wrap: anywhere; white-space: pre-line; }
+    .setup .error:empty { display: none; }
 
     .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
-    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; white-space: pre-line; }
 
-    /* One row high: the count and the warning only. */
+    /* One row high: the count (or tabs) and the warning only. */
     @media (max-height: 200px) {
-      body { gap: 6px; padding-top: 12px; }
+      body { gap: 6px; }
       .list, .more { display: none; }
       .nothing .muted { display: none; }
     }
@@ -67,7 +92,11 @@
 </head>
 <body>
   <div class="head">
-    <div class="title"><span class="text" id="title">Jira tickets</span><span class="count" id="count"></span></div>
+    <div class="title" id="title-box"><span class="text" id="title">Jira tickets</span><span class="count" id="count"></span></div>
+    <div class="tabs" id="tabs" hidden></div>
+    <button class="icon-btn" id="add-tab" type="button" title="Add tab" aria-label="Add tab" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
     <button class="icon-btn" id="change" type="button" title="Change which tickets" aria-label="Change which tickets" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
     </button>
@@ -82,15 +111,20 @@
   <div id="content"></div>
 
   <script>
-    // Open Jira tickets (home.go, jirawidget.go: jiraTickets), in one of two modes kept in this
-    // placement's settings, asked the first time:
-    //   {mode: 'assigned'}                          assigned to you; those assigned within the last
-    //                                               24 h (72 h on a Monday) are marked with a warning
-    //   {mode: 'field', fields: [{id, name}, ...]}  you are in one of these people fields (jiraFields)
+    // Jira tickets (home.go, jirawidget.go: jiraTickets). A list is one of these, with max (how many
+    // at most, 20 when not set) and, in a tab, its name:
+    //   {mode: 'assigned'}                          open ones assigned to you; those assigned within
+    //                                               the last 24 h (72 h on a Monday) are marked New
+    //   {mode: 'field', fields: [{id, name}, ...]}  open ones with you in one of these people fields
+    //   {mode: 'jql', jql: '...'}                   whatever the query matches, in its order
+    // This placement's settings hold one list (its fields at the top level, asked the first time) or,
+    // once a tab is added, tabs: [list, ...] and tab (the one shown).
     const content = document.getElementById('content');
-    const titleEl = document.getElementById('title'), countEl = document.getElementById('count');
+    const titleBox = document.getElementById('title-box'), titleEl = document.getElementById('title'), countEl = document.getElementById('count');
+    const tabsEl = document.getElementById('tabs');
     const warningEl = document.getElementById('warning'), warningText = document.getElementById('warning-text');
-    const changeBtn = document.getElementById('change');
+    const changeBtn = document.getElementById('change'), addBtn = document.getElementById('add-tab');
+    const DEFAULT_MAX = 20, MAX = 100;
 
     function node(tag, cls, text) {
       const e = document.createElement(tag);
@@ -106,12 +140,66 @@
       return b;
     }
 
-    const titleOf = s => (s.mode === 'assigned' ? 'Assigned to me' : (s.fields || []).map(f => f.name).join(', ') || 'Jira tickets');
+    // Lists and tabs --------------------------------------------------------------------------
 
-    function head(title, count) {
-      titleEl.textContent = title;
-      titleEl.parentElement.title = title;
-      countEl.textContent = count;
+    const LIST_KEYS = ['name', 'mode', 'fields', 'jql', 'max'];
+    const pickList = o => Object.fromEntries(LIST_KEYS.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
+
+    function lists() {
+      const s = aex.settings;
+      if (Array.isArray(s.tabs) && s.tabs.length) return s.tabs;
+      return s.mode ? [pickList(s)] : [];
+    }
+    const tabbed = () => Array.isArray(aex.settings.tabs) && aex.settings.tabs.length > 1;
+    const current = () => (tabbed() ? Math.min(Math.max(aex.settings.tab | 0, 0), aex.settings.tabs.length - 1) : 0);
+
+    function describe(l) {
+      if (l.mode === 'assigned') return 'Assigned to me';
+      if (l.mode === 'field') return (l.fields || []).map(f => f.name).join(', ') || 'Jira tickets';
+      if (l.mode === 'jql') return 'JQL';
+      return 'Jira tickets';
+    }
+    const titleOf = l => (l && l.name) || describe(l || {});
+
+    // withLists is the settings with these lists: one at the top level, or several as tabs.
+    function withLists(ls, tab) {
+      const rest = Object.fromEntries(Object.entries(aex.settings).filter(([k]) => !LIST_KEYS.includes(k) && k !== 'tabs' && k !== 'tab'));
+      if (ls.length === 1) return { ...rest, ...ls[0] };
+      return { ...rest, tabs: ls, tab: Math.min(Math.max(tab, 0), ls.length - 1) };
+    }
+
+    function head() {
+      const ls = lists(), tabs = tabbed(), cur = current();
+      titleBox.hidden = tabs;
+      tabsEl.hidden = !tabs;
+      addBtn.hidden = changeBtn.hidden = editing || !ls.length;
+      if (!tabs) {
+        const t = editing ? 'Jira tickets' : titleOf(ls[0]);
+        titleEl.textContent = t;
+        titleBox.title = t;
+        const r = results[0];
+        countEl.textContent = !editing && r && r.tickets ? r.tickets.length + (r.more ? '+' : '') : '';
+        return;
+      }
+      tabsEl.textContent = '';
+      ls.forEach((l, i) => {
+        const r = results[i];
+        const fresh = r && r.tickets ? r.tickets.filter(t => t.new).length : 0;
+        const b = button('tab' + (i === cur ? ' current' : '') + (fresh ? ' has-new' : ''), null, () => showTab(i));
+        b.append(node('span', 'name', titleOf(l)));
+        if (r && r.tickets) b.append(node('span', 'count', r.tickets.length + (r.more ? '+' : '')));
+        b.title = titleOf(l) + (fresh ? `\n${fresh} newly assigned` : '');
+        tabsEl.append(b);
+      });
+      const shown = tabsEl.children[cur];
+      if (shown) shown.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+
+    function showTab(i) {
+      if (editing || i === current()) return;
+      aex.saveSettings({ ...aex.settings, tab: i }).catch(() => {});
+      head();
+      show();
     }
 
     function notice(text, error, ...actions) {
@@ -129,10 +217,11 @@
 
     const login = { label: 'Set Jira login', run: () => aex.run('account --login jira') };
 
-    // problem shows why a reply has nothing (no login, token rejected); false when there is none.
+    // problem shows why a reply has nothing (no login, token rejected, bad JQL); false when there is none.
     function problem(r) {
       if (r.notConfigured) notice('No Jira login set.', '', login);
       else if (r.needLogin) notice('Jira rejects the saved token.', '', login);
+      else if (r.jqlErrors) notice('Jira cannot run the query.', r.jqlErrors.join('\n'), { label: 'Change', run: () => edit(current()) });
       else return false;
       return true;
     }
@@ -150,8 +239,19 @@
       return d === 1 ? 'yesterday' : d + ' days ago';
     }
 
-    function render(r) {
+    // show shows the current list's last result.
+    function show() {
+      const i = current(), r = results[i], l = lists()[i];
+      if (!r) return notice('Loading…');
+      if (r.error) return notice('Could not load the tickets.', r.error, { label: 'Try again', run: load }, { label: 'Change', run: () => edit(i) });
+      if (problem(r)) return;
+      render(r, l);
+    }
+
+    function render(r, l) {
+      // Newly assigned ones first, the rest in the order Jira gave.
       const fresh = r.tickets.filter(t => t.new);
+      const tickets = fresh.concat(r.tickets.filter(t => !t.new));
       warningEl.hidden = !fresh.length;
       if (fresh.length) {
         const n = fresh.length === 1 ? '1 ticket' : fresh.length + ' tickets';
@@ -159,15 +259,15 @@
         warningText.textContent = `${n} assigned to you ${when}`;
         warningEl.title = fresh.map(t => t.key + ' ' + t.summary).join('\n');
       }
-      countEl.textContent = r.tickets.length + (r.more ? '+' : '');
       content.textContent = '';
-      if (!r.tickets.length) {
+      if (!tickets.length) {
         content.className = 'nothing';
-        content.append(node('div', 'big', 'No open tickets'), node('div', 'muted', 'Nothing to do here right now.'));
+        if (l.mode === 'jql') content.append(node('div', 'big', 'No tickets'), node('div', 'muted', 'Nothing matches the query.'));
+        else content.append(node('div', 'big', 'No open tickets'), node('div', 'muted', 'Nothing to do here right now.'));
         return;
       }
       content.className = 'list';
-      for (const t of r.tickets) {
+      for (const t of tickets) {
         const b = button('ticket' + (t.new ? ' new' : ''), null, () => open(t.key));
         const what = node('div', 'what');
         what.append(node('div', 'summary', t.summary || '(no summary)'));
@@ -184,49 +284,83 @@
         li.append(b);
         content.append(li);
       }
-      if (r.more) content.append(node('div', 'more', 'Only the 50 most recently updated are shown.'));
+      if (r.more) content.append(node('div', 'more', l.mode === 'jql' ? `Only the first ${r.max} are shown.` : `Only the ${r.max} most recently updated are shown.`));
     }
 
     async function open(key) {
       try {
         await aex.call('jiraOpen', { key });
       } catch (e) {
-        notice('Could not open ' + key + '.', e.message, { label: 'Back', run: load });
+        notice('Could not open ' + key + '.', e.message, { label: 'Back', run: show });
       }
     }
 
     // Choosing which tickets ------------------------------------------------------------------
 
-    let seq = 0, choosing = false;
+    let seq = 0, editing = false;
 
-    function cancelRow() {
-      if (!aex.settings.mode) return [];
-      return [button('btn', 'Cancel', () => { choosing = false; load(); })];
-    }
-
-    function choose() {
+    // edit asks which tickets list at (a tab, or the only list) shows; at === lists().length adds a
+    // tab. draft carries what was asked so far between its screens.
+    function edit(at, draft) {
       ++seq;
-      choosing = true;
-      changeBtn.hidden = true;
+      editing = true;
       warningEl.hidden = true;
       document.body.classList.remove('loading');
-      head('Jira tickets', '');
+      head();
+      const ls = lists(), adding = at >= ls.length, old = ls[at] || {};
+      const withName = adding ? ls.length > 0 : tabbed();
+      draft = draft || { name: old.name || '', max: old.max || DEFAULT_MAX };
       content.textContent = '';
       content.className = 'setup';
-      content.append(node('div', 'setup-head', 'Which tickets to show?'));
-      const assigned = button('choice', null, () => keep({ mode: 'assigned' }));
-      assigned.append(node('span', 'name', 'Assigned to me'),
-        node('span', 'summary', 'Open tickets assigned to you, with a warning for ones assigned in the last 24 hours (72 on Mondays).'));
-      const field = button('choice', null, pickFields);
-      field.append(node('span', 'name', "Where I'm in a field"),
-        node('span', 'summary', 'Open tickets that list you in people fields you pick, such as Reviewer or QA.'));
-      content.append(assigned, field);
+      content.append(node('div', 'setup-head', adding && ls.length ? 'New tab: which tickets to show?' : 'Which tickets to show?'));
+
+      let nameBox;
+      if (withName) {
+        const row = node('label', 'row');
+        nameBox = node('input');
+        nameBox.type = 'text';
+        nameBox.value = draft.name;
+        nameBox.placeholder = old.mode ? describe(old) : 'named after the choice';
+        nameBox.oninput = () => (draft.name = nameBox.value);
+        row.append(node('span', null, 'Tab name'), nameBox);
+        content.append(row);
+      }
+      const maxRow = node('label', 'row'), maxBox = node('input');
+      maxBox.type = 'number';
+      maxBox.min = 1;
+      maxBox.max = MAX;
+      maxBox.value = draft.max;
+      maxBox.oninput = () => (draft.max = Math.min(Math.max(parseInt(maxBox.value, 10) || DEFAULT_MAX, 1), MAX));
+      maxRow.append(node('span', null, 'Show at most'), maxBox, node('span', null, 'tickets'));
+      content.append(maxRow);
+
+      const choice = (mode, name, summary, run) => {
+        const b = button('choice' + (old.mode === mode ? ' current' : ''), null, run);
+        b.append(node('span', 'name', name), node('span', 'summary', summary));
+        return b;
+      };
+      content.append(
+        choice('assigned', 'Assigned to me', 'Open tickets assigned to you; ones assigned in the last 24 hours (72 on Mondays) are marked New.',
+          () => keep(at, { ...draft, mode: 'assigned' })),
+        choice('field', "Where I'm in a field", 'Open tickets that list you in people fields you pick, such as Reviewer or QA.',
+          () => pickFields(at, draft)),
+        choice('jql', 'JQL', 'Whatever tickets a JQL query matches, in its order.', () => askJQL(at, draft)));
+
       const row = node('div', 'actions');
-      row.append(...cancelRow());
+      if (ls.length) row.append(button('btn', 'Cancel', done));
+      if (!adding && tabbed()) row.append(button('btn end', 'Remove tab', () => removeTab(at)));
       if (row.childElementCount) content.append(row);
+      (nameBox || maxBox).focus();
     }
 
-    async function pickFields() {
+    function done() {
+      editing = false;
+      head();
+      show();
+      load();
+    }
+
+    async function pickFields(at, draft) {
       const n = ++seq;
       document.body.classList.add('loading');
       notice('Loading the fields…');
@@ -236,25 +370,26 @@
         if (problem(r)) return;
         content.textContent = '';
         content.className = 'setup';
+        const back = button('btn', 'Back', () => edit(at, draft));
         if (!r.fields.length) {
-          content.append(node('div', 'setup-head', 'Jira has no custom fields of people.'));
-          content.append(button('btn', 'Back', choose));
+          content.append(node('div', 'setup-head', 'Jira has no custom fields of people.'), back);
           return;
         }
         content.append(node('div', 'setup-head', 'Show tickets where I am in:'));
-        const current = new Set(aex.settings.mode === 'field' ? (aex.settings.fields || []).map(f => f.id) : []);
+        const old = lists()[at] || {};
+        const chosen = new Set(old.mode === 'field' ? (old.fields || []).map(f => f.id) : []);
         const list = node('div', 'fields');
-        const show = button('btn primary', 'Show', () => {
-          const fields = r.fields.filter(f => boxes.get(f.id).checked).map(f => ({ id: f.id, name: f.name }));
-          keep({ mode: 'field', fields });
-        });
         const boxes = new Map();
-        const sync = () => (show.disabled = ![...boxes.values()].some(b => b.checked));
+        const showBtn = button('btn primary', 'Show', () => {
+          const fields = r.fields.filter(f => boxes.get(f.id).checked).map(f => ({ id: f.id, name: f.name }));
+          keep(at, { ...draft, mode: 'field', fields });
+        });
+        const sync = () => (showBtn.disabled = ![...boxes.values()].some(b => b.checked));
         for (const f of r.fields) {
           const label = node('label', 'field');
           const box = node('input');
           box.type = 'checkbox';
-          box.checked = current.has(f.id);
+          box.checked = chosen.has(f.id);
           box.onchange = sync;
           boxes.set(f.id, box);
           label.append(box, node('span', 'name', f.name), node('span', 'kind', f.multiple ? 'people' : 'person'));
@@ -263,65 +398,117 @@
         }
         sync();
         const row = node('div', 'actions');
-        row.append(show, button('btn', 'Back', choose));
+        row.append(showBtn, back);
         content.append(list, row);
       } catch (e) {
         if (n !== seq) return;
-        notice('Could not list the Jira fields.', e.message, { label: 'Try again', run: pickFields }, { label: 'Back', run: choose });
+        notice('Could not list the Jira fields.', e.message, { label: 'Try again', run: () => pickFields(at, draft) }, { label: 'Back', run: () => edit(at, draft) });
       } finally {
         if (n === seq) document.body.classList.remove('loading');
       }
     }
 
-    async function keep(s) {
+    // askJQL asks for the query and has Jira check it before keeping it.
+    function askJQL(at, draft) {
+      ++seq;
+      content.textContent = '';
+      content.className = 'setup';
+      const old = lists()[at] || {};
+      const box = node('textarea');
+      box.value = draft.jql != null ? draft.jql : old.mode === 'jql' ? old.jql || '' : '';
+      box.placeholder = 'project = CM AND status = "In Review" ORDER BY updated DESC';
+      box.spellcheck = false;
+      const error = node('div', 'error');
+      const showBtn = button('btn primary', 'Show', async () => {
+        const jql = box.value.trim();
+        if (!jql) return (error.textContent = 'Type a query.');
+        const n = ++seq;
+        showBtn.disabled = true;
+        error.textContent = '';
+        document.body.classList.add('loading');
+        try {
+          const r = await aex.call('jiraTickets', { mode: 'jql', jql, max: 1 });
+          if (n !== seq) return;
+          if (r.jqlErrors) error.textContent = r.jqlErrors.join('\n');
+          else if (r.notConfigured || r.needLogin) problem(r);
+          else keep(at, { ...draft, mode: 'jql', jql });
+        } catch (e) {
+          if (n === seq) error.textContent = e.message;
+        } finally {
+          if (n === seq) {
+            showBtn.disabled = false;
+            document.body.classList.remove('loading');
+          }
+        }
+      });
+      box.oninput = () => (draft.jql = box.value);
+      box.onkeydown = ev => {
+        if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) showBtn.onclick();
+      };
+      const row = node('div', 'actions');
+      row.append(showBtn, button('btn', 'Back', () => edit(at, draft)));
+      content.append(node('div', 'setup-head', 'Show the tickets this JQL query matches (Ctrl+Enter):'), box, error, row);
+      box.focus();
+    }
+
+    // keep saves list as lists()[at] (adding a tab when at is past the end) and shows it.
+    async function keep(at, list) {
+      const ls = lists().slice();
+      const l = pickList({ ...list, name: (list.name || '').trim() || undefined });
+      if (l.mode !== 'field') delete l.fields;
+      if (l.mode !== 'jql') delete l.jql;
+      if (l.max === DEFAULT_MAX) delete l.max;
+      // The first list becomes a tab once another is added: named after what it shows.
+      if (at >= ls.length && ls.length === 1 && !ls[0].name) ls[0] = { ...ls[0], name: describe(ls[0]) };
+      ls[at] = l;
+      if (ls.length > 1 && !l.name) l.name = describe(l);
       try {
-        await aex.saveSettings(s);
+        await aex.saveSettings(withLists(ls, at));
       } catch (e) {
-        return notice('Could not keep the choice.', e.message, { label: 'Try again', run: () => keep(s) });
+        return notice('Could not keep the choice.', e.message, { label: 'Try again', run: () => keep(at, list) });
       }
-      choosing = false;
-      shown = false;
-      load();
+      results = [];
+      done();
+    }
+
+    async function removeTab(at) {
+      const ls = lists().filter((_, i) => i !== at);
+      try {
+        await aex.saveSettings(withLists(ls, Math.min(at, ls.length - 1)));
+      } catch (e) {
+        return notice('Could not remove the tab.', e.message, { label: 'Back', run: () => edit(at) });
+      }
+      results = [];
+      done();
     }
 
     // Loading ---------------------------------------------------------------------------------
 
-    let shown = false;
+    let results = []; // per list: the last jiraTickets reply, or {error}
+
+    // load asks Jira for every list at once, so the tabs show their counts.
     async function load() {
-      const s = aex.settings;
-      if (!s.mode) return choose();
-      if (choosing) return;
+      const ls = lists();
+      if (!ls.length) return edit(0);
+      if (editing) return;
       const n = ++seq;
       document.body.classList.add('loading');
-      changeBtn.hidden = false;
-      if (!shown) {
-        head(titleOf(s), '');
-        notice('Loading…');
-      }
-      try {
-        const r = await aex.call('jiraTickets', { mode: s.mode, fields: (s.fields || []).map(f => f.id) });
-        if (n !== seq) return;
-        if (problem(r)) {
-          shown = false;
-          countEl.textContent = '';
-        } else {
-          head(titleOf(s), '');
-          render(r);
-          shown = true;
-        }
-      } catch (e) {
-        if (n !== seq) return;
-        shown = false;
-        countEl.textContent = '';
-        notice('Could not load the tickets.', e.message, { label: 'Try again', run: load }, { label: 'Change', run: choose });
-      } finally {
-        if (n === seq) document.body.classList.remove('loading');
-      }
+      head();
+      if (!results[current()]) show();
+      const got = await Promise.all(ls.map(l =>
+        aex.call('jiraTickets', { mode: l.mode, fields: (l.fields || []).map(f => f.id), jql: l.jql || '', max: l.max || DEFAULT_MAX })
+          .catch(e => ({ error: e.message }))));
+      if (n !== seq) return;
+      results = got;
+      document.body.classList.remove('loading');
+      head();
+      show();
     }
 
-    changeBtn.onclick = choose;
-    document.getElementById('refresh').onclick = () => (choosing ? null : load());
-    aex.onRefresh(() => (choosing ? null : load()));
+    changeBtn.onclick = () => edit(current());
+    addBtn.onclick = () => edit(lists().length);
+    document.getElementById('refresh').onclick = () => (editing ? null : load());
+    aex.onRefresh(() => (editing ? null : load()));
     load();
   </script>
 </body>

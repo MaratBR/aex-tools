@@ -16,6 +16,8 @@ func TestTicketsJQL(t *testing.T) {
 		{map[string]any{"mode": "field", "fields": []any{}}, ""},
 		{map[string]any{"mode": "field", "fields": []any{"assignee"}}, ""},
 		{map[string]any{"mode": "field", "fields": []any{"customfield_1) OR (1=1"}}, ""},
+		{map[string]any{"mode": "jql", "jql": "project = CM ORDER BY created"}, "project = CM ORDER BY created"},
+		{map[string]any{"mode": "jql", "jql": "  "}, ""},
 		{map[string]any{"mode": "other"}, ""},
 	} {
 		got, err := ticketsJQL(c.args)
@@ -25,6 +27,17 @@ func TestTicketsJQL(t *testing.T) {
 			}
 		} else if err != nil || got != c.want {
 			t.Errorf("%v: got %q, %v; want %q", c.args, got, err, c.want)
+		}
+	}
+}
+
+func TestTicketsMax(t *testing.T) {
+	for _, c := range []struct {
+		max  any
+		want int
+	}{{nil, 20}, {float64(5), 5}, {float64(0), 1}, {float64(500), 100}, {"7", 20}} {
+		if got := ticketsMax(map[string]any{"max": c.max}); got != c.want {
+			t.Errorf("max %v: got %d, want %d", c.max, got, c.want)
 		}
 	}
 }

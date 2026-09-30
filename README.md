@@ -36,9 +36,12 @@ Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move o
 - **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that
   syncs this week (Monday through today).
 - **Google Calendar**: what's on now and coming up in one calendar.
-- **Jira tickets**: your open tickets, or tickets where you are in a field you pick.
+- **Jira tickets**: your open tickets, tickets where you are in a field you pick, or a JQL query; add
+  tabs for several lists.
 - **CM repos state**: whether every CM repo is clean, with a button to open your git client (Fork,
   GitHub Desktop, GitKraken, Sourcetree, Sublime Merge, SmartGit or TortoiseGit).
+- **Clock**: the time in one or two time zones (Central Time by default), with the day when it isn't
+  today here; 24-hour or AM/PM.
 - **Cat** and **2048**, for a break.
 
 ## Where your data is kept

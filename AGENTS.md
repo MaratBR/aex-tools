@@ -344,16 +344,23 @@ Widgets so far:
   regular expression over event titles (ignoring case), also per placement, to show only the events
   that match or hide them; the button is tinted while one is on. It counts down between
   refreshes. Without a Google login it offers to log in (`account --login google`).
-- `jira-tickets` (every minute) — Jira tickets: open tickets (status not Done, 50 most recently
-  updated, `jirawidget.go`), each with its key, summary, type, priority, when it was updated and its
-  status; clicking one opens it in the browser. When added it asks which, kept in its placement's
-  settings (the filter button changes it):
-  - Assigned to me: `assignee = currentUser()`. Tickets assigned to you in the last 24 hours (72 on a
-    Monday, in the configured TZ, to cover the weekend) are marked New with a warning above the list:
-    `assignee CHANGED TO currentUser() AFTER "-24h"`, or created since then.
+- `jira-tickets` (every minute) — Jira tickets (`jirawidget.go`), each with its key, summary, type,
+  priority, when it was updated and its status; clicking one opens it in the browser. When added it
+  asks which, and how many at most (20 by default, up to 100), kept in its placement's settings (the
+  filter button changes it):
+  - Assigned to me: open tickets (status not Done, most recently updated first) with
+    `assignee = currentUser()`. Tickets assigned to you in the last 24 hours (72 on a Monday, in the
+    configured TZ, to cover the weekend) are marked New, tinted and listed first, with a warning above
+    the list: `assignee CHANGED TO currentUser() AFTER "-24h"`, or created since then.
   - Where I'm in a field: you pick custom fields of people (`/rest/api/3/field`, schema `user` or an
     array of `user`), and it shows tickets with you in any of them (`cf[<id>] = currentUser()`, which
-    matches a field of several people too).
+    matches a field of several people too); open ones, most recently updated first.
+  - JQL: whatever a query you type matches, in its order. Jira checks it before it is kept; when a
+    search fails, what Jira finds wrong with the query (`/rest/api/3/jql/parse`) is shown.
+
+  The + button adds a tab: the widget then shows tabs in place of its title, each a list of its own
+  (any of the above, with its own name and how many at most) with its count; the filter button changes
+  the tab shown or removes it, and with one tab left the tabs go away. All lists load at once.
 
   Without a Jira login, or when Jira rejects the token, it offers `account --login jira`. One row high
   it shows only the count and the warning.
@@ -365,6 +372,13 @@ Widgets so far:
 - `2048` — the game of 2048 on a 4×4 board: arrow keys or WASD once the widget has the focus (click
   it), or a swipe. Reaching 2048 offers to keep going. The board, score and best score are kept in the
   placement's settings, so a game goes on after the window closes. No auto refresh.
+- `clock` — the time now in one or two time zones (IANA names; `America/Chicago`, Central Time, by
+  default), each with its place, short zone name (CDT, GMT+5) and how far it is from the device, and
+  its date, marked Tomorrow / Yesterday (or the date) when it is not today on the device. 24-hour by
+  default, or AM/PM. The clock button (on hover) picks the zones, from every zone the web view knows
+  (`Intl.supportedValuesOf`), and the format, kept in the placement's settings (`zones`, `h24`). Two
+  clocks sit side by side, or one under the other when the widget is taller than wide. It redraws
+  itself every minute; no auto refresh.
 - `cm-release/cm-repos-state` (cm-release plugin, every 5 s) — CM repos state: each repo's branch and uncommitted
   changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
   (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
@@ -523,8 +537,10 @@ apply in the open window:
 - `HOURS_PER_DAY` (default `8`) — working hours per day for the quota.
 - `TZ_OFFSET_HOURS` (default `auto`) — timezone all dates are computed in (ranges, "today", worklog days,
   file timestamps): `auto` follows the device's (daylight saving included), a number pins a UTC offset;
-  quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list and warns when a
-  pinned offset is not the device's.
+  quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list, each offset
+  named by well-known places on it now (`tzZones` in `settings.js`, daylight saving included), e.g.
+  "Berlin, Paris, Madrid, Rome (UTC+2)", and the device's timezone by its place; it warns when a pinned
+  offset is not the device's. The setting stays an offset: a pinned one does not follow daylight saving.
 
 The window's header shows the current values, the settings file path, the credential store in use and the data folder.
 

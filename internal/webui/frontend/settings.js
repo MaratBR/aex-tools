@@ -172,13 +172,66 @@ async function loadSettings(message) {
 const tzOffsets = [-12, -11, -10, -9.5, -9, -8, -7, -6, -5, -4, -3.5, -3, -2, -1, 0, 1, 2, 3, 3.5, 4, 4.5, 5, 5.5, 5.75,
   6, 6.5, 7, 8, 8.75, 9, 9.5, 10, 10.5, 11, 12, 12.75, 13, 13.75, 14];
 
+// tzZones are well-known timezones, most known first, to name each offset by the places on it now.
+const tzZones = ['Pacific/Kwajalein', 'Pacific/Pago_Pago', 'Pacific/Honolulu', 'Pacific/Marquesas',
+  'America/Anchorage', 'America/Los_Angeles', 'America/Vancouver', 'America/Tijuana', 'America/Denver',
+  'America/Phoenix', 'America/Chicago', 'America/Mexico_City', 'America/Guatemala', 'America/New_York',
+  'America/Toronto', 'America/Bogota', 'America/Lima', 'America/Halifax', 'America/Caracas',
+  'America/Santiago', 'America/St_Johns', 'America/Sao_Paulo', 'America/Argentina/Buenos_Aires',
+  'America/Montevideo', 'America/Noronha', 'Atlantic/South_Georgia', 'Atlantic/Azores', 'Atlantic/Cape_Verde',
+  'Europe/London', 'Europe/Lisbon', 'Africa/Casablanca', 'Africa/Accra', 'Atlantic/Reykjavik', 'Europe/Berlin', 'Europe/Paris',
+  'Europe/Madrid', 'Europe/Rome', 'Europe/Warsaw', 'Africa/Lagos', 'Europe/Kyiv', 'Europe/Athens',
+  'Europe/Bucharest', 'Africa/Cairo', 'Africa/Johannesburg', 'Asia/Jerusalem', 'Europe/Moscow',
+  'Europe/Istanbul', 'Asia/Riyadh', 'Africa/Nairobi', 'Asia/Baghdad', 'Asia/Tehran', 'Asia/Dubai',
+  'Europe/Samara', 'Asia/Baku', 'Asia/Tbilisi', 'Asia/Yerevan', 'Asia/Kabul', 'Asia/Yekaterinburg',
+  'Asia/Tashkent', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Colombo', 'Asia/Kathmandu', 'Asia/Almaty',
+  'Asia/Omsk', 'Asia/Dhaka', 'Asia/Yangon', 'Asia/Bangkok', 'Asia/Jakarta', 'Asia/Novosibirsk',
+  'Asia/Krasnoyarsk', 'Asia/Ho_Chi_Minh', 'Asia/Shanghai', 'Asia/Singapore', 'Asia/Hong_Kong',
+  'Australia/Perth', 'Asia/Irkutsk', 'Australia/Eucla', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Yakutsk',
+  'Australia/Adelaide', 'Australia/Darwin', 'Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane',
+  'Asia/Vladivostok', 'Australia/Lord_Howe', 'Asia/Magadan', 'Pacific/Noumea', 'Pacific/Auckland',
+  'Pacific/Fiji', 'Asia/Kamchatka', 'Pacific/Chatham', 'Pacific/Tongatapu', 'Pacific/Apia', 'Pacific/Kiritimati'];
+
+// zoneOffset is a timezone's UTC offset now, in hours; NaN when the web view does not know it.
+function zoneOffset(zone) {
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value || '';
+    const m = /^GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?$/.exec(name);
+    if (!m) return NaN;
+    const hours = Number(m[2] || 0) + Number(m[3] || 0) / 60;
+    return m[1] === '-' ? -hours : hours;
+  } catch { return NaN; }
+}
+
+// zonePlace is a timezone's place name: America/New_York is New York.
+const zonePlace = zone => zone.split('/').pop().replace(/_/g, ' ');
+
+// placesByOffset lists, for each offset, the places of tzZones on it now (daylight saving included).
+function placesByOffset() {
+  const places = new Map();
+  for (const zone of tzZones) {
+    const h = zoneOffset(zone);
+    if (Number.isNaN(h)) continue;
+    if (!places.has(h)) places.set(h, []);
+    places.get(h).push(zonePlace(zone));
+  }
+  return places;
+}
+
 function offsetLabel(hours) {
   const abs = Math.abs(hours), whole = Math.trunc(abs), minutes = Math.round((abs - whole) * 60);
   return 'UTC' + (hours < 0 ? '-' : '+') + whole + (minutes ? ':' + String(minutes).padStart(2, '0') : '');
 }
 
-// tzSelect picks TZ_OFFSET_HOURS: auto (the device's timezone) or a UTC offset. A saved value is
-// matched to its option by number (07 is 7), so it does not show as changed.
+// zoneLabel is e.g. "Berlin, Paris, Madrid, Rome (UTC+2)": up to 4 places on the offset now, then the offset.
+function zoneLabel(places, hours) {
+  const names = places.get(hours) || [];
+  return names.length ? `${names.slice(0, 4).join(', ')} (${offsetLabel(hours)})` : offsetLabel(hours);
+}
+
+// tzSelect picks TZ_OFFSET_HOURS: auto (the device's timezone) or a UTC offset, each named by the
+// places on it now. A saved value is matched to its option by number (07 is 7), so it does not show as changed.
 function tzSelect(f) {
   const select = el('select');
   const option = (value, text) => {
@@ -186,8 +239,13 @@ function tzSelect(f) {
     o.value = value;
     select.appendChild(o);
   };
-  option('auto', `Device timezone (${f.auto || 'auto'})`);
-  for (const h of tzOffsets) option(String(h), offsetLabel(h));
+  const places = placesByOffset();
+  let device = '';
+  try { device = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* unknown */ }
+  const deviceName = device && device !== 'UTC' ? zonePlace(device) + ' ' : '';
+  option('auto', `Device timezone: ${deviceName}(${f.auto || 'auto'})`);
+  const offsets = [...new Set([...tzOffsets, ...places.keys()])].sort((a, b) => a - b);
+  for (const h of offsets) option(String(h), zoneLabel(places, h));
   const saved = f.value || f.default;
   const match = [...select.options].find(o => o.value.toLowerCase() === String(saved).toLowerCase() ||
     (o.value !== 'auto' && Number(o.value) === Number(saved)));
