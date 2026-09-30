@@ -102,6 +102,36 @@ func Init(dataDir, embeddedEnv string) error {
 	return nil
 }
 
+// On Windows aex is two exes side by side: WindowExeName opens the window with no console (built with
+// -H windowsgui), CLIExeName runs tools in a terminal (and opens the window too without a tool).
+const (
+	WindowExeName = "aex.exe"
+	CLIExeName    = "aex-cli.exe"
+)
+
+// WindowExe is the exe that opens the window, for shortcuts and starting on login: this exe, or
+// WindowExeName next to it when this is CLIExeName.
+func WindowExe() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Base(exe), CLIExeName) {
+		if w := filepath.Join(filepath.Dir(exe), WindowExeName); fileExists(w) {
+			return w, nil
+		}
+	}
+	return exe, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
 func appRoot() (string, bool) {
 	// Without -trimpath the compiler records this file's absolute path; use the checkout while it exists.
 	if _, file, _, ok := runtime.Caller(0); ok && filepath.IsAbs(file) {

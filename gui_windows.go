@@ -1,16 +1,64 @@
 package main
 
 import (
+	"debug/pe"
+	"fmt"
+	"os"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"aex/internal/settings"
 )
 
 var (
 	kernel32                  = windows.NewLazySystemDLL("kernel32.dll")
 	procGetConsoleProcessList = kernel32.NewProc("GetConsoleProcessList")
 	procFreeConsole           = kernel32.NewProc("FreeConsole")
+	procAttachConsole         = kernel32.NewProc("AttachConsole")
 )
+
+// isWindowExe reports whether this exe was built with -H windowsgui (settings.WindowExeName):
+// Windows starts it without a console, so it only opens the window.
+func isWindowExe() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	f, err := pe.Open(exe)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	switch h := f.OptionalHeader.(type) {
+	case *pe.OptionalHeader64:
+		return h.Subsystem == pe.IMAGE_SUBSYSTEM_WINDOWS_GUI
+	case *pe.OptionalHeader32:
+		return h.Subsystem == pe.IMAGE_SUBSYSTEM_WINDOWS_GUI
+	}
+	return false
+}
+
+// pointToCLI says, for a tool (or --help) given to the window exe, to run it with
+// settings.CLIExeName instead: in the terminal it was started from, else in a message box. Exits 2.
+func pointToCLI(args []string) {
+	msg := fmt.Sprintf("%s opens the aex window. To run a tool in a terminal, use %s:\n  %s %s",
+		settings.WindowExeName, settings.CLIExeName, strings.TrimSuffix(settings.CLIExeName, ".exe"),
+		windows.ComposeCommandLine(args))
+	const attachParentProcess = ^uint32(0)
+	if ok, _, _ := procAttachConsole.Call(uintptr(attachParentProcess)); ok != 0 {
+		if out, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+			fmt.Fprintf(out, "\n%s\n", msg)
+			out.Close()
+		}
+	} else {
+		text, _ := windows.UTF16PtrFromString(msg)
+		title, _ := windows.UTF16PtrFromString("aex")
+		windows.MessageBox(0, text, title, windows.MB_OK|windows.MB_ICONINFORMATION)
+	}
+	os.Exit(2)
+}
 
 // hideOwnConsole detaches from the console when it was made for this process alone (started from
 // a shortcut or Explorer), which closes its window. A console shared with a shell is kept.

@@ -1,6 +1,6 @@
 # Building aex
 
-How to build `aex.exe` and its plugins from source. For what aex does, see [README.md](README.md); for
+How to build `aex.exe`, `aex-cli.exe` and the plugins from source. For what aex does, see [README.md](README.md); for
 how the code works, [AGENTS.md](AGENTS.md).
 
 ## Build
@@ -11,7 +11,7 @@ frontend is plain files embedded as they are, and `go build` makes the whole exe
 ```powershell
 git clone https://github.com/MaratBR/aex-tools.git
 cd aex-tools
-.\bin\build-exe.ps1            # dist\aex.exe and dist\plugins\*.exe
+.\bin\build-exe.ps1            # dist\aex.exe, dist\aex-cli.exe, dist\plugins\*.exe
 go test ./...                  # optional
 ```
 
@@ -21,9 +21,13 @@ build by hand:
 ```sh
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '-s -w' -o dist/plugins/ ./plugins/...
 HASHES=$(for d in plugins/*/; do sha256sum "dist/plugins/$(basename "$d").exe" | cut -d' ' -f1; done | paste -sd,)
-GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath \
-  -ldflags "-s -w -X aex/internal/plugin.preApproved=$HASHES -X aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"   -o dist/aex.exe .
+LDFLAGS="-s -w -X aex/internal/plugin.preApproved=$HASHES -X aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath -ldflags "$LDFLAGS -H windowsgui" -o dist/aex.exe .
+GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath -ldflags "$LDFLAGS" -o dist/aex-cli.exe .
 ```
+
+- `aex.exe` is built with `-H windowsgui`: Windows starts it without a console, so opening the window
+  flashes none. `aex-cli.exe` is the same program as a console one, for the terminal.
 
 - Plugins go first: aex is built with their SHA-256 as pre-approved hashes (`-X aex/internal/plugin.preApproved`),
   so they run without asking to approve them. Leave it out and each asks once, as any plugin does.
@@ -43,7 +47,7 @@ the repo folder in PowerShell:
 ```powershell
 docker run --rm -v "${PWD}:/src" -v aex-gomod:/go/pkg/mod -w /src `
   -e GOOS=windows -e GOARCH=amd64 -e CGO_ENABLED=0 golang:1.26 `
-  sh -c 'git config --global --add safe.directory /src && go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/... && H=$(for d in plugins/*/; do sha256sum dist/plugins/$(basename $d).exe | cut -c1-64; done | paste -sd,) && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -X\ aex/internal/plugin.preApproved=$H\ -X\ aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) -o dist/aex.exe .'
+  sh -c 'git config --global --add safe.directory /src && go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/... && H=$(for d in plugins/*/; do sha256sum dist/plugins/$(basename $d).exe | cut -c1-64; done | paste -sd,) && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -X\ aex/internal/plugin.preApproved=$H\ -X\ aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) -o dist/aex-cli.exe . && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -H\ windowsgui\ -X\ aex/internal/plugin.preApproved=$H\ -X\ aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) -o dist/aex.exe .'
 ```
 
 (In a POSIX shell: `-v "$PWD:/src"` and `\` for line breaks.)
@@ -71,20 +75,24 @@ go run -tags desktop,production . worklog-sync --help
 Builds need the Wails build tags `desktop,production` (the scripts pass them); without them the window
 does not open.
 
-The scripts build a dev exe into `dist\dev\` on each run (fast when nothing changed) and run it from the
+The scripts build a dev `aex-cli.exe` into `dist\dev\` on each run (fast when nothing changed) and run it from the
 current folder. Put `bin\` on `PATH` to call `worklog-sync.ps1` from anywhere.
 
 ## Release exe
 
-`.\bin\build-exe.ps1` builds `dist\aex.exe` (~19 MB; needs the WebView2 runtime, part of Windows 11).
-Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal.
+`.\bin\build-exe.ps1` builds `dist\aex.exe` and `dist\aex-cli.exe` (~19 MB each; they need the WebView2
+runtime, part of Windows 11). Double-click `aex.exe` to open the window; run `aex-cli.exe <tool> [args]` in
+a terminal (without a tool it opens the window too). Given a tool, `aex.exe` only says to use
+`aex-cli.exe` (in the terminal it was started from, else in a message box) and exits with 2.
+
+- Shortcuts and starting on login point at `aex.exe`, also when set up from `aex-cli.exe`.
 
 - `.env` is embedded at build time. A `.env` next to the exe is also read.
 - Everything else goes to the data folder. Run `configure` first, or missing settings are prompted for on first use.
 - Dev vs release: a build without `-trimpath` (the `bin\*.ps1` scripts, `go run`) reads `.env` from
   the repo; `build-exe.ps1` uses `-trimpath`, so the exe reads it from its own folder.
-- The manifest (`winres\aex.manifest`) sets `consoleAllocationPolicy` to `detached`: started from Explorer or
-  the Start menu, the exe opens no console window (Windows 11 24H2+; older Windows closes it right away);
+- The manifest (`winres\aex.manifest`, in both exes) sets `consoleAllocationPolicy` to `detached`: started
+  from Explorer or the Start menu, `aex-cli.exe` opens no console window (Windows 11 24H2+; older Windows closes it right away);
   started from a terminal it runs there as usual.
 - Icon and version info come from the committed `rsrc_windows_*.syso`. After changing `assets\logo.ico` or the
   version in `winres\winres.json`, run `go generate ./...` (uses [go-winres](https://github.com/tc-hib/go-winres)).

@@ -1,4 +1,4 @@
-# Shared launcher: builds aex from source (dev build, reads .env from the repo) and
+# Shared launcher: builds aex-cli.exe from source (dev build, reads .env from the repo) and
 # runs tool <Name>, forwarding args and exit code. Name "aex" opens the window. Plugins (plugins\<name>)
 # are built into dist\dev\plugins first, and their hashes built into aex as pre-approved.
 param(
@@ -7,7 +7,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$exe = Join-Path $root 'dist\dev\aex.exe'
+$exe = Join-Path $root 'dist\dev\aex-cli.exe'
 
 # A running exe cannot be overwritten but can be renamed, so an open window does not block the build.
 Get-ChildItem "$exe.old*" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue

@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"aex/internal/proc"
 	"aex/internal/settings"
 	"aex/internal/tool"
 	"aex/internal/ui"
@@ -228,6 +229,7 @@ func describe(o *openFile, path string) (description, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), describeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, describeFlag)
+	proc.HideConsole(cmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := o.start(cmd)
@@ -382,6 +384,7 @@ func runner(name, path string, sub []string) func(args []string) error {
 		cmd := exec.Command(path, append(slices.Clip(sub), args...)...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Env = env
+		proc.HideConsoleIfNone(cmd)
 		err = o.start(cmd)
 		if err == nil {
 			err = cmd.Wait()

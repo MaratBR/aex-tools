@@ -15,7 +15,8 @@ people using aex: keep it short, and put the details here. Building, dev builds 
 
 - `main.go` — entry point: global args, tool registry, dispatch; embeds `.env`. No tool opens the window.
 - `gui.go` — opens the window (`internal/webui`) over the tools; `gui_windows.go` closes the console
-  Windows gives the exe when it is started from the Start menu or Explorer
+  Windows gives the exe when it is started from the Start menu or Explorer, and tells whether this is
+  the window exe (see Windows exes)
 - `header.go` — the window's header: who is logged in to AEXT (`/api/auth/me`), Jira
   (`/rest/api/3/myself`) and Google (refreshing its access token), checked in parallel and never prompting, then settings and the data folder;
   running a tool (`execTool`)
@@ -56,11 +57,30 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `about` — version, build (time, commit) and licenses for Settings > About: see About and licenses
 - `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
-- `bin\build-exe.ps1` — builds the release `dist\aex.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
+- `bin\build-exe.ps1` — builds the release `dist\aex.exe` and `dist\aex-cli.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
   plugins just built, for aex's pre-approved hashes (see Plugins); `bin\dist.ps1` — vets, tests, builds
   and zips the Windows distribution to `dist\aex-<version>-windows-<arch>.zip`
 - `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
 - `winres\winres.json`, `rsrc_windows_*.syso` — exe icon and version info
+
+## Windows exes
+
+On Windows aex is two builds of the same program, side by side (`settings.WindowExeName`,
+`CLIExeName`):
+
+- `aex.exe` is built with `-H windowsgui`, so Windows starts it with no console: it opens the window
+  and nothing flashes. Given a tool (or `--help`), it says to use `aex-cli.exe` (on the console of the
+  terminal it was started from, else in a message box) and exits with 2 (`pointToCLI`). It tells it is
+  the window exe from its own PE header (`isWindowExe`).
+- `aex-cli.exe` is a console program: tools in the terminal, the window without a tool. The dev
+  scripts build only this one (`dist\dev\aex-cli.exe`).
+- Shortcuts and starting on login point at `aex.exe` next to the running exe when there is one
+  (`settings.WindowExe`), else at the running exe.
+- The window has no console, so every console program aex starts from it must not get one of its own
+  shown: output read through pipes uses `proc.HideConsole`; a plugin run uses `proc.HideConsoleIfNone`
+  (from a terminal it shares that terminal).
+
+macOS and Linux have one `aex`.
 
 ## Data folder
 

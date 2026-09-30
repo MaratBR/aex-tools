@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"golang.org/x/sys/windows"
+
+	"aex/internal/proc"
 )
 
 const (
@@ -42,6 +44,7 @@ func create(lnk, exe string, args []string) error {
 		quoted[i] = windows.EscapeArg(a)
 	}
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", createScript)
+	proc.HideConsole(cmd)
 	cmd.Env = append(os.Environ(), "AEX_LNK="+lnk, "AEX_TARGET="+exe, "AEX_ARGS="+strings.Join(quoted, " "))
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("creating %s: %v: %s", lnk, err, strings.TrimSpace(string(out)))

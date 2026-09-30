@@ -6,8 +6,6 @@ package autostart
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -43,12 +41,9 @@ func Enable() error {
 	if !supported {
 		return ErrUnsupported
 	}
-	exe, err := os.Executable()
+	exe, err := settings.WindowExe()
 	if err != nil {
 		return err
-	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
 	}
 	var args []string
 	if settings.DataDirFromArg {

@@ -1,18 +1,19 @@
 # aex-tools
 
 `aex` is one app for everyday AEX work: a window with every tool and a Home page of widgets. Each tool
-also runs in a terminal as `aex <tool> [args]`.
+also runs in a terminal as `aex-cli <tool> [args]` (`aex` on macOS and Linux).
 
 ## Get started
 
-1. Build it: see [BUILD.md](BUILD.md). You get `dist\aex.exe` and `dist\plugins\`. Keep the `plugins`
-   folder next to the exe. It needs the WebView2 runtime, which Windows 11 already has.
+1. Build it: see [BUILD.md](BUILD.md). You get `dist\aex.exe` (the window), `dist\aex-cli.exe` (the
+   terminal) and `dist\plugins\`. Keep them together. It needs the WebView2 runtime, which Windows 11 already has.
 2. Double-click `aex.exe`. On first start it asks a few questions, such as whether to start with Windows
    and whether to add it to the Start menu.
 3. Open **Settings** in the sidebar to set your AEXT and Jira logins, hours per day and time zone. If a
    tool needs a setting you haven't set, it asks for it when you run it.
 
-In a terminal: `aex <tool> --help` shows what a tool takes, and `aex --help` lists the tools.
+In a terminal: `aex-cli <tool> --help` shows what a tool takes, and `aex-cli --help` lists the tools.
+`aex-cli` without a tool opens the window too.
 
 ## Tools
 

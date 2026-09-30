@@ -8,6 +8,11 @@ import (
 	"golang.org/x/term"
 )
 
+// isWindowExe: only on Windows is the window a separate exe.
+func isWindowExe() bool { return false }
+
+func pointToCLI([]string) {}
+
 // hideOwnConsole: only Windows gives a GUI started from a launcher a console window.
 func hideOwnConsole() {}
 

@@ -186,6 +186,9 @@ func run(args []string) error {
 		args = args[1:]
 	}
 	tools = withDebug(builtins)
+	if len(args) > 0 && isWindowExe() {
+		pointToCLI(args)
+	}
 	if len(args) == 0 {
 		// Started on login (internal/autostart) on a day not picked for that: nothing to do.
 		if autostarted && autostart.Skip() {

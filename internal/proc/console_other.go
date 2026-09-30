@@ -7,3 +7,6 @@ import "os/exec"
 
 // HideConsole does nothing: only Windows gives console programs a window.
 func HideConsole(*exec.Cmd) {}
+
+// HideConsoleIfNone does nothing: only Windows gives console programs a window.
+func HideConsoleIfNone(*exec.Cmd) {}
