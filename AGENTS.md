@@ -52,7 +52,8 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `webui` — the window ([Wails](https://wails.io), the system WebView2 on Windows): see Window
 - `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
-- `bin\build-exe.ps1` — builds the release `dist\aex.exe`
+- `bin\build-exe.ps1` — builds the release `dist\aex.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
+  plugins just built, for aex's pre-approved hashes (see Plugins)
 - `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
 - `winres\winres.json`, `rsrc_windows_*.syso` — exe icon and version info
 
@@ -358,10 +359,10 @@ Widgets so far:
   - JQL: whatever a query you type matches, in its order. Jira checks it before it is kept; when a
     search fails, what Jira finds wrong with the query (`/rest/api/3/jql/parse`) is shown.
 
-  The + button adds a tab: the widget then shows tabs in place of its title, each a list of its own
   In every list, a ticket in a To Do status (status category `new`) not updated for over 2 weeks is
   muted (faded), unless it is marked New.
 
+  The + button adds a tab: the widget then shows tabs in place of its title, each a list of its own
   (any of the above, with its own name and how many at most) with its count; the filter button changes
   the tab shown or removes it, and with one tab left the tabs go away. All lists load at once.
 
@@ -450,6 +451,13 @@ credentials: a plugin never opens the credential store and ignores secret settin
   without write/delete sharing from hashing until the process starts, so it cannot be swapped in between.
   Elsewhere it is not locked.
 - Without a terminal, a plugin that is not safe fails instead of asking.
+- Pre-approved hashes: the plugins built from this repo (`plugins/<name>`) are safe without asking. The
+  build scripts build them first, hash each (`bin\_plugin-hashes.ps1`: only files named after a folder in
+  `plugins/`, nothing else in the plugins folder) and build aex with those hashes
+  (`-ldflags "-X aex/internal/plugin.preApproved=<hash>,<hash>"`, `internal/plugin/preapproved.go`). Any
+  plugin file with one of them is safe, wherever it is; `plugins list` shows it as "safe (built with aex)".
+  Rebuilding a plugin without rebuilding aex makes it ask again. Custom tools are never pre-approved.
+  Access is still asked for as usual.
 - Settings: a plugin with settings of its own says so with `plugin.Main(t, plugin.Settings{Summary: "...",
   Run: run})` (`"settings": "<summary>"` in the describe JSON). The window lists it on its Settings page,
   under Plugins, and runs it there as `<plugin> --aex-settings` (approval and access as for any run), its

@@ -19,9 +19,14 @@ Without PowerShell, or from macOS/Linux (cross-compiles; `GOARCH=arm64` for ARM 
 build by hand:
 
 ```sh
-GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath -ldflags '-s -w' -o dist/aex.exe .
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '-s -w' -o dist/plugins/ ./plugins/...
+HASHES=$(for d in plugins/*/; do sha256sum "dist/plugins/$(basename "$d").exe" | cut -d' ' -f1; done | paste -sd,)
+GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath \
+  -ldflags "-s -w -X aex/internal/plugin.preApproved=$HASHES" -o dist/aex.exe .
 ```
+
+- Plugins go first: aex is built with their SHA-256 as pre-approved hashes (`-X aex/internal/plugin.preApproved`),
+  so they run without asking to approve them. Leave it out and each asks once, as any plugin does.
 
 - `-tags desktop,production` is needed for the window (Wails; without it no window opens); plugins do not need it.
 - `-trimpath` makes it a release build (see Release exe); leave it out for a dev build.
@@ -36,7 +41,7 @@ the repo folder in PowerShell:
 ```powershell
 docker run --rm -v "${PWD}:/src" -v aex-gomod:/go/pkg/mod -w /src `
   -e GOOS=windows -e GOARCH=amd64 -e CGO_ENABLED=0 golang:1.26 `
-  sh -c 'go build -tags desktop,production -trimpath -ldflags=-s\ -w -o dist/aex.exe . && go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/...'
+  sh -c 'go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/... && H=$(for d in plugins/*/; do sha256sum dist/plugins/$(basename $d).exe | cut -c1-64; done | paste -sd,) && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -X\ aex/internal/plugin.preApproved=$H -o dist/aex.exe .'
 ```
 
 (In a POSIX shell: `-v "$PWD:/src"` and `\` for line breaks.)
@@ -84,7 +89,8 @@ Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal
   To re-render `logo.ico` from `logo.svg`, use any SVG renderer with sizes 16, 24, 32, 48, 64, 128, 256.
   Explorer caches icons per path, so an old icon may linger for `dist\aex.exe` until the cache refreshes.
 - Plugins are built to `plugins\<name>.exe` next to the exe (`dist\plugins\`, or `dist\dev\plugins\`
-  for the scripts' dev build).
+  for the scripts' dev build), before the exe: their SHA-256 are built into it as pre-approved, so they run
+  without asking to approve them (see Plugins in [AGENTS.md](AGENTS.md)). A plugin rebuilt on its own asks again.
 - `.\bin\build-exe.ps1 -Out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
   replaced then).
 

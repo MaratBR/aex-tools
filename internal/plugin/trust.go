@@ -168,7 +168,7 @@ func approve(name, path string) (*openFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := state(path, o.hash)
+	s, err := pluginState(path, o.hash)
 	if err == nil && s != Safe {
 		err = askApproval("Plugin", name, path, o, s, nil)
 	}

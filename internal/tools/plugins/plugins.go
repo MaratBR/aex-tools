@@ -103,6 +103,9 @@ func printList(plugins []plugin.Info) {
 		state := out.Yellow(p.State.String())
 		if p.State == plugin.Safe {
 			state = out.Green(p.State.String())
+			if plugin.PreApproved(p.Hash) {
+				state = out.Green("safe (built with aex)")
+			}
 		}
 		fmt.Printf("%s  %s\n", out.Bold(p.Name), state)
 		switch {

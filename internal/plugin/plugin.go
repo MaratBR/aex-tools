@@ -190,7 +190,7 @@ func inspect(name, path string) (Info, error) {
 		return Info{}, err
 	}
 	p := Info{Name: name, Path: path, Size: stat.Size(), Modified: stat.ModTime(), Hash: o.hash}
-	if p.State, err = state(path, o.hash); err != nil {
+	if p.State, err = pluginState(path, o.hash); err != nil {
 		return Info{}, err
 	}
 	if p.State == Safe {

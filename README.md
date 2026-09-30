@@ -54,7 +54,8 @@ Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move o
 ## Safety
 
 aex runs a plugin or a custom script only after you approve that exact file. If the file changes, aex
-asks you again. A plugin gets only the logins you allow it to use.
+asks you again. The plugins built together with aex from this repo are approved already. A plugin gets
+only the logins you allow it to use.
 
 ## Working on aex
 
