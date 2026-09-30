@@ -130,8 +130,9 @@ The CSV is re-read before import, so it can be edited before confirming. After i
 ## quota
 
 `.\bin\quota.ps1` shows last and current month: working days (AEXT calendar, `WorkingDaysCountry`),
-expected hours (`HOURS_PER_DAY` app setting), logged, % filled, hours behind as of today, and hours/day needed
-over the remaining working days (today included).
+expected hours (`HOURS_PER_DAY` app setting), logged, % filled, hours behind as of today (today included:
+nothing logged today is a full day behind), and hours/day needed over the remaining working days (today
+included).
 
 Leaves (`/api/leaves/my-requests`, fetched per calendar year) remove their working days from the quota
 and from gap detection in `worklog-sync`. `declined` and `cancelled` leaves are ignored with a warning

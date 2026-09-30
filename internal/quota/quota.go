@@ -161,7 +161,7 @@ type Month struct {
 	Expected       float64  `json:"expected"`
 	Logged         float64  `json:"logged"`
 	Percent        float64  `json:"percent"`
-	DaysDue        int      `json:"daysDue"` // working days before today
+	DaysDue        int      `json:"daysDue"` // working days through today
 	ExpectedToDate float64  `json:"expectedToDate"`
 	Behind         float64  `json:"behind"` // negative when ahead
 	Remaining      float64  `json:"remaining"`
@@ -184,13 +184,14 @@ func ComputeMonth(month, now string, d *Data) Month {
 			continue
 		}
 		q.WorkingDays++
-		// Today counts as remaining, not as already due.
-		if day < now {
+		// Today is due already (its hours count as missing until logged) and still left to work.
+		if day <= now {
 			q.DaysDue++
-			if d.HoursByDay[day] == 0 {
-				q.Missing = append(q.Missing, day)
-			}
-		} else {
+		}
+		if day < now && d.HoursByDay[day] == 0 {
+			q.Missing = append(q.Missing, day)
+		}
+		if day >= now {
 			q.DaysLeft++
 		}
 	}
