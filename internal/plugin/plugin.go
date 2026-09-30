@@ -55,6 +55,8 @@ type description struct {
 	Widgets []WidgetInfo `json:"widgets,omitempty"` // widget.go
 	// Settings is the summary of the plugin's Settings, empty when it has none.
 	Settings string `json:"settings,omitempty"`
+	// Provides are the names of what it Provides (provide.go).
+	Provides []string `json:"provides,omitempty"`
 }
 
 // SubTool is a tool of a plugin that is a group.
@@ -92,13 +94,14 @@ type Info struct {
 	Modified time.Time
 	Hash     string // SHA-256 of the file's contents now
 	State    State
-	// Summary, Access, Tools, Widgets and Settings are what the plugin describes itself as, only for
+	// Summary, Access, Tools, Widgets, Settings and Provides are what the plugin describes itself as, only for
 	// a safe plugin (else empty); DescribeErr says why that failed.
 	Summary     string
 	Access      []Access
 	Tools       []SubTool
 	Widgets     []WidgetInfo
 	Settings    string
+	Provides    []string
 	DescribeErr error
 }
 
@@ -196,7 +199,7 @@ func inspect(name, path string) (Info, error) {
 	if p.State == Safe {
 		var d description
 		d, p.DescribeErr = describe(o, path)
-		p.Summary, p.Access, p.Tools, p.Settings = d.Summary, d.Access, d.Tools, d.Settings
+		p.Summary, p.Access, p.Tools, p.Settings, p.Provides = d.Summary, d.Access, d.Tools, d.Settings, d.Provides
 		p.Widgets = slices.DeleteFunc(d.Widgets, func(w WidgetInfo) bool { return !widgetID.MatchString(w.ID) })
 	}
 	return p, nil
@@ -391,13 +394,14 @@ func runner(name, path string, sub []string) func(args []string) error {
 }
 
 // Main runs t (a tool, or a group of them) as a plugin with opts: the access it needs (see Access),
-// the widgets it offers (see Widget) and its settings (see Settings). Answers --aex-describe and the
-// widget flags, else sets up like aex does and runs t (or, for --aex-settings, the settings) with the
+// the widgets it offers (see Widget), its settings (see Settings) and what it provides aex (see
+// Provide). Answers --aex-describe, the widget flags and --aex-provide, else sets up like aex does and runs t (or, for --aex-settings, the settings) with the
 // command-line args, exiting 1 on error.
 func Main(t tool.Tool, opts ...Option) {
 	var access []Access
 	var widgets []Widget
 	var own *Settings
+	var provides []Provide
 	for _, o := range opts {
 		switch o := o.(type) {
 		case Access:
@@ -406,12 +410,17 @@ func Main(t tool.Tool, opts ...Option) {
 			widgets = append(widgets, o)
 		case Settings:
 			own = &o
+		case Provide:
+			provides = append(provides, o)
 		}
 	}
 	if len(os.Args) == 2 && os.Args[1] == describeFlag {
 		d := description{Summary: t.Summary, Access: access, Tools: describeTools(t.Sub), Widgets: describeWidgets(widgets)}
 		if own != nil {
 			d.Settings = own.Summary
+		}
+		for _, p := range provides {
+			d.Provides = append(d.Provides, p.Name)
 		}
 		if err := json.NewEncoder(os.Stdout).Encode(d); err != nil {
 			os.Exit(1)
@@ -427,9 +436,10 @@ func Main(t tool.Tool, opts ...Option) {
 		return
 	}
 	widgetCall := len(os.Args) >= 2 && os.Args[1] == widgetCallFlag
+	provideCall := len(os.Args) >= 2 && os.Args[1] == provideFlag
 	ui.Setup()
 	var err error
-	if !widgetCall {
+	if !widgetCall && !provideCall {
 		err = connectPrompts()
 	}
 	var dataDir string
@@ -444,6 +454,8 @@ func Main(t tool.Tool, opts ...Option) {
 	case err != nil:
 	case widgetCall:
 		err = serveWidget(widgetCallFlag, args[1:], widgets)
+	case provideCall:
+		err = serveProvide(args[1:], provides)
 	case len(args) >= 1 && args[0] == settingsFlag:
 		if own == nil {
 			err = errors.New("this plugin has no settings")

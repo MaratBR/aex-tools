@@ -36,6 +36,17 @@ func (a *App) Browse(id int, current string) (string, error) {
 	return runtime.OpenFileDialog(a.ctx, opts)
 }
 
+// chooseFolderAPI opens a folder dialog for a widget (args.title), starting in args.current:
+// the folder picked, "" when closed without a pick.
+func chooseFolderAPI(a *App, args map[string]any) (any, error) {
+	title, _ := args["title"].(string)
+	current, _ := args["current"].(string)
+	if title == "" {
+		title = "Choose a folder"
+	}
+	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{Title: title, DefaultDirectory: startDir(current)})
+}
+
 // startDir is the folder a dialog opens in for the answer so far: that folder, or the one holding
 // that file; "" (the dialog's default) when it names neither.
 func startDir(current string) string {

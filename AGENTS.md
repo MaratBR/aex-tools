@@ -30,7 +30,10 @@ people using aex: keep it short, and put the details here. Building, dev builds 
     prompts, running them through their adapter
   - `adapter` — the tool adapter interface and the parameter model every adapter shares (binding args,
     `--help`); `adapter/powershell` — the PowerShell one
-  - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed
+  - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed;
+    a repo's state (branch, changes, commits to push and pull) for the Git status widget
+  - `gitclient` — the git client installed on the device (Fork, GitHub Desktop, …): finds it, opens it,
+    reads its icon
   - `proc` — starting console programs without a console window (from the window)
   - `pty` — running a console program in a pseudo-console (ConPTY) the window shows as a terminal
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
@@ -200,6 +203,7 @@ The git tools work on every CM repo at once: `<reposDir>\<repo>` for each of the
 (default `clearmechanic.frontend`, `clearmechanic.siteforappointments`, `cmos.datamigration`, `src`,
 `cmos.microservices`). The repos folder is asked for on first run; both are in the plugin's settings (the
 window's Settings page, or `jira-handoff --settings`). Branches: `master`, `PROD`, `staging`, `release/VERSION`; tag `vVERSION`.
+The plugin also gives these repos to aex (`plugin.GitRepos`) as the Git status widget's default list.
 
 ### pull-all
 
@@ -384,12 +388,19 @@ Widgets so far:
   (`Intl.supportedValuesOf`), and the format, kept in the placement's settings (`zones`, `h24`). Two
   clocks sit side by side, or one under the other when the widget is taller than wide. It redraws
   itself every minute; no auto refresh.
-- `cm-release/cm-repos-state` (cm-release plugin, every 5 s) — CM repos state: each repo's branch and uncommitted
-  changes, commits to push (↑) and to pull (↓, as of the last fetch), with Clean or Pending changes
-  (uncommitted changes, unpushed commits or a git error in any repo). No fetch, so it loads quickly.
-  A button opens the git client found on the device (Fork, GitHub Desktop, GitKraken, Sourcetree,
-  Sublime Merge, SmartGit or TortoiseGit, looked for in that order); hidden when none is installed.
-  One row high it shows only the verdict.
+- `git-status` (every 5 s) — Git status (`gitstatus.go`): the repos this placement watches, each with
+  its branch and uncommitted changes, commits to push (↑) and to pull (↓, as of the last fetch), with
+  Clean or Pending changes (uncommitted changes, unpushed commits or a git error in any repo). No
+  fetch, so it loads quickly. When added it asks for the repos (their folders, typed, pasted or picked
+  with "Choose folder…", the system dialog: `chooseFolder`, one of `windowAPIs`), starting with those
+  of the first approved plugin that provides some (`plugin.GitRepos`, see Plugins: cm-release gives
+  its CM repos); kept in the placement's settings (`repos`), the folder button changes them. At the
+  bottom right, a button with the icon of the git client found on the device (`internal/gitclient`:
+  Fork, GitHub Desktop, GitKraken, Sourcetree, Sublime Merge, SmartGit or TortoiseGit, looked for in
+  that order; the icon read from its exe, or its app on macOS) opens it; hidden when none is
+  installed. One row high it shows only the verdict. It was the cm-release plugin's
+  `cm-release/cm-repos-state`: such a placement in `home.json` loads as this one
+  (`renamedWidgets`), asking for its repos.
 
 ## Google
 
@@ -512,6 +523,11 @@ credentials: a plugin never opens the credential store and ignores secret settin
   A plugin built before widgets listed their access lists none, and its widgets need all the plugin's.
   A call gets the plugin's settings and the secrets of the widget's access, as a run does. Plugins not approved cannot describe themselves, so Add widget lists
   them under "Don't see the widget you need?", each with Review.
+- Provides: a plugin can give aex data it asks for, with `plugin.Main(t, plugin.Provide{Name:
+  plugin.GitRepos, Run: run})` (`"provides": ["git-repos"]` in the describe JSON). aex gets it with
+  `<plugin> --aex-provide <name>`: `{"result": ...}` or `{"error": "..."}` on stdout, only while the
+  plugin is safe, never asking anything, with its settings and no access (`plugin.Provided`). So far:
+  `git-repos`, the folders of the git repos it works on, the Git status widget's default list.
 
 ## Custom tools
 

@@ -1,5 +1,6 @@
 // Package gitinfo tells where a file stands in the git repo it is in: the repo, its branch and
-// commit, the last commit that changed the file and whether it has changes not committed.
+// commit, the last commit that changed the file and whether it has changes not committed; and a
+// repo's state (State): its branch, changes and commits to push or pull.
 package gitinfo
 
 import (

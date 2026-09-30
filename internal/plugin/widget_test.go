@@ -65,6 +65,15 @@ func TestWidgets(t *testing.T) {
 	if info.Settings != "test settings" {
 		t.Errorf("described settings = %q, want %q", info.Settings, "test settings")
 	}
+	if !reflect.DeepEqual(info.Provides, []string{GitRepos}) {
+		t.Errorf("described provides = %q", info.Provides)
+	}
+	if got, err := Provided(info, GitRepos); err != nil || string(got) != `["a","b"]` {
+		t.Errorf("provided %s = %s, %v", GitRepos, got, err)
+	}
+	if _, err := Provided(info, "nope"); err == nil {
+		t.Error("provided something not described: no error")
+	}
 	if page, err := WidgetPage(p, "hello"); page != "<p>hello</p>" || err != nil {
 		t.Fatalf("page = %q, %v", page, err)
 	}

@@ -1,25 +1,29 @@
-// The git client the cm-repos-state widget opens: the first one found installed on the device.
-package main
+// Package gitclient finds the git client (a git GUI) installed on the device, opens it and gives
+// its icon, for the Git status widget.
+package gitclient
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/base64"
 	"errors"
+	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
-// gitClient is a git GUI and where it installs.
-type gitClient struct {
+// client is a git GUI and where it installs.
+type client struct {
 	name    string
 	windows []string // paths under %LOCALAPPDATA% ("local/...") or %ProgramFiles% ("programs/...")
 	macApp  string   // the app in /Applications
 }
 
-// gitClients in the order they are looked for.
-var gitClients = []gitClient{
+// clients in the order they are looked for.
+var clients = []client{
 	{"Fork", []string{"local/Fork/Fork.exe"}, "Fork.app"},
 	{"GitHub Desktop", []string{"local/GitHubDesktop/GitHubDesktop.exe"}, "GitHub Desktop.app"},
 	{"GitKraken", []string{"local/gitkraken/gitkraken.exe"}, "GitKraken.app"},
@@ -29,11 +33,11 @@ var gitClients = []gitClient{
 	{"TortoiseGit", []string{"programs/TortoiseGit/bin/TortoiseGitProc.exe"}, ""},
 }
 
-// findGitClient gives the first git client installed and the file that starts it; ok is false
-// when there is none.
-func findGitClient() (name, path string, ok bool) {
+// Find gives the first git client installed and the file that starts it (on macOS its app); ok is
+// false when there is none.
+func Find() (name, path string, ok bool) {
 	roots := map[string]string{"local": os.Getenv("LOCALAPPDATA"), "programs": os.Getenv("ProgramFiles")}
-	for _, c := range gitClients {
+	for _, c := range clients {
 		var paths []string
 		switch runtime.GOOS {
 		case "windows":
@@ -57,11 +61,11 @@ func findGitClient() (name, path string, ok bool) {
 	return "", "", false
 }
 
-// openGitClientCall starts the git client, without waiting for it.
-func openGitClientCall(json.RawMessage) (any, error) {
-	name, path, ok := findGitClient()
+// Open starts the git client, without waiting for it.
+func Open() error {
+	name, path, ok := Find()
 	if !ok {
-		return nil, errors.New("no git client found")
+		return errors.New("no git client found")
 	}
 	var cmd *exec.Cmd
 	switch {
@@ -73,7 +77,29 @@ func openGitClientCall(json.RawMessage) (any, error) {
 		cmd = exec.Command(path)
 	}
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return err
 	}
-	return nil, cmd.Process.Release()
+	return cmd.Process.Release()
+}
+
+// IconSize is the icon's width and height in pixels.
+const IconSize = 64
+
+var icons sync.Map // path: data URL, or "" when it has none
+
+// Icon is the icon of the git client at path (from Find) as a PNG data: URL, "" when it cannot be
+// read. Kept for the path once read.
+func Icon(path string) string {
+	if url, ok := icons.Load(path); ok {
+		return url.(string)
+	}
+	url := ""
+	if img, err := readIcon(path, IconSize); err == nil {
+		var b bytes.Buffer
+		if png.Encode(&b, img) == nil {
+			url = "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
+		}
+	}
+	icons.Store(path, url)
+	return url
 }

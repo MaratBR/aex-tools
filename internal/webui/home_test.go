@@ -76,6 +76,14 @@ func TestHomeSaveLoad(t *testing.T) {
 	if err != nil || len(l.Widgets) != 2 || l.Widgets[0].W != 3 || l.Widgets[1].W != 12 {
 		t.Fatalf("4-column file: got %+v, %v; want widths 3 and 12", l, err)
 	}
+	// The cm-release plugin's repos state widget became the built-in Git status one.
+	if err := os.WriteFile(settings.HomeFile, []byte(`{"columns":12,"widgets":[{"id":"a","widget":"cm-release/cm-repos-state","w":6,"h":2}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, err = a.Home()
+	if err != nil || len(l.Widgets) != 1 || l.Widgets[0].Widget != "git-status" || l.Widgets[0].W != 6 {
+		t.Fatalf("renamed widget: got %+v, %v; want git-status", l, err)
+	}
 	if err := os.WriteFile(settings.HomeFile, []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}

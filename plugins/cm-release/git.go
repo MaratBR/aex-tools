@@ -61,6 +61,22 @@ func repos(c *config) ([]repo, error) {
 	return rs, nil
 }
 
+// gitRepos gives aex the CM repos' folders (plugin.GitRepos), none while the repos folder is not
+// set: the Git status widget's default list.
+func gitRepos() (any, error) {
+	c, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	paths := []string{}
+	if c.ReposDir != "" {
+		for _, name := range c.Repos {
+			paths = append(paths, filepath.Join(c.ReposDir, name))
+		}
+	}
+	return paths, nil
+}
+
 func askReposDir(c *config) error {
 	dir, err := ui.Input(ui.Field{
 		Title:       "Repos folder",

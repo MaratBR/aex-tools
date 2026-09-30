@@ -1,4 +1,4 @@
-// A plugin with a widget and settings, for widget_test.go.
+// A plugin with widgets, settings and a provide, for widget_test.go.
 package main
 
 import (
@@ -23,5 +23,6 @@ func main() {
 		append(access,
 			plugin.Widget{ID: "hello", Name: "Hello", Summary: "says hello", W: 2, H: 1, HTML: "<p>hello</p>", Calls: calls},
 			plugin.Widget{ID: "jira", Name: "Jira", W: 1, H: 1, Access: []plugin.Access{plugin.Jira}, HTML: "<p>jira</p>", Calls: calls},
-			plugin.Settings{Summary: "test settings", Run: func([]string) error { return nil }})...)
+			plugin.Settings{Summary: "test settings", Run: func([]string) error { return nil }},
+			plugin.Provide{Name: plugin.GitRepos, Run: func() (any, error) { return []string{"a", "b"}, nil }})...)
 }

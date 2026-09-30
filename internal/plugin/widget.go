@@ -40,13 +40,14 @@ const (
 	widgetMaxOut   = 4 << 20
 )
 
-// Option is what Main takes after the tool: the Access a plugin needs, the Widgets it offers and
-// its Settings.
+// Option is what Main takes after the tool: the Access a plugin needs, the Widgets it offers, its
+// Settings and what it Provides.
 type Option interface{ option() }
 
 func (Access) option()   {}
 func (Widget) option()   {}
 func (Settings) option() {}
+func (Provide) option()  {}
 
 // Widget is a widget a plugin offers (see Main). The window shows its page in a sandboxed frame with
 // no network: its data comes from Calls, through aex.call(name, args) (widgets/sdk.js).
@@ -265,12 +266,17 @@ func WidgetCall(p Info, id, call string, args []byte) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	return callResult(widgetCallFlag, out)
+}
+
+// callResult is the result a call printed ({"result": ...} or {"error": "..."}), after flag.
+func callResult(flag string, out []byte) (json.RawMessage, error) {
 	var reply struct {
 		Result json.RawMessage `json:"result"`
 		Error  string          `json:"error"`
 	}
 	if err := json.Unmarshal(out, &reply); err != nil {
-		return nil, fmt.Errorf("%s printed no valid JSON: %w", widgetCallFlag, err)
+		return nil, fmt.Errorf("%s printed no valid JSON: %w", flag, err)
 	}
 	if reply.Error != "" {
 		return nil, errors.New(reply.Error)

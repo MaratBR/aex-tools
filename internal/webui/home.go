@@ -51,7 +51,11 @@ var widgetCatalog = []WidgetInfo{
 	{ID: "cat", Name: "Cat as a service", Summary: "A random cat from cataas.com, a new one on click", W: 3, H: 1},
 	{ID: "2048", Name: "2048", Summary: "The sliding tiles game: join the numbers to get to 2048", W: 4, H: 2},
 	{ID: "clock", Name: "Clock", Summary: "The time in one or two time zones you pick, Central Time by default", W: 3, H: 1},
+	{ID: "git-status", Name: "Git status", Summary: "Branch, changes and commits to push or pull in the git repos you pick", W: 6, H: 2, Refresh: 5},
 }
+
+// renamedWidgets are widgets that became others: a placement of one is loaded as the other.
+var renamedWidgets = map[string]string{"cm-release/cm-repos-state": "git-status"}
 
 // widgetAPIs are the calls widgets make with aex.call(name, args). They never prompt: a widget has
 // no run to ask its questions in, so one that needs a login says so instead.
@@ -63,6 +67,15 @@ var widgetAPIs = map[string]func(args map[string]any) (any, error){
 	"jiraTickets":     jiraTicketsAPI,
 	"jiraOpen":        jiraOpenAPI,
 	"cat":             catAPI,
+	"gitStatus":       gitStatusAPI,
+	"gitClient":       gitClientAPI,
+	"gitOpenClient":   gitOpenClientAPI,
+	"gitDefaultRepos": gitDefaultReposAPI,
+}
+
+// windowAPIs are widget calls that need the window: a dialog the user opened from the widget.
+var windowAPIs = map[string]func(a *App, args map[string]any) (any, error){
+	"chooseFolder": chooseFolderAPI,
 }
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
@@ -155,9 +168,12 @@ func (a *App) Home() (HomeLayout, error) {
 	if err := json.Unmarshal(b, &saved); err != nil {
 		return layout, fmt.Errorf("%s: %w", settings.HomeFile, err)
 	}
-	if saved.Columns != gridColumns {
-		for i := range saved.Widgets {
+	for i, w := range saved.Widgets {
+		if saved.Columns != gridColumns {
 			saved.Widgets[i].W *= gridColumns / oldColumns
+		}
+		if to, ok := renamedWidgets[w.Widget]; ok {
+			saved.Widgets[i].Widget = to
 		}
 	}
 	layout.Widgets = cleanWidgets(saved.Widgets)
@@ -299,6 +315,9 @@ func (a *App) WidgetCall(widget, name string, args map[string]any) (any, error) 
 	}
 	if debugWidget(widget) {
 		return nil, plugin.ErrDebugWidget
+	}
+	if api, ok := windowAPIs[name]; ok {
+		return api(a, args)
 	}
 	api, ok := widgetAPIs[name]
 	if !ok {

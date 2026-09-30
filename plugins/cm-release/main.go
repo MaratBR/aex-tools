@@ -4,23 +4,15 @@
 //   - prepare-release (prepare.go): creates and pushes release/VERSION off staging in every CM repo.
 //   - merge-prod (merge.go): merges release/VERSION into PROD and tags it in every CM repo.
 //   - jira-handoff (handoff.go): hands an epic's "Ready for Production" tickets over to QA.
-//   - the cm-repos-state widget (state.go): the git state of every CM repo on the home page, and
-//     a button to open the git client found on the device (gitclient.go).
 //
-// The git tools share git.go. Widgets for the window's home page are in widgets/.
+// The git tools share git.go, which also gives aex the CM repos (plugin.GitRepos) for the Git status
+// widget's default list.
 package main
 
 import (
-	_ "embed"
-	"encoding/json"
-	"time"
-
 	"aex/internal/plugin"
 	"aex/internal/tool"
 )
-
-//go:embed widgets/cm-repos-state.html
-var reposStatePage string
 
 //go:generate go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --out rsrc --arch amd64,arm64
 
@@ -34,11 +26,6 @@ func main() {
 			{Name: "merge-prod", Summary: "Merge release/VERSION into PROD in every CM repo, tag vVERSION, push", Run: runMerge},
 			{Name: "jira-handoff", Summary: "Hand off an epic's Ready for Production tickets to QA", Run: runHandoff},
 		},
-	}, plugin.Jira, plugin.Widget{
-		ID: "cm-repos-state", Name: "CM repos state", Summary: "Git state of every CM repo: clean or pending changes",
-		W: 2, H: 2, Refresh: 5 * time.Second, HTML: reposStatePage,
-		Calls: map[string]func(json.RawMessage) (any, error){
-			"state": stateCall, "openGitClient": openGitClientCall,
-		},
-	}, plugin.Settings{Summary: "Default project prefix, default QA, always Cc, excluded assignees, repos", Run: runSettings})
+	}, plugin.Jira, plugin.Provide{Name: plugin.GitRepos, Run: gitRepos},
+		plugin.Settings{Summary: "Default project prefix, default QA, always Cc, excluded assignees, repos", Run: runSettings})
 }

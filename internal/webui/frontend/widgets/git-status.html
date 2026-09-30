@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Git status</title>
+  <style>
+    body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 12px; font-size: 15px; }
+    .head { display: flex; align-items: center; gap: 8px; }
+    .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .loading #refresh svg { animation: spin .9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .verdict { padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .verdict.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
+    .verdict.warn { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+
+    #content { flex: 1; min-height: 0; }
+    .repos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto; align-content: start; gap: 3px 12px; font-size: 14px; overflow: hidden; }
+    .repos > * { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .branch { color: var(--muted); font-family: var(--mono); font-size: 13px; }
+    .state { text-align: right; font-variant-numeric: tabular-nums; }
+    .state.good { color: var(--ok); }
+    .state.warn { color: var(--warn); font-weight: 600; }
+    .state.bad { color: var(--fail); }
+
+    .notice { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 14px; }
+    .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
+
+    /* The git client found on the device, at the bottom right. */
+    .foot { display: flex; justify-content: flex-end; margin: -4px -6px -4px 0; }
+    #git-client { width: 44px; height: 44px; border-radius: 12px; }
+    #git-client img { width: 32px; height: 32px; display: block; }
+    #git-client svg { width: 24px; height: 24px; }
+
+    /* Setup: the repos to watch. */
+    #setup { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+    #setup .note { color: var(--muted); font-size: 13px; }
+    #setup .note:empty { display: none; }
+    #list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+    #list:empty::before { content: 'No repos yet: add their folders below.'; color: var(--muted); font-size: 13px; }
+    .item { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .item .name { flex: none; max-width: 45%; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .path { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+    .item .icon-btn { width: 22px; height: 22px; }
+    .item .icon-btn svg { width: 12px; height: 12px; }
+    .add { display: flex; gap: 6px; }
+    .add input { flex: 1; min-width: 0; padding: 4px 8px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
+    .add input:focus { outline: none; box-shadow: var(--ring); }
+    #setup .error { color: var(--fail); font-size: 13px; }
+    #setup .error:empty { display: none; }
+    .actions { display: flex; gap: 6px; }
+
+    /* One row high: the verdict only. */
+    @media (max-height: 200px) { .repos { display: none; } }
+    @media (max-width: 300px) { .repos .branch { display: none; } .repos { grid-template-columns: minmax(0, 1fr) auto; } }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <div class="title">Git status</div>
+    <span class="verdict" id="verdict" hidden></span>
+    <button class="icon-btn" id="edit" type="button" title="Repos to watch" aria-label="Repos to watch">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2h8.5A1.5 1.5 0 0 1 21 9.5v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/><path d="M12 11v5M9.5 13.5h5"/></svg>
+    </button>
+    <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+    </button>
+  </div>
+  <div id="content"></div>
+  <div id="setup" hidden>
+    <div class="note" id="note"></div>
+    <div id="list"></div>
+    <div class="add">
+      <input id="path" type="text" placeholder="Repo folder, e.g. C:\src\my-repo" spellcheck="false" autocomplete="off">
+      <button class="btn" id="add" type="button">Add</button>
+      <button class="btn" id="choose" type="button">Choose folder…</button>
+    </div>
+    <div class="error" id="error"></div>
+    <div class="actions">
+      <button class="btn primary" id="save" type="button">Save</button>
+      <button class="btn" id="cancel" type="button">Cancel</button>
+    </div>
+  </div>
+  <div class="foot" id="foot" hidden>
+    <button class="icon-btn" id="git-client" type="button"></button>
+  </div>
+
+  <script>
+    // The git state of the repos this placement watches (aex.settings.repos, their folders), from
+    // what git knows locally (gitstatus.go): Clean when no repo has uncommitted changes or unpushed
+    // commits, Pending changes otherwise. When added it asks for the repos, starting with those of a
+    // plugin that has some (cm-release's), and the folder button changes them.
+    const content = document.getElementById('content');
+    const verdictEl = document.getElementById('verdict');
+    const setupEl = document.getElementById('setup'), listEl = document.getElementById('list');
+    const pathEl = document.getElementById('path'), errorEl = document.getElementById('error');
+    const noteEl = document.getElementById('note'), cancelBtn = document.getElementById('cancel');
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+
+    const saved = () => Array.isArray(aex.settings.repos) ? aex.settings.repos.filter(r => typeof r === 'string') : null;
+    const baseName = path => path.split(/[\\/]+/).filter(Boolean).pop() || path;
+    const isAbs = path => /^([A-Za-z]:[\\/]|\\\\|\/)/.test(path);
+
+    // repoState is a repo's state in a few characters, and how it reads.
+    function repoState(r) {
+      if (r.error) return { cls: 'bad', text: 'error', title: r.error };
+      const parts = [];
+      if (r.changed) parts.push(r.changed + (r.changed === 1 ? ' change' : ' changes'));
+      if (r.ahead) parts.push('↑' + r.ahead);
+      if (r.behind) parts.push('↓' + r.behind);
+      const pending = r.changed > 0 || r.ahead > 0;
+      let title = r.upstream ? '' : 'no upstream branch';
+      if (r.behind) title = `${r.behind} commit${r.behind === 1 ? '' : 's'} to pull (as of the last fetch)`;
+      if (r.ahead) title = `${r.ahead} commit${r.ahead === 1 ? '' : 's'} to push` + (title ? ', ' + title : '');
+      return { cls: pending ? 'warn' : parts.length ? '' : 'good', text: parts.join(' ') || 'clean', title };
+    }
+
+    function setVerdict(clean) {
+      verdictEl.hidden = clean == null;
+      if (clean == null) return;
+      verdictEl.className = 'verdict ' + (clean ? 'good' : 'warn');
+      verdictEl.textContent = clean ? 'Clean' : 'Pending changes';
+    }
+
+    function render(s) {
+      content.className = 'repos';
+      content.textContent = '';
+      setVerdict(s.clean);
+      for (const r of s.repos) {
+        const st = repoState(r);
+        const name = node('span', null, baseName(r.path));
+        name.title = r.path;
+        const branch = node('span', 'branch', r.branch || '');
+        branch.title = r.branch || '';
+        const state = node('span', 'state ' + st.cls, st.text);
+        if (st.title) state.title = st.title;
+        content.append(name, branch, state);
+      }
+    }
+
+    function notice(text, error, action) {
+      setVerdict(null);
+      content.className = 'notice';
+      content.textContent = '';
+      content.append(node('div', null, text));
+      if (error) content.append(node('div', 'error', error));
+      if (action) {
+        const b = node('button', 'btn primary', action.label);
+        b.type = 'button';
+        b.onclick = action.run;
+        content.append(b);
+      }
+    }
+
+    // The git client found on the device (gitstatus.go: gitClient), with its icon, opens from the
+    // bottom right; hidden when none is installed.
+    const footEl = document.getElementById('foot'), gitClientEl = document.getElementById('git-client');
+    const gitIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10"/><path d="M18 10c0 4-6 3-11.5 7.5"/></svg>';
+    let gitClient = null;
+    async function setGitClient(name) {
+      name = name || '';
+      if (gitClient === name) return;
+      gitClient = name;
+      footEl.hidden = !name || !setupEl.hidden;
+      if (!name) return;
+      gitClientEl.title = 'Open ' + name;
+      gitClientEl.setAttribute('aria-label', 'Open ' + name);
+      gitClientEl.innerHTML = gitIcon;
+      try {
+        const c = await aex.call('gitClient');
+        if (c.name !== gitClient || !c.icon) return;
+        const img = node('img');
+        img.src = c.icon;
+        img.alt = '';
+        gitClientEl.replaceChildren(img);
+      } catch { /* the generic icon stays */ }
+    }
+    gitClientEl.onclick = async () => {
+      try {
+        await aex.call('gitOpenClient');
+      } catch (e) {
+        notice(`Could not open ${gitClient}.`, e.message, { label: 'Back', run: load });
+      }
+    };
+
+    let seq = 0, shown = false;
+    async function load() {
+      const repos = saved();
+      if (!setupEl.hidden) return;
+      if (!repos) return setup();
+      const n = ++seq;
+      document.body.classList.add('loading');
+      if (!shown) notice('Loading…');
+      try {
+        const s = await aex.call('gitStatus', { repos });
+        if (n !== seq || !setupEl.hidden) return;
+        setGitClient(s.gitClient);
+        if (!s.repos.length) {
+          shown = false;
+          notice('No repos to watch.', '', { label: 'Add repos', run: setup });
+        } else {
+          render(s);
+          shown = true;
+        }
+      } catch (e) {
+        if (n !== seq) return;
+        shown = false;
+        notice('Could not read the repos.', e.message, { label: 'Try again', run: load });
+      } finally {
+        if (n === seq) document.body.classList.remove('loading');
+      }
+    }
+
+    // Setup: the list being edited, saved to aex.settings.repos. The first time (no list saved yet)
+    // it starts with a plugin's repos, when a plugin has some.
+    let editing = [];
+    function drawList() {
+      listEl.textContent = '';
+      editing.forEach((path, i) => {
+        const item = node('div', 'item');
+        const name = node('span', 'name', baseName(path));
+        const full = node('span', 'path');
+        full.append(node('bdi', null, path));
+        full.title = path;
+        const remove = node('button', 'icon-btn');
+        remove.type = 'button';
+        remove.title = remove.ariaLabel = 'Remove ' + baseName(path);
+        remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+        remove.onclick = () => { editing.splice(i, 1); drawList(); };
+        item.append(name, full, remove);
+        listEl.append(item);
+      });
+    }
+
+    // addPaths adds the folders typed or pasted (one per line, or separated by ;).
+    function addPaths(text) {
+      errorEl.textContent = '';
+      for (let p of text.split(/[\r\n;]+/)) {
+        p = p.trim().replace(/^["']|["']$/g, '').replace(/[\\/]+$/, '');
+        if (!p) continue;
+        if (!isAbs(p)) {
+          errorEl.textContent = `Not a full folder path: ${p}`;
+          return false;
+        }
+        if (!editing.some(e => e.toLowerCase() === p.toLowerCase())) editing.push(p);
+      }
+      drawList();
+      listEl.scrollTop = listEl.scrollHeight;
+      return true;
+    }
+
+    async function setup() {
+      seq++;
+      document.body.classList.remove('loading');
+      const repos = saved();
+      editing = repos ? [...repos] : [];
+      errorEl.textContent = noteEl.textContent = pathEl.value = '';
+      cancelBtn.hidden = !repos;
+      setVerdict(null);
+      content.hidden = footEl.hidden = true;
+      setupEl.hidden = false;
+      drawList();
+      if (!repos) {
+        noteEl.textContent = 'Which git repos to watch? Looking for defaults…';
+        try {
+          const d = await aex.call('gitDefaultRepos');
+          if (setupEl.hidden) return;
+          if (d.repos.length && !editing.length) {
+            editing = [...d.repos];
+            drawList();
+          }
+          noteEl.textContent = d.plugin ? `Which git repos to watch? These are ${d.plugin}'s.` : 'Which git repos to watch?';
+        } catch {
+          noteEl.textContent = 'Which git repos to watch?';
+        }
+      }
+      pathEl.focus();
+    }
+
+    function closeSetup() {
+      setupEl.hidden = true;
+      content.hidden = false;
+      footEl.hidden = !gitClient;
+      shown = false;
+      load();
+    }
+
+    document.getElementById('add').onclick = () => { if (addPaths(pathEl.value)) pathEl.value = ''; pathEl.focus(); };
+    pathEl.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); document.getElementById('add').click(); }
+    };
+    document.getElementById('choose').onclick = async () => {
+      try {
+        const dir = await aex.call('chooseFolder', { title: 'Add a git repo', current: pathEl.value.trim() || editing.at(-1) || '' });
+        if (dir) addPaths(dir);
+      } catch (e) {
+        errorEl.textContent = e.message;
+      }
+    };
+    document.getElementById('save').onclick = async () => {
+      if (pathEl.value.trim()) {
+        if (!addPaths(pathEl.value)) return;
+        pathEl.value = '';
+      }
+      if (!editing.length) {
+        errorEl.textContent = 'Add at least one repo.';
+        return;
+      }
+      try {
+        await aex.saveSettings({ ...aex.settings, repos: editing });
+      } catch (e) {
+        errorEl.textContent = e.message;
+        return;
+      }
+      closeSetup();
+    };
+    cancelBtn.onclick = closeSetup;
+    document.getElementById('edit').onclick = () => { if (setupEl.hidden) setup(); };
+
+    document.getElementById('refresh').onclick = load;
+    aex.onRefresh(load);
+    load();
+  </script>
+</body>
+</html>
