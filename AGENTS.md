@@ -70,7 +70,8 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
 - `custom-tools.json` — the custom tools added (name, script path, adapter)
-- `home.json` — the window's home page: its widgets in order, with their sizes and settings, and
+- `update-check.json` — the last check of how far the build is behind GitHub (see About and licenses)
+- `home.json` — the window's home page: its widgets with their places, sizes and settings, and
   whether auto refresh is off
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
@@ -299,11 +300,19 @@ brings it back or hides it again, remembered in the web view's storage; a dot on
 printed meanwhile. Runs always shows the sidebar.
 
 Home is a grid of widgets (12 columns, 6 or 1 when the window is narrow, a widget taking the whole row
-when it is wider than that; rows 150 px). Add widget picks one (a widget can be added more than once);
-Edit puts a cover on each widget to drag it elsewhere, move it earlier or later, change its width
-(1–12 columns) and height (1–4 rows), with the steppers or by dragging its right edge, bottom edge or
-corner, or remove it. Every change is saved to `home.json` in the data folder (`App.SaveHome`; sizes
-are clamped on load; plugins' widgets stay, see below). A placement of a widget aex does not have
+when it is wider than that; rows 150 px). Each widget has a place at full width (`HomeWidget.X`, `Y`:
+the column and row of its top left corner), anywhere, gaps allowed; in a narrow window the widgets
+follow one another in that order (top to bottom, then left to right). Add widget picks one (a widget
+can be added more than once) and puts it in the first free place it fits, from the top left.
+Edit shows the grid's cells, with room below the lowest widget, and puts a cover on each widget to drag
+it to any cell (in a narrow window: onto another widget, to trade places), move it a cell at a time
+with the arrows, change its width (1–12 columns, up to the right edge) and height (1–4 rows), with the
+steppers or by dragging its right edge, bottom edge or corner, or remove it (its place stays empty). A
+widget moved or grown onto others pushes them down to the first row where they fit (`settle` in
+home.js); while dragging, they come back as it goes on, and letting go outside the grid (or Esc) puts
+everything back. Every change is saved to `home.json` in the data folder (`App.SaveHome`; sizes and
+places are clamped on load, overlapping widgets moved down: `placeWidgets`; plugins' widgets stay, see
+below). A file from before places (no `x`, `y`) gets them as the grid packed it then. A placement of a widget aex does not have
 (removed, renamed without `renamedWidgets`, or from a newer aex) stays too, and shows a warning in its
 cell: unknown widget, with its id, to remove in Edit (`WidgetPage.Unknown`); only ids that are not a
 widget id at all are dropped. With `--debug`, Add widget also offers "Unknown widget"
@@ -329,14 +338,24 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
 - `aex.call(name, args)` — a data call. Built-in widgets call `widgetAPIs` (`internal/webui/home.go`);
   a plugin's widget only its plugin's calls. They never prompt, since a widget has no run to ask in:
   AEXT ones use `aext.NewQuiet`, which fails with `aext.ErrNoSession` instead of logging in.
-- `aex.run(line)` — runs a tool on Runs, as typed on the command line; a plugin's widget only its
-  plugin's tools.
+- `aex.run(line, {home})` — runs a tool on Runs, as typed on the command line; a plugin's widget only its
+  plugin's tools. With `home: true` the window goes back to Home once the run succeeds, if Runs is
+  still shown then (a failed run stays on Runs).
 - `aex.settings` / `aex.saveSettings(obj)` — this placement's own settings: a JSON object (8 KB at
   most) kept with it in `home.json` (`HomeWidget.Settings`), `{}` when it is added, such as which
   calendar it shows. home.js puts them in the page as it loads it.
 - `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data; for a
   plugin's widget at most every 30 s, since each call starts the plugin) and on auto refresh. Widgets
   that could not load try again then.
+- `aex.openPopup({title, width, data})` — opens the widget's page again in a popup over the window
+  (below the title bar), for what does not fit in its cell, such as its settings: the same page in a
+  sandboxed frame of its own, with `aex.popup` = `{data}` (null in the cell), the same calls, tools
+  and settings. It is as tall as the page (sdk.js reports its height), up to the window's, then it
+  scrolls; `width` in px (480 by default). A Promise of the value given to `aex.closePopup(value)` in
+  it, or undefined when closed otherwise: ×, Esc (unless the page's own handler called
+  `preventDefault`), a click outside, leaving Home, the widget removed or its page leaving. One popup
+  at a time (a second rejects). Settings saved in one page reach the other (`aex.onSettings(fn)`,
+  `aex.settings` already updated); refreshes and the theme reach both. `openPopup` in home.js.
 
 A widget that leaves its page (a link, `location`) is replaced by a note. The sandbox protects the
 window from a widget; blocking the network is only a second line, since an approved plugin is trusted
@@ -414,6 +433,17 @@ Widgets so far:
   installed. One row high it shows only the verdict. It was the cm-release plugin's
   `cm-release/cm-repos-state`: such a placement in `home.json` loads as this one
   (`renamedWidgets`), asking for its repos.
+- `shortcuts` — Shortcuts: buttons that run tools (`aex.run`), each a rounded tile in its color
+  (picked, transparent for no tile, or one by its place) with a built-in icon, an emoji or, with neither, its name's initials,
+  and its name under it. A button has a name, an icon or both (at least one), the tool it runs,
+  picked from every tool that runs on its own (`tools`, one of `windowAPIs` in `shortcuts.go`: a
+  group's tool as `<group> <tool>`), and arguments added to the line. Once its tool succeeds the
+  window goes back to Home, unless the button is set to stay on Runs. Kept in the placement's
+  settings (`name`: an optional title, `buttons`: `name`, `icon`, `color`, `tool`, `args`, `stay`;
+  24 at most); the pencil button (on hover) edits them, in a popup (`aex.openPopup`), since the widget is
+  often too small for it. One button fills the widget; several fill it as a grid (scrolling when they
+  do not fit), under the title when one is set. A button whose tool aex no longer has
+  is greyed out. No auto refresh; the tool list is read again after every run.
 
 ## Google
 

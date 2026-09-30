@@ -55,6 +55,7 @@ var widgetCatalog = []WidgetInfo{
 	{ID: "2048", Name: "2048", Summary: "The sliding tiles game: join the numbers to get to 2048", W: 4, H: 2},
 	{ID: "clock", Name: "Clock", Summary: "The time in one or two time zones you pick, Central Time by default", W: 3, H: 1},
 	{ID: "git-status", Name: "Git status", Summary: "Branch, changes and commits to push or pull in the git repos you pick", W: 6, H: 2, Refresh: 5},
+	{ID: "shortcuts", Name: "Shortcuts", Summary: "Buttons that run the tools you pick, each with a name or an icon", W: 2, H: 1},
 }
 
 // renamedWidgets are widgets that became others: a placement of one is loaded as the other.
@@ -79,6 +80,7 @@ var widgetAPIs = map[string]func(args map[string]any) (any, error){
 // windowAPIs are widget calls that need the window: a dialog the user opened from the widget.
 var windowAPIs = map[string]func(a *App, args map[string]any) (any, error){
 	"chooseFolder": chooseFolderAPI,
+	"tools":        toolsAPI,
 }
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
@@ -88,6 +90,7 @@ const (
 	maxWidgetW    = gridColumns
 	maxWidgetH    = 4
 	maxWidgets    = 48
+	maxRow        = maxWidgets * maxWidgetH // a widget's top row is at most this: room for gaps, not endless
 	homeFileLimit = 1 << 20
 	maxSettings   = 8 << 10 // a placement's settings, as JSON
 	minRefresh    = 5       // seconds: a plugin's widget refreshes at most this often, each call starts the plugin
@@ -99,12 +102,17 @@ type HomeWidget struct {
 	Widget string `json:"widget"` // WidgetInfo.ID
 	W      int    `json:"w"`
 	H      int    `json:"h"`
+	// X and Y are its place at full width: the column (0 to gridColumns-W) and row its top left
+	// corner is in, with gaps allowed. None (a file from before) places it where it fits first,
+	// after the widgets that have one, as the grid used to pack them.
+	X *int `json:"x,omitempty"`
+	Y *int `json:"y,omitempty"`
 	// Settings are this placement's own, a JSON object the widget keeps (sdk.js: aex.settings,
 	// aex.saveSettings), such as which calendar it shows.
 	Settings json.RawMessage `json:"settings,omitempty"`
 }
 
-// HomeLayout is the home page: its widgets in grid order.
+// HomeLayout is the home page: its widgets, top to bottom and left to right.
 type HomeLayout struct {
 	Widgets []HomeWidget `json:"widgets"`
 	// AutoRefreshOff turns off refreshing widgets on their own (WidgetInfo.Refresh), on by default.
@@ -259,8 +267,8 @@ func validSettings(s json.RawMessage) bool {
 	return len(s) <= maxSettings && json.Unmarshal(s, &m) == nil && m != nil
 }
 
-// cleanWidgets drops bad widget ids and repeated placement ids, clamps sizes to the grid, and compacts
-// settings, dropping those that are not a JSON object or too big.
+// cleanWidgets drops bad widget ids and repeated placement ids, clamps sizes to the grid, places the
+// widgets (placeWidgets), and compacts settings, dropping those that are not a JSON object or too big.
 func cleanWidgets(list []HomeWidget) []HomeWidget {
 	out := []HomeWidget{}
 	seen := map[string]bool{}
@@ -280,7 +288,67 @@ func cleanWidgets(list []HomeWidget) []HomeWidget {
 		}
 		out = append(out, w)
 	}
+	return placeWidgets(out)
+}
+
+// placeWidgets gives every widget a place in the grid at full width, none overlapping another, and
+// sorts them by it (top to bottom, then left to right). A widget with a place keeps it (clamped to
+// the grid), unless an earlier one (by that order) is there: it then goes down to the first row where
+// it fits. A widget without one goes where it fits first from the top left, in their order.
+func placeWidgets(list []HomeWidget) []HomeWidget {
+	var placed, rest []HomeWidget
+	for _, w := range list {
+		if w.X == nil || w.Y == nil {
+			w.X, w.Y = nil, nil
+			rest = append(rest, w)
+			continue
+		}
+		x, y := min(max(*w.X, 0), gridColumns-w.W), min(max(*w.Y, 0), maxRow)
+		w.X, w.Y = &x, &y
+		placed = append(placed, w)
+	}
+	slices.SortStableFunc(placed, cmpPlace)
+	out := make([]HomeWidget, 0, len(list))
+	for _, w := range placed {
+		for overlapsAny(out, *w.X, *w.Y, w.W, w.H) {
+			*w.Y++
+		}
+		out = append(out, w)
+	}
+	for _, w := range rest {
+		x, y := firstFit(out, w.W, w.H)
+		w.X, w.Y = &x, &y
+		out = append(out, w)
+	}
+	slices.SortStableFunc(out, cmpPlace)
 	return out
+}
+
+// cmpPlace orders widgets by their place: top to bottom, then left to right.
+func cmpPlace(a, b HomeWidget) int {
+	if *a.Y != *b.Y {
+		return *a.Y - *b.Y
+	}
+	return *a.X - *b.X
+}
+
+// overlapsAny reports whether a widget of w×h at x, y would overlap one of list (all placed).
+func overlapsAny(list []HomeWidget, x, y, w, h int) bool {
+	return slices.ContainsFunc(list, func(o HomeWidget) bool {
+		return x < *o.X+o.W && *o.X < x+w && y < *o.Y+o.H && *o.Y < y+h
+	})
+}
+
+// firstFit is the first place, row by row from the top left, where a widget of w×h overlaps none of
+// list (all placed).
+func firstFit(list []HomeWidget, w, h int) (x, y int) {
+	for y = 0; ; y++ {
+		for x = 0; x+w <= gridColumns; x++ {
+			if !overlapsAny(list, x, y, w, h) {
+				return x, y
+			}
+		}
+	}
 }
 
 // WidgetPage is a widget's page, or why it cannot be shown.

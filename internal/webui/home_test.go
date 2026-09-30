@@ -2,6 +2,7 @@ package webui
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,13 +36,53 @@ func TestCleanWidgets(t *testing.T) {
 		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
 		{ID: "h", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`[1]`)}, // not an object: dropped
 	})
-	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1}, {ID: "b", Widget: "nope", W: 1, H: 1},
-		{ID: "c", Widget: "quota", W: 2, H: 3},
-		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1},
-		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
-		{ID: "h", Widget: "quota", W: 1, H: 1}}
+	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1, X: at(0), Y: at(0)},
+		{ID: "b", Widget: "nope", W: 1, H: 1, X: at(0), Y: at(1)},
+		{ID: "c", Widget: "quota", W: 2, H: 3, X: at(1), Y: at(1)},
+		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1, X: at(3), Y: at(1)},
+		{ID: "g", Widget: "quota", W: 1, H: 1, X: at(5), Y: at(1), Settings: json.RawMessage(`{"calendar":"x"}`)},
+		{ID: "h", Widget: "quota", W: 1, H: 1, X: at(6), Y: at(1)}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+func at(n int) *int { return &n }
+
+// places gives each widget's place as "id@x,y", in the order of list.
+func places(list []HomeWidget) []string {
+	out := []string{}
+	for _, w := range list {
+		out = append(out, fmt.Sprintf("%s@%d,%d", w.ID, *w.X, *w.Y))
+	}
+	return out
+}
+
+func TestPlaceWidgets(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		in   []HomeWidget
+		want []string
+	}{
+		{"none placed: packed from the top left, as the grid did", []HomeWidget{
+			{ID: "a", W: 6, H: 2}, {ID: "b", W: 8, H: 1}, {ID: "c", W: 6, H: 1}, {ID: "d", W: 3, H: 1}},
+			[]string{"a@0,0", "c@6,0", "d@6,1", "b@0,2"}},
+		{"gaps kept, sorted by place", []HomeWidget{
+			{ID: "a", W: 3, H: 1, X: at(9), Y: at(4)}, {ID: "b", W: 3, H: 1, X: at(2), Y: at(1)}},
+			[]string{"b@2,1", "a@9,4"}},
+		{"clamped into the grid", []HomeWidget{
+			{ID: "a", W: 6, H: 1, X: at(10), Y: at(-3)}, {ID: "b", W: 1, H: 1, X: at(-1), Y: at(maxRow + 5)}},
+			[]string{"a@6,0", "b@0," + fmt.Sprint(maxRow)}},
+		{"an overlapping one goes down", []HomeWidget{
+			{ID: "a", W: 6, H: 2, X: at(0), Y: at(0)}, {ID: "b", W: 6, H: 1, X: at(3), Y: at(1)}, {ID: "c", W: 3, H: 1, X: at(4), Y: at(3)}},
+			[]string{"a@0,0", "b@3,2", "c@4,3"}},
+		{"ones without a place fill the gaps", []HomeWidget{
+			{ID: "a", W: 3, H: 1}, {ID: "b", W: 12, H: 1, X: at(0), Y: at(1)}, {ID: "c", W: 9, H: 1, X: at(3), Y: at(0)}},
+			[]string{"a@0,0", "c@3,0", "b@0,1"}},
+	} {
+		if got := places(placeWidgets(c.in)); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
@@ -61,7 +102,7 @@ func TestHomeSaveLoad(t *testing.T) {
 	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{{ID: "x", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`"s"`)}}}); err == nil {
 		t.Fatal("settings that are not an object saved")
 	}
-	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, Settings: json.RawMessage(`{"a":1}`)}},
+	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, X: at(3), Y: at(5), Settings: json.RawMessage(`{"a":1}`)}},
 		AutoRefreshOff: true}
 	if err := a.SaveHome(saved); err != nil {
 		t.Fatal(err)

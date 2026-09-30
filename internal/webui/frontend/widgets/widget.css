@@ -13,6 +13,10 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
+/* In a popup (sdk.js: aex.openPopup) the page is as tall as what it holds, and scrolls when the
+   window is shorter. */
+html.aex-popup { height: auto; overflow: auto; }
+html.aex-popup body { height: auto; overflow: visible; }
 button { font: inherit; color: inherit; }
 :focus-visible { outline: none; box-shadow: var(--ring); }
 

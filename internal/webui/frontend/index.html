@@ -136,6 +136,18 @@
     </div>
   </main>
 
+  <div id="widget-popup" hidden>
+    <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popup-title">
+      <header>
+        <h2 id="popup-title"></h2>
+        <button id="popup-close" class="icon-btn" type="button" title="Close (Esc)" aria-label="Close">
+          <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <iframe id="popup-frame" sandbox="allow-scripts"></iframe>
+    </div>
+  </div>
+
   <section id="onboarding" role="dialog" aria-modal="true" aria-labelledby="ob-title" hidden>
     <div class="ob-body">
       <img src="logo.svg" alt="">

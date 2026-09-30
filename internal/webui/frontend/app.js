@@ -161,7 +161,8 @@ function onOutput(s) {
   scanProblems(r, s);
 }
 
-async function runLine(line) {
+// runLine runs a typed command. home: back to Home once it finishes without failing (see finished).
+async function runLine(line, { home = false } = {}) {
   line = line.trim();
   if (!line || run) return;
   // configure is a page in the window, not a run.
@@ -175,6 +176,7 @@ async function runLine(line) {
   }
   showPage('runs');
   startRun(path, args);
+  run.home = home;
   try {
     await api().Run(path, args);
   } catch (e) {
@@ -206,6 +208,8 @@ function finished({ status, ok, quiet }) {
     run.body.appendChild(el('div', 'fail-note', status.replace(/^✖\s*/, '')));
   }
   if (!run.body.children.length) run.el.classList.add('empty');
+  // Back to Home when the run asked for it and succeeded, unless another page was picked meanwhile.
+  const home = ok && run.home && page === 'runs';
   run = null;
   document.body.classList.remove('running');
   updateCommand();
@@ -215,6 +219,7 @@ function finished({ status, ok, quiet }) {
   refresh();
   refreshWidgets();
   if (where === 'runs') resumeOnboarding(ok, status);
+  if (home) showPage('home');
 }
 
 // Problems --------------------------------------------------------------------------------------

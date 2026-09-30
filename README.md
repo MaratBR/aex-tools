@@ -49,6 +49,10 @@ this aex does not have (e.g. from another version) stays on the page with a warn
   Merge, SmartGit or TortoiseGit).
 - **Clock**: the time in one or two time zones (Central Time by default), with the day when it isn't
   today here; 24-hour or AM/PM.
+- **Shortcuts**: buttons that run the tools you pick, each with a name, an icon (or an emoji) or both;
+  once the tool succeeds you are back on Home (a button can stay on Runs instead).
+  Several show as a grid, with a title if you give one. They are edited in a popup, so a small widget
+  has room for it.
 - **Cat** and **2048**, for a break.
 
 ## Where your data is kept

@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Shortcuts</title>
+  <style>
+    body { position: relative; display: flex; }
+    main { flex: 1; min-width: 0; display: flex; }
+
+    /* A button's tile: a rounded square in its color, with its icon, emoji or initials in white.
+       --t is its size. */
+    .tile {
+      --t: 48px; --c: #0a84ff;
+      width: var(--t); height: var(--t); flex: none;
+      display: grid; place-items: center;
+      border-radius: calc(var(--t) * .24);
+      background: linear-gradient(160deg, color-mix(in srgb, var(--c) 78%, #fff), var(--c) 60%, color-mix(in srgb, var(--c) 85%, #000));
+      color: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, .12), inset 0 0 0 .5px rgba(255, 255, 255, .18);
+      font: 600 calc(var(--t) * .38)/1 var(--display);
+      letter-spacing: -.02em;
+      overflow: hidden;
+    }
+    .tile svg { width: 56%; height: 56%; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .tile .emoji { font-size: calc(var(--t) * .56); line-height: 1; }
+    .tile.missing { filter: grayscale(1); opacity: .55; }
+    /* Transparent: no tile, the icon, emoji or initials in the text color. */
+    .tile.clear { background: none; box-shadow: none; color: var(--ink); }
+
+    /* A launcher: its tile with its name under it. */
+    .launch {
+      display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0;
+      padding: 6px 4px; border: 0; border-radius: 12px; background: none; cursor: pointer;
+      transition: background-color .15s, transform .1s;
+    }
+    .launch:hover { background: var(--fill-2); }
+    .launch:active { transform: scale(.96); }
+    .launch .label { max-width: 100%; font-size: 12px; font-weight: 500; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* One button: it fills the widget. */
+    #single { flex: 1; min-width: 0; display: grid; place-items: center; padding: 8px; }
+    #single .launch { width: 100%; height: 100%; justify-content: center; }
+    #single .tile { --t: clamp(36px, min(48vh, 60vw), 120px); }
+    #single .label { font-size: 13px; }
+
+    /* Several: a grid of them, under their title when there is one. */
+    #several { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    #several h1 { margin: 0; padding: 8px 40px 0 14px; font: 600 14px/1.3 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #grid {
+      flex: 1; min-height: 0; overflow-y: auto; padding: 8px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); align-content: start; gap: 2px;
+    }
+    #grid .tile { --t: 44px; }
+
+    /* Nothing yet. */
+    #empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; font-size: 13px; }
+
+    /* A note over the bottom, e.g. when a tool is already running. */
+    #note {
+      position: absolute; left: 8px; right: 8px; bottom: 8px; padding: 5px 10px; border-radius: 8px;
+      font-size: 12px; text-align: center; color: var(--on-accent); background: color-mix(in srgb, var(--fail) 88%, transparent);
+    }
+
+    /* The settings button: shown on hover, at the top right. */
+    #edit { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s, background-color .15s, color .15s; }
+    body:hover #edit, #edit:focus-visible { opacity: 1; }
+
+    /* Settings: the title and the buttons, each with its icon, name, tool and arguments. */
+    #settings { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: 13px; overflow-y: auto; }
+    #settings input, #settings select {
+      min-width: 0; padding: 4px 8px; border: 0; border-radius: 6px; font: inherit; font-size: 13px;
+      color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep);
+    }
+    #settings input:focus, #settings select:focus { outline: none; box-shadow: var(--ring); }
+    #settings .lbl { color: var(--muted); font-size: 12px; }
+    #rows { display: flex; flex-direction: column; gap: 8px; }
+    #titleField { display: flex; flex-direction: column; gap: 3px; }
+    .row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; background: var(--fill-2); }
+    .row .line { display: flex; align-items: center; gap: 6px; }
+    .row .line > input, .row .line > select { flex: 1; }
+    .row .pick { padding: 0; border: 0; background: none; border-radius: 8px; cursor: pointer; }
+    .row .pick .tile { --t: 30px; }
+    .row .pick .tile.clear { box-shadow: inset 0 0 0 1px var(--sep); }
+    .row .pick .tile.none { background: var(--fill); color: var(--muted); box-shadow: inset 0 0 0 1px var(--sep); }
+    .row .stay { cursor: pointer; }
+    .row .stay input { flex: none; margin: 0; accent-color: var(--accent); }
+    .row .icon-btn:disabled { opacity: .3; cursor: default; background: none; }
+
+    /* The icon picker under a row: built-in icons, an emoji and the color. */
+    .picker { display: flex; flex-direction: column; gap: 8px; padding-top: 2px; }
+    .icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 4px; }
+    .icons button { height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 7px; background: var(--fill); color: var(--ink); cursor: pointer; font-size: 11px; }
+    .icons button:hover { background: var(--hover); }
+    .icons button.on { background: var(--accent); color: var(--on-accent); }
+    .icons svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+    .picker .line input { width: 5em; flex: none; text-align: center; }
+    .colors { display: flex; flex-wrap: wrap; gap: 6px; }
+    .colors button { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; }
+    .colors button.on { box-shadow: 0 0 0 2px var(--surface, #fff), 0 0 0 4px var(--c); }
+    .colors button.clear {
+      --c: var(--muted);
+      background: conic-gradient(var(--fill) 25%, var(--surface, #fff) 0 50%, var(--fill) 0 75%, var(--surface, #fff) 0) 0 0 / 10px 10px;
+      box-shadow: inset 0 0 0 1px var(--sep);
+    }
+    .colors button.clear.on { box-shadow: inset 0 0 0 1px var(--sep), 0 0 0 2px var(--surface, #fff), 0 0 0 4px var(--c); }
+
+    #settings .error { color: var(--fail); font-size: 12px; }
+    #settings .error:empty { display: none; }
+    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <main id="view"></main>
+  <div id="settings" hidden>
+    <label id="titleField"><span class="lbl">Title (optional)</span><input id="name" type="text" maxlength="60" placeholder="None" spellcheck="false" autocomplete="off"></label>
+    <div id="rows"></div>
+    <div class="actions"><button class="btn" id="add" type="button">Add button</button></div>
+    <div class="error" id="error"></div>
+    <div class="actions">
+      <button class="btn primary" id="save" type="button">Save</button>
+      <button class="btn" id="cancel" type="button">Cancel</button>
+    </div>
+  </div>
+  <div id="note" hidden></div>
+  <button class="icon-btn" id="edit" type="button" title="Edit shortcuts" aria-label="Edit shortcuts">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+  </button>
+
+  <script>
+    // Buttons that run tools (aex.run), kept in this placement's settings:
+    //   {name: title over several buttons, buttons: [{name, icon, color, tool, args, stay}]}
+    // After its tool succeeds the window goes back to Home, unless stay (then Runs stays shown).
+    // color is one of `colors` below or "transparent" (no tile); none picks one by its place.
+    // Each button has a name, an icon or both: icon is one of `icons` below or an emoji. One button
+    // fills the widget; several fill it as a grid, under the title when set. They are edited in a
+    // popup over the window (aex.openPopup: the cell is often too small), this same page with
+    // aex.popup set.
+    const view = document.getElementById('view'), settingsEl = document.getElementById('settings');
+    const rowsEl = document.getElementById('rows'), nameInput = document.getElementById('name');
+    const titleFieldEl = document.getElementById('titleField'), errorEl = document.getElementById('error');
+    const editBtn = document.getElementById('edit'), noteEl = document.getElementById('note');
+    const maxButtons = 24;
+
+    const icons = {
+      play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+      sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
+      rocket: '<path d="M5 15c-1.5 1-2 4-2 6 2 0 5-.5 6-2"/><path d="M9 18l-3-3c1.5-5 5-10.5 13-12-1.5 8-7 11.5-10 15z"/><circle cx="14.5" cy="9.5" r="1.5"/>',
+      branch: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10"/><path d="M18 9c0 5-12 3-12 8"/>',
+      merge: '<circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="17" r="2"/><path d="M6 7v10"/><path d="M6 7c0 6 6 10 10 10"/>',
+      tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
+      upload: '<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/>',
+      download: '<path d="M12 4v12"/><path d="M7 11l5 5 5-5"/><path d="M4 16v4h16v-4"/>',
+      clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/>',
+      calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+      check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+      bug: '<rect x="7" y="8" width="10" height="12" rx="5"/><path d="M9 8a3 3 0 0 1 6 0M12 12v8M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-2M20 20l-3-2"/>',
+      terminal: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 9.5l3 2.5-3 2.5M12.5 15H17"/>',
+      code: '<path d="M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5M13.5 5l-3 14"/>',
+      list: '<path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/>',
+      chart: '<path d="M4 20V4M4 20h16"/><path d="M8 16v-5M12 16V8M16 16v-8"/>',
+      folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+      file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+      box: '<path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5M12 12v9"/>',
+      database: '<ellipse cx="12" cy="6" rx="7" ry="2.5"/><path d="M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
+      cloud: '<path d="M7 18.5a4.5 4.5 0 0 1-.5-9 6 6 0 0 1 11.5 1.5 4 4 0 0 1-.5 7.5z"/>',
+      globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.5 3.5 5.5 3.5 8.5s-1 6-3.5 8.5c-2.5-2.5-3.5-5.5-3.5-8.5s1-6 3.5-8.5z"/>',
+      user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.5 4-6.5 8-6.5s7 2 8 6.5"/>',
+      mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5L12 13l8.5-6.5"/>',
+      bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+      key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
+      search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
+      settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
+      home: '<path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/><path d="M10 20v-5h4v5"/>',
+      flag: '<path d="M5 21V4M5 4h12l-2 4 2 4H5"/>',
+      star: '<path d="M12 3.5l2.6 5.5 6 .8-4.4 4.1 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.8l6-.8z"/>',
+      heart: '<path d="M12 20s-8-4.7-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15.3 12 20 12 20z"/>',
+      bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+      trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+    };
+    const colors = { blue: '#0a84ff', indigo: '#5856d6', purple: '#af52de', pink: '#ff2d55', red: '#ff3b30', orange: '#ff9500', green: '#34c759', teal: '#30b0c7', gray: '#8e8e93' };
+    const colorNames = Object.keys(colors);
+
+    function node(tag, cls, text) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    }
+    function svg(paths) {
+      const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      s.setAttribute('viewBox', '0 0 24 24');
+      s.setAttribute('aria-hidden', 'true');
+      s.innerHTML = paths;
+      return s;
+    }
+
+    // firstGrapheme keeps one character as the eye sees it (an emoji with its modifiers).
+    function firstGrapheme(s) {
+      s = String(s || '').trim();
+      if (!s) return '';
+      try { return new Intl.Segmenter().segment(s)[Symbol.iterator]().next().value.segment; } catch { return [...s][0]; }
+    }
+
+    const clean = b => ({
+      name: String(b?.name || '').trim().slice(0, 60),
+      icon: icons[b?.icon] ? b.icon : firstGrapheme(b?.icon),
+      color: colors[b?.color] || b?.color === 'transparent' ? b.color : '',
+      tool: String(b?.tool || '').trim(),
+      args: String(b?.args || '').trim(),
+      ...(b?.stay === true ? { stay: true } : {}),
+    });
+    const buttons = () => (Array.isArray(aex.settings.buttons) ? aex.settings.buttons : []).map(clean).filter(b => b.tool && (b.name || b.icon)).slice(0, maxButtons);
+    const title = () => String(aex.settings.name || '').trim();
+    const colorOf = (b, i) => colors[b.color] || colors[colorNames[i % colorNames.length]];
+    const lineOf = b => b.tool + (b.args ? ' ' + b.args : '');
+
+    // initials of a name, for a button without an icon: "Pull all" is PA.
+    const initials = name => name.split(/[\s\-_]+/).filter(Boolean).slice(0, 2).map(w => firstGrapheme(w).toUpperCase()).join('');
+
+    // The tools aex has, to mark buttons whose tool is gone; null until loaded (or when that fails).
+    let tools = null;
+    const missing = b => tools && !tools.some(t => t.line === b.tool);
+
+    function tile(b, i) {
+      const t = node('div', 'tile');
+      t.style.setProperty('--c', colorOf(b, i));
+      if (b.color === 'transparent') t.classList.add('clear');
+      if (icons[b.icon]) t.append(svg(icons[b.icon]));
+      else if (b.icon) t.append(node('span', 'emoji', b.icon));
+      else t.append(initials(b.name));
+      if (missing(b)) t.classList.add('missing');
+      return t;
+    }
+
+    function launcher(b, i) {
+      const btn = node('button', 'launch');
+      btn.type = 'button';
+      btn.title = (b.name ? b.name + ': ' : '') + lineOf(b) + (missing(b) ? ` (no tool ${b.tool} now)` : '');
+      btn.append(tile(b, i));
+      if (b.name) btn.append(node('span', 'label', b.name));
+      btn.onclick = () => launch(b);
+      return btn;
+    }
+
+    let noteTimer;
+    function note(text) {
+      noteEl.textContent = text;
+      noteEl.hidden = false;
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(() => (noteEl.hidden = true), 4000);
+    }
+
+    async function launch(b) {
+      try {
+        await aex.run(lineOf(b), { home: !b.stay });
+      } catch (e) {
+        note(e.message);
+      }
+    }
+
+    function render() {
+      const list = buttons();
+      view.textContent = '';
+      if (list.length > 1) {
+        const box = node('div');
+        box.id = 'several';
+        if (title()) box.append(node('h1', null, title()));
+        const grid = node('div');
+        grid.id = 'grid';
+        list.forEach((b, i) => grid.append(launcher(b, i)));
+        box.append(grid);
+        view.append(box);
+      } else if (list.length === 1) {
+        const box = node('div');
+        box.id = 'single';
+        box.append(launcher(list[0], 0));
+        view.append(box);
+      } else {
+        const box = node('div');
+        box.id = 'empty';
+        const add = node('button', 'btn primary', 'Add a shortcut');
+        add.type = 'button';
+        add.onclick = edit;
+        box.append(node('div', 'muted', 'Buttons that run your tools'), add);
+        view.append(box);
+      }
+      editBtn.hidden = !list.length;
+    }
+
+    async function loadTools() {
+      try {
+        tools = await aex.call('tools');
+      } catch {
+        tools = null;
+      }
+      if (settingsEl.hidden) render();
+    }
+
+    // Settings --------------------------------------------------------------------------------
+
+    // draft is the buttons being edited; picking is the row whose icon picker is open.
+    let draft = [], picking = -1;
+
+    async function edit() {
+      if (!aex.popup) {
+        try {
+          await aex.openPopup({ title: 'Edit shortcuts', width: 480 });
+        } catch (e) {
+          note(e.message);
+        }
+        return;
+      }
+      draft = buttons();
+      if (!draft.length) draft.push(clean({}));
+      picking = draft.length === 1 && !draft[0].tool ? 0 : -1;
+      nameInput.value = String(aex.settings.name || '');
+      errorEl.textContent = '';
+      view.hidden = editBtn.hidden = noteEl.hidden = true;
+      settingsEl.hidden = false;
+      drawRows();
+      loadTools().then(drawRows);
+    }
+
+    function close() {
+      if (aex.popup) return aex.closePopup();
+      settingsEl.hidden = true;
+      view.hidden = false;
+      render();
+    }
+
+    function toolSelect(b) {
+      const s = node('select');
+      s.ariaLabel = 'Tool';
+      s.append(Object.assign(node('option', null, 'Pick a tool…'), { value: '' }));
+      for (const t of tools || []) s.append(Object.assign(node('option', null, t.line), { value: t.line, title: t.summary }));
+      if (b.tool && !(tools || []).some(t => t.line === b.tool)) {
+        s.append(Object.assign(node('option', null, b.tool + (tools ? ' (not found)' : '')), { value: b.tool }));
+      }
+      s.value = b.tool;
+      s.onchange = () => { b.tool = s.value; };
+      return s;
+    }
+
+    function iconBtn(title, paths, onclick, disabled) {
+      const b = node('button', 'icon-btn');
+      b.type = 'button';
+      b.title = b.ariaLabel = title;
+      b.append(svg(paths));
+      b.disabled = !!disabled;
+      b.onclick = onclick;
+      return b;
+    }
+
+    function picker(b, i) {
+      const box = node('div', 'picker');
+      const grid = node('div', 'icons');
+      const none = node('button', b.icon ? '' : 'on', 'None');
+      none.type = 'button';
+      none.title = 'No icon: the name only';
+      none.onclick = () => { b.icon = ''; drawRows(); };
+      grid.append(none);
+      for (const [key, paths] of Object.entries(icons)) {
+        const btn = node('button', b.icon === key ? 'on' : '');
+        btn.type = 'button';
+        btn.title = btn.ariaLabel = key;
+        btn.append(svg(paths));
+        btn.onclick = () => { b.icon = key; drawRows(); };
+        grid.append(btn);
+      }
+      const emoji = node('input');
+      emoji.type = 'text';
+      emoji.placeholder = '😀';
+      emoji.ariaLabel = 'Emoji';
+      emoji.value = b.icon && !icons[b.icon] ? b.icon : '';
+      emoji.onchange = () => { b.icon = firstGrapheme(emoji.value); drawRows(); };
+      const emojiLine = node('div', 'line');
+      emojiLine.append(node('span', 'lbl', 'Or an emoji'), emoji);
+
+      const swatches = node('div', 'colors');
+      colorNames.forEach(c => {
+        const s = node('button', b.color !== 'transparent' && colorOf(b, i) === colors[c] ? 'on' : '');
+        s.type = 'button';
+        s.title = s.ariaLabel = c;
+        s.style.background = colors[c];
+        s.style.setProperty('--c', colors[c]);
+        s.onclick = () => { b.color = c; drawRows(); };
+        swatches.append(s);
+      });
+      const clear = node('button', b.color === 'transparent' ? 'clear on' : 'clear');
+      clear.type = 'button';
+      clear.title = clear.ariaLabel = 'transparent';
+      clear.onclick = () => { b.color = 'transparent'; drawRows(); };
+      swatches.append(clear);
+      box.append(grid, emojiLine, swatches);
+      return box;
+    }
+
+    function drawRows() {
+      rowsEl.textContent = '';
+      draft.forEach((b, i) => {
+        const row = node('div', 'row');
+        const top = node('div', 'line');
+        const pick = node('button', 'pick');
+        pick.type = 'button';
+        pick.title = pick.ariaLabel = 'Icon and color';
+        const t = tile({ ...b, name: b.name || '' }, i);
+        if (!b.icon) { t.textContent = b.name ? initials(b.name) : '+'; }
+        if (!b.icon && !b.name) t.classList.add('none');
+        t.classList.remove('missing');
+        pick.append(t);
+        pick.onclick = () => { picking = picking === i ? -1 : i; drawRows(); };
+        const name = node('input');
+        name.type = 'text';
+        name.maxLength = 60;
+        name.placeholder = 'Name';
+        name.ariaLabel = 'Name';
+        name.spellcheck = false;
+        name.value = b.name;
+        name.oninput = () => {
+          b.name = name.value;
+          if (!b.icon) t.textContent = b.name.trim() ? initials(b.name.trim()) : '+';
+          t.classList.toggle('none', !b.icon && !b.name.trim());
+        };
+        top.append(pick, name,
+          iconBtn('Move earlier', '<path d="M6 15l6-6 6 6"/>', () => { [draft[i - 1], draft[i]] = [draft[i], draft[i - 1]]; picking = -1; drawRows(); }, i === 0),
+          iconBtn('Move later', '<path d="M6 9l6 6 6-6"/>', () => { [draft[i + 1], draft[i]] = [draft[i], draft[i + 1]]; picking = -1; drawRows(); }, i === draft.length - 1),
+          iconBtn('Remove', '<path d="M6 6l12 12M18 6L6 18"/>', () => { draft.splice(i, 1); picking = -1; drawRows(); }));
+
+        const bottom = node('div', 'line');
+        const args = node('input');
+        args.type = 'text';
+        args.placeholder = 'Arguments (optional)';
+        args.ariaLabel = 'Arguments';
+        args.spellcheck = false;
+        args.value = b.args;
+        args.oninput = () => { b.args = args.value; };
+        bottom.append(toolSelect(b), args);
+
+        const stay = node('label', 'line stay');
+        const box = node('input');
+        box.type = 'checkbox';
+        box.checked = !!b.stay;
+        box.onchange = () => { b.stay = box.checked; };
+        stay.append(box, node('span', 'lbl', 'Stay on Runs when it is done (else back to Home once it succeeds)'));
+
+        row.append(top, bottom, stay);
+        if (picking === i) row.append(picker(b, i));
+        rowsEl.append(row);
+      });
+      titleFieldEl.hidden = draft.length < 2;
+      document.getElementById('add').disabled = draft.length >= maxButtons;
+    }
+
+    document.getElementById('add').onclick = () => {
+      draft.push(clean({}));
+      picking = -1;
+      drawRows();
+      rowsEl.lastElementChild?.querySelector('input')?.focus();
+    };
+
+    document.getElementById('save').onclick = async () => {
+      const list = draft.map(clean);
+      const bad = list.findIndex(b => !b.tool || !(b.name || b.icon));
+      if (bad >= 0) {
+        const b = list[bad];
+        errorEl.textContent = `Button ${bad + 1}: ` + (!b.tool ? 'pick the tool it runs' : 'give it a name, an icon or both');
+        return;
+      }
+      const next = { ...aex.settings, name: nameInput.value.trim().slice(0, 60), buttons: list };
+      if (!next.name) delete next.name;
+      try {
+        await aex.saveSettings(next);
+      } catch (e) {
+        errorEl.textContent = 'Could not keep the shortcuts: ' + e.message;
+        return;
+      }
+      close();
+    };
+    document.getElementById('cancel').onclick = close;
+    editBtn.onclick = edit;
+
+    // Tools come and go (plugins, custom tools): check again after every run.
+    aex.onRefresh(loadTools);
+    if (aex.popup) {
+      edit();
+    } else {
+      aex.onSettings(render); // saved in the popup
+      render();
+      loadTools();
+    }
+  </script>
+</body>
+</html>

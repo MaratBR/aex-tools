@@ -356,11 +356,23 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 
 #grid {
   --cols: 12;
+  --row: 150px;
   display: grid;
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  grid-auto-rows: 150px;
+  grid-auto-rows: var(--row);
   grid-auto-flow: dense;
   gap: 14px;
+}
+/* At full width each widget is at its place (home.js: fitGrid). In Edit, the grid's cells show, so
+   a widget can be moved to a free one. */
+.home-editing #grid.placed {
+  --step-x: calc((100% + 14px) / 12);
+  --step-y: calc(var(--row) + 14px);
+  background:
+    linear-gradient(to right, transparent calc(100% - 14px), var(--bg) 0) 0 0 / var(--step-x) var(--step-y),
+    linear-gradient(to bottom, transparent calc(100% - 14px), var(--bg) 0) 0 0 / var(--step-x) var(--step-y),
+    color-mix(in srgb, var(--fill) 55%, transparent);
+  border-radius: 16px;
 }
 .cell {
   position: relative;
@@ -422,6 +434,28 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .step:hover { background: var(--hover); }
 .cell-tools > .step { background: var(--fill); }
 .cell-tools .btn.destructive { margin-left: auto; }
+
+/* A widget's popup (home.js: openPopup): its page again, over the window below the title bar, as
+   tall as the page up to the window's height. */
+#widget-popup {
+  position: fixed; inset: 36px 0 0; z-index: 15;
+  display: grid; place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(4px);
+}
+#widget-popup[hidden] { display: none; }
+#widget-popup .popup {
+  max-width: 100%; max-height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--pop-shadow);
+  overflow: hidden;
+}
+#widget-popup header { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 8px 0 16px; }
+#widget-popup h2 { flex: 1; min-width: 0; margin: 0; font: 600 15px/1.3 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#popup-frame { flex: 0 1 auto; display: block; width: 100%; height: 120px; min-height: 0; border: 0; background: transparent; }
 
 /* Command line --------------------------------------------------------------------------------- */
 
@@ -701,6 +735,8 @@ div.row { cursor: default; }
 #home:not([hidden]), #page:not([hidden]), #settings:not([hidden]), #onboarding:not([hidden]) .ob-body { animation: rise-in .26s var(--ease-out); }
 /* Popovers pop from their button: the widget picker below Add widget, suggestions above the line. */
 #widget-picker:not([hidden]) { transform-origin: top right; animation: pop-in .16s var(--ease-out); }
+#widget-popup:not([hidden]) { animation: fade-in .16s; }
+#widget-popup:not([hidden]) .popup { animation: pop-up .18s var(--ease-out); }
 #suggest:not([hidden]) { transform-origin: bottom center; animation: pop-up .14s var(--ease-out); }
 #command-error:not([hidden]) { animation: fade-in .2s; }
 #notice:not([hidden]) { animation: notice-in .24s var(--ease-out); }
