@@ -6,24 +6,23 @@
   <style>
     body { position: relative; display: flex; padding: 12px 16px; }
 
-    /* The clocks: side by side, or one under the other when the widget is taller than wide. Sizes
-       follow the widget (vw, vh are its frame's) and how many clocks it shows (--n). */
-    #clocks { --n: 1; flex: 1; min-width: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 16px; }
-    @media (max-aspect-ratio: 1/1) { #clocks { grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: 1fr; } }
-    .clock { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; }
-    .clock + .clock { box-shadow: -8px 0 0 -7.5px var(--sep); }
-    @media (max-aspect-ratio: 1/1) { .clock + .clock { box-shadow: 0 -8px 0 -7.5px var(--sep); } }
-    .place { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; }
+    /* The clocks: side by side, or one under the other (.stack), whichever lets the time be larger;
+       fit() picks it and the time's size (--size). */
+    #clocks { --size: 40px; flex: 1; min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 16px; }
+    #clocks.stack { grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: 1fr; }
+    .clock { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+    .clock + .clock::before { content: ''; position: absolute; left: -8.5px; top: 20%; bottom: 20%; border-left: 1px solid var(--sep); }
+    #clocks.stack .clock + .clock::before { left: 20%; right: 20%; top: -8.5px; bottom: auto; border-left: 0; border-top: 1px solid var(--sep); }
+    .place { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; font-size: 13px; font-weight: 600; }
     .place .name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .place .zone { flex: none; font-weight: 400; color: var(--muted); font-size: 12px; }
     .time {
-      font: 600 clamp(22px, min(calc(19vw / var(--n)), 34vh), 88px)/1.05 var(--display);
+      font: 600 var(--size)/1.05 var(--display);
       letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap;
     }
     .time .ampm { font-size: .42em; font-weight: 500; margin-left: .2em; color: var(--muted); letter-spacing: 0; }
-    .day { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day { max-width: 100%; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .day .other { padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
-    @media (max-aspect-ratio: 1/1) { .time { font-size: clamp(22px, min(22vw, calc(30vh / var(--n))), 88px); } }
 
     /* The settings button: shown on hover, at the top right. */
     #edit { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s, background-color .15s, color .15s; }
@@ -108,7 +107,6 @@
       const now = new Date(), list = zones();
       const here = { y: now.getFullYear(), m: now.getMonth() + 1, d: now.getDate() };
       const hereOffset = -now.getTimezoneOffset();
-      clocksEl.style.setProperty('--n', list.length);
       clocksEl.textContent = '';
       for (const zone of list) {
         const t = parts(zone, now);
@@ -139,6 +137,29 @@
         c.append(head, time, dayEl);
         clocksEl.append(c);
       }
+      fit();
+    }
+
+    // fit lays the clocks out side by side or one under the other, whichever lets the time be
+    // larger, and sizes the time to fill its cell: measured at 100px, then scaled.
+    const gap = 16;
+    function fit() {
+      const n = clocksEl.children.length;
+      if (!n || clocksEl.hidden) return;
+      const W = clocksEl.clientWidth, H = clocksEl.clientHeight;
+      clocksEl.style.setProperty('--size', '100px');
+      let tw = 0, rest = 0;
+      for (const c of clocksEl.children) {
+        const [head, time, day] = c.children;
+        tw = Math.max(tw, time.getBoundingClientRect().width);
+        rest = Math.max(rest, head.offsetHeight + day.offsetHeight + 4);
+      }
+      if (!tw) return;
+      const size = (w, h) => Math.min(w * .95 / tw * 100, (h - rest) / 1.05);
+      const side = size((W - gap * (n - 1)) / n, H), stack = size(W, (H - gap * (n - 1)) / n);
+      const stacked = n > 1 && stack > side;
+      clocksEl.classList.toggle('stack', stacked);
+      clocksEl.style.setProperty('--size', Math.floor(Math.max(18, Math.min(160, stacked ? stack : side))) + 'px');
     }
 
     // tick renders now and again at the start of every minute.
@@ -210,6 +231,8 @@
     // The device's time zone can change (travel, daylight saving) while the window is open.
     aex.onRefresh(() => { if (settingsEl.hidden) tick(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden && settingsEl.hidden) tick(); });
+    new ResizeObserver(fit).observe(document.body);
+    document.fonts?.ready.then(fit);
     tick();
   </script>
 </body>

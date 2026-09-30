@@ -439,7 +439,8 @@ Widgets so far:
   its date, marked Tomorrow / Yesterday (or the date) when it is not today on the device. 24-hour by
   default, or AM/PM. The clock button (on hover) picks the zones, from every zone the web view knows
   (`Intl.supportedValuesOf`), and the format, kept in the placement's settings (`zones`, `h24`). Two
-  clocks sit side by side, or one under the other when the widget is taller than wide. It redraws
+  clocks sit side by side or one under the other, whichever lets the time be larger, and the time
+  is sized to fill its cell (`fit`, measured on every resize). It redraws
   itself every minute; no auto refresh.
 - `git-status` (every 5 s) — Git status (`gitstatus.go`): the repos this placement watches, each with
   its branch and uncommitted changes, commits to push (↑) and to pull (↓, as of the last fetch), with
