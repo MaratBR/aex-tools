@@ -21,6 +21,7 @@ import (
 	"aex/internal/tools/onboarding"
 	"aex/internal/tools/plugins"
 	"aex/internal/tools/quota"
+	"aex/internal/tools/remind"
 	"aex/internal/tools/worklogsync"
 	"aex/internal/ui"
 )
@@ -43,6 +44,7 @@ var builtins = []tool.Tool{
 	customtools.Tool,
 	onboarding.Tool,
 	onboarding.ResetTool,
+	remind.Tool,
 }
 
 // debugGroup holds the debug tools (tool.Tool.Debug), only with --debug.

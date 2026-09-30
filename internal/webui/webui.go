@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"strings"
 	"sync"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"aex/internal/reminder"
 	"aex/internal/tool"
 	"aex/internal/ui"
 )
@@ -101,12 +103,14 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.emit = func(event string, data any) { runtime.EventsEmit(ctx, event, data) }
 	ui.Remote = a
-	out, err := captureOutput(func(text string) { a.emit("output", text) })
+	out, err := captureOutput(func(text string) { a.emit("output", text) }, a.mark)
 	if err != nil {
 		runtime.LogErrorf(ctx, "capturing output: %v", err)
 		return
 	}
 	a.out = out
+	// Tools and plugins now hand their reminders to the window through the output (reminder.Show).
+	os.Setenv(reminder.EnvVar, "window")
 }
 
 // send emits a prompt or the end of a run, after the output printed before it.

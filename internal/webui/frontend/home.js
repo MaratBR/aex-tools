@@ -4,7 +4,8 @@
 // Each widget is a page of its own in a sandboxed frame (scripts only: no access to the window, no
 // network). Its page comes from the backend (built-in: widgets/<id>.html; a plugin's: from the
 // plugin), with the window's colors, widget.css and widgets/sdk.js put at the top of its <head>. It
-// reaches the window only through messages, answered here: its data calls and running a tool.
+// reaches the window only through messages, answered here: its data calls, running a tool and
+// showing a reminder.
 // Backend: home.go (Widgets, Home, SaveHome, WidgetPage, WidgetCall).
 const grid = $('grid'), picker = $('widget-picker');
 
@@ -519,6 +520,12 @@ window.addEventListener('message', async e => {
     if (run) return reply(false, undefined, 'a tool is already running');
     runLine(line, { home: !!m.home });
     reply(true);
+  } else if (m.op === 'remind') {
+    try {
+      reply(true, await api().Remind(String(m.title || ''), String(m.message || '')));
+    } catch (err) {
+      reply(false, undefined, String(err));
+    }
   } else if (m.op === 'settings') {
     const s = m.settings;
     if (!s || typeof s !== 'object' || Array.isArray(s)) return reply(false, undefined, 'settings must be an object');

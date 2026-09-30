@@ -58,6 +58,12 @@ this aex does not have (e.g. from another version) stays on the page with a warn
   has room for it.
 - **Cat** and **2048**, for a break.
 
+Tools and widgets can show reminders: a message on top of every window on every screen, with a soft
+chime, until you close it (× at the top right) on any of them. It never takes the focus from what you
+are typing in. Links in it open in your default browser, or in the one a link names:
+`aex+brave://google.com` opens in Brave (also chrome, edge, firefox, vivaldi, yandex, opera, …), or
+the default browser when that one is not installed.
+
 ## Where your data is kept
 
 - Settings and output files are in the data folder, `%APPDATA%\aex` by default. You can open it from the

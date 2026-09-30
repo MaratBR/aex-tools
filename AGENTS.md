@@ -50,6 +50,8 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `google` — Google sign-in (see Google) and the Calendar API client
   - `httpx` — on any unexpected response (status, non-JSON, wrong shape) dumps status, URL,
     relevant headers (cookie values redacted) and body (capped at 300 KB) to stderr
+  - `reminder` — reminders on top of all windows on every screen, with a chime (see Reminders)
+  - `browser` — opens web links, in the browser an `aex+<browser>://` link names (see Reminders)
   - `quota` — monthly quota from AEXT working days, leaves and logged hours
   - `ui` — ANSI colors (only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces), line
     prompts, hidden input, key press; `ui.Remote` answers all prompts elsewhere (the window)
@@ -369,6 +371,7 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
 - `aex.settings` / `aex.saveSettings(obj)` — this placement's own settings: a JSON object (8 KB at
   most) kept with it in `home.json` (`HomeWidget.Settings`), `{}` when it is added, such as which
   calendar it shows. home.js puts them in the page as it loads it.
+- `aex.remind({title, message})` — shows a reminder (see Reminders), a Promise; `App.Remind`.
 - `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data; for a
   plugin's widget at most every 30 s, since each call starts the plugin) and on auto refresh. Widgets
   that could not load try again then.
@@ -470,6 +473,44 @@ Widgets so far:
   often too small for it. One button fills the widget; several fill it as a grid (scrolling when they
   do not fit), under the title when one is set. A button whose tool aex no longer has
   is greyed out. No auto refresh; the tool list is read again after every run.
+
+## Reminders
+
+A reminder (`internal/reminder`) is a message, with an optional title ("Reminder" when none; 100 and
+1000 characters at most), shown on top of all windows on every screen with a soft chime until it is
+dismissed.
+
+- Windows: a card per monitor (a topmost Win32 window drawn with GDI, per-monitor DPI), centred near
+  the top of its work area, with the title, the time it appeared, a close button (×, top right) and
+  the message, wrapped word by word (`layout`), its links underlined. × on any screen closes it on
+  all; a link opens and leaves it open. It never takes the focus (`WS_EX_NOACTIVATE`), is not on the taskbar,
+  and follows Windows' light or dark app mode. Each reminder runs its windows on a thread of its own;
+  several at once are cascaded. The chime is two bell notes made in code (`chime.go`, a WAV played
+  with `PlaySound`).
+- macOS and Linux: a system notification with a sound (`osascript`, `notify-send`); links show as
+  written.
+
+Links in the message (`Reminder.Parts`): `[label](link)` or a bare link, each `http(s)://…` or
+`aex+<browser>://<address>`; anything else (`file:`, `javascript:`, …) stays text. `browser.Open`
+opens an `aex+` one in that browser, the address as https unless it has a scheme of its own
+(`aex+firefox://http://intranet`), and in the default browser when that one is not installed (or
+not known: then a command of that name is tried). Browsers (`browser.Browsers`): chrome, edge,
+firefox, brave, vivaldi, yandex, opera, opera-gx, chromium, librewolf, waterfox, arc, safari (and a
+few aliases). Found on Windows through the browsers Windows has registered
+(`SOFTWARE\Clients\StartMenuInternet`, user and device, shorter key names first, so Chrome comes
+before its Canary), then App Paths, the folders it installs to and PATH; on macOS with `open -a`, on
+Linux its commands on PATH.
+
+Triggering one:
+
+- A tool or plugin calls `reminder.Show`. In the window's process `AEX_REMINDERS=window` is set (tools
+  and plugins inherit it), so `Show` prints a mark, `\x1b]aex-remind;<base64 of {"title","message"}>\x07`,
+  which the window's output stream takes out of the run (`stream.mark`, `webui/reminder.go`) and shows;
+  it stays after the tool exits. Any program whose output the window reads through the pipe can print
+  that mark (not a custom tool shown as a terminal, nor a widget call). In a terminal `Show` shows it
+  itself and waits until it is dismissed, since it goes with the process.
+- A widget calls `aex.remind` (see Home and widgets).
+- `aex --debug debug reminder [--title T] [--in 10s] [message]` shows one (`internal/tools/remind`).
 
 ## Google
 

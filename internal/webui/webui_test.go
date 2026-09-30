@@ -146,3 +146,21 @@ func TestPromptOptionsReachFrontendAsLabelAndValue(t *testing.T) {
 		t.Fatalf("prompt JSON %s, want it to contain %s", data, want)
 	}
 }
+
+func TestStreamHandsOnOtherMarks(t *testing.T) {
+	var c collector
+	s := newStream(io.Discard, c.emit)
+	var marks []string
+	s.mark = func(name, payload string) { marks = append(marks, name+"="+payload) }
+	input := "a" + markPrefix + "remind;eyJ9\x07b\x1b]0;title\x07c"
+	var pending []byte
+	for i := range len(input) {
+		pending = s.forward(append(pending, input[i]))
+	}
+	if got, want := c.String(), "ab\x1b]0;title\x07c"; got != want {
+		t.Fatalf("output %q, want %q", got, want)
+	}
+	if len(marks) != 1 || marks[0] != "remind=eyJ9" {
+		t.Fatalf("marks %q", marks)
+	}
+}

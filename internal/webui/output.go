@@ -7,14 +7,21 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 )
 
-// syncMark is written into the output pipe by stream.Sync; the reader drops it and reports it
-// reached it. An OSC sequence, so it would show as nothing even if it leaked.
-const syncMark = "\x1b]aex-sync;"
+// Marks are OSC sequences in the output, "\x1b]aex-<name>;<payload>\x07": the reader takes them
+// out (they would show as nothing even if they leaked). syncMark is written by stream.Sync, the
+// reader reports it reached it; any other goes to stream.mark (e.g. reminder.Mark).
+const (
+	markPrefix = "\x1b]aex-"
+	syncMark   = markPrefix + "sync;"
+	// maxMark is the longest mark taken; a longer one is passed on as text.
+	maxMark = 64 << 10
+)
 
 // stream forwards what is written to w (the process's stdout and stderr) to emit, in order and
 // whole UTF-8 characters at a time. Sync waits until everything written so far is forwarded, so
@@ -22,6 +29,7 @@ const syncMark = "\x1b]aex-sync;"
 type stream struct {
 	w    io.Writer
 	emit func(text string)
+	mark func(name, payload string) // marks other than sync, when set
 
 	mu      sync.Mutex
 	next    int
@@ -33,14 +41,15 @@ func newStream(w io.Writer, emit func(string)) *stream {
 }
 
 // captureOutput points os.Stdout and os.Stderr (so every fmt.Print, and plugins, which inherit
-// them) at a pipe streamed to emit.
-func captureOutput(emit func(string)) (*stream, error) {
+// them) at a pipe streamed to emit; marks in it (other than sync) go to mark.
+func captureOutput(emit func(string), mark func(name, payload string)) (*stream, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
 	os.Stdout, os.Stderr = w, w
 	s := newStream(w, emit)
+	s.mark = mark
 	go s.pump(r)
 	return s, nil
 }
@@ -79,27 +88,38 @@ func (s *stream) pump(r io.Reader) {
 	}
 }
 
-// forward emits data up to what may be the start of a cut-off sync mark or UTF-8 character,
-// handling the sync marks in it, and returns the rest.
+// forward emits data up to what may be the start of a cut-off mark or UTF-8 character,
+// handling the marks in it, and returns the rest.
 func (s *stream) forward(data []byte) []byte {
 	for {
-		i := bytes.Index(data, []byte(syncMark))
+		i := bytes.Index(data, []byte(markPrefix))
 		if i < 0 {
 			break
 		}
 		end := bytes.IndexByte(data[i:], '\x07')
-		if end < 0 {
+		if end < 0 && len(data)-i <= maxMark {
 			s.send(data[:i])
 			return append([]byte(nil), data[i:]...)
 		}
+		if end < 0 || end > maxMark {
+			// Not a mark of ours after all: text.
+			s.send(data[:i+len(markPrefix)])
+			data = data[i+len(markPrefix):]
+			continue
+		}
 		s.send(data[:i])
-		if id, err := strconv.Atoi(string(data[i+len(syncMark) : i+end])); err == nil {
-			s.mu.Lock()
-			if ch := s.reached[id]; ch != nil {
-				close(ch)
-				delete(s.reached, id)
+		name, payload, _ := strings.Cut(string(data[i+len(markPrefix):i+end]), ";")
+		if name == "sync" {
+			if id, err := strconv.Atoi(payload); err == nil {
+				s.mu.Lock()
+				if ch := s.reached[id]; ch != nil {
+					close(ch)
+					delete(s.reached, id)
+				}
+				s.mu.Unlock()
 			}
-			s.mu.Unlock()
+		} else if s.mark != nil {
+			s.mark(name, payload)
 		}
 		data = data[i+end+1:]
 	}

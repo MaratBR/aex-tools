@@ -8,6 +8,8 @@
 //   aex.run(line, opts)   runs a tool on the Runs page, as if typed on the command line; a plugin's
 //                         widget only its plugin's tools. opts {home: true}: back to Home once it
 //                         finishes without failing, if Runs is still shown then
+//   aex.remind(opts)      shows a reminder on top of every window on every screen, with a chime,
+//                         until dismissed: opts {title (optional), message}, a Promise
 //   aex.onRefresh(fn)     fn runs when the data may have changed (after a run), on auto refresh (as
 //                         often as the widget asks: WidgetInfo.Refresh) and on aex.refresh()
 //   aex.settings          this placement's own settings (an object, {} at first): each time the
@@ -70,6 +72,7 @@ const aex = (() => {
   return Object.freeze({
     call: (name, args = {}) => request('call', { name, args }),
     run: (line, opts = {}) => request('run', { line, home: !!opts?.home }),
+    remind: (opts = {}) => request('remind', { title: String(opts?.title ?? ''), message: String(opts?.message ?? '') }),
     onRefresh: fn => addEventListener('aex:refresh', () => fn()),
     refresh: () => dispatchEvent(new Event('aex:refresh')),
     get settings() { return structuredClone(settings); },
