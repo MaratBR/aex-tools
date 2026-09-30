@@ -57,6 +57,12 @@ aex runs a plugin or a custom script only after you approve that exact file. If 
 asks you again. The plugins built together with aex from this repo are approved already. A plugin gets
 only the logins you allow it to use.
 
+## About and license
+
+aex is licensed under the [Apache License 2.0](LICENSE); see also [NOTICE](NOTICE). **Settings > About**
+shows the version, when and from which commit it was built, the plugins pre-approved in it, and the
+licenses of the open source it includes.
+
 ## Working on aex
 
 Build steps are in [BUILD.md](BUILD.md). How the code works is in [AGENTS.md](AGENTS.md), which is

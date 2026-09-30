@@ -22,12 +22,14 @@ build by hand:
 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags '-s -w' -o dist/plugins/ ./plugins/...
 HASHES=$(for d in plugins/*/; do sha256sum "dist/plugins/$(basename "$d").exe" | cut -d' ' -f1; done | paste -sd,)
 GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath \
-  -ldflags "-s -w -X aex/internal/plugin.preApproved=$HASHES" -o dist/aex.exe .
+  -ldflags "-s -w -X aex/internal/plugin.preApproved=$HASHES -X aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)"   -o dist/aex.exe .
 ```
 
 - Plugins go first: aex is built with their SHA-256 as pre-approved hashes (`-X aex/internal/plugin.preApproved`),
   so they run without asking to approve them. Leave it out and each asks once, as any plugin does.
 
+- `-X aex/internal/about.builtAt` is the build time Settings > About shows; left out, it shows the exe
+  file's time. The commit comes from git by itself (Go stamps it), so build from the checkout.
 - `-tags desktop,production` is needed for the window (Wails; without it no window opens); plugins do not need it.
 - `-trimpath` makes it a release build (see Release exe); leave it out for a dev build.
 - The committed `rsrc_windows_*.syso` give the icon and version info; `go generate ./...` is needed only
@@ -41,13 +43,15 @@ the repo folder in PowerShell:
 ```powershell
 docker run --rm -v "${PWD}:/src" -v aex-gomod:/go/pkg/mod -w /src `
   -e GOOS=windows -e GOARCH=amd64 -e CGO_ENABLED=0 golang:1.26 `
-  sh -c 'go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/... && H=$(for d in plugins/*/; do sha256sum dist/plugins/$(basename $d).exe | cut -c1-64; done | paste -sd,) && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -X\ aex/internal/plugin.preApproved=$H -o dist/aex.exe .'
+  sh -c 'git config --global --add safe.directory /src && go build -trimpath -ldflags=-s\ -w -o dist/plugins/ ./plugins/... && H=$(for d in plugins/*/; do sha256sum dist/plugins/$(basename $d).exe | cut -c1-64; done | paste -sd,) && go build -tags desktop,production -trimpath -ldflags=-s\ -w\ -X\ aex/internal/plugin.preApproved=$H\ -X\ aex/internal/about.builtAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) -o dist/aex.exe .'
 ```
 
 (In a POSIX shell: `-v "$PWD:/src"` and `\` for line breaks.)
 
 - The output lands in `dist\` as with `build-exe.ps1`. Close the window first: unlike the script, this
   cannot move a running `dist\aex.exe` aside.
+- `safe.directory`: the repo mounted in the container belongs to another user, and git (which Go asks for
+  the commit it stamps into the exe) refuses it otherwise.
 - The `aex-gomod` volume keeps downloaded modules between builds; `docker volume rm aex-gomod` drops it.
 - `-ldflags=-s\ -w` rather than `-ldflags '-s -w'`: Windows PowerShell 5.1 drops the inner quotes when it
   passes the command to `docker`.
@@ -97,3 +101,10 @@ Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal
 ## Tests
 
 `go test ./...`
+
+## Licenses of dependencies
+
+`internal/about/about.json` holds aex's version, license and the licenses of everything built into it,
+for Settings > About. After changing dependencies (`go.mod`), vendored files, `LICENSE`, `NOTICE` or the
+version in `winres\winres.json`, run `go generate ./internal/about`; a test fails while it is out of date.
+It also fails on a license it does not recognise or that Apache-2.0 aex cannot include (see AGENTS.md).

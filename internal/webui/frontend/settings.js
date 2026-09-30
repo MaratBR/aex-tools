@@ -1,10 +1,11 @@
 // The Settings page: its menu has General, the form of what the configure tool asks for in a
-// terminal, and under Plugins each plugin with settings of its own, run on the page (a run like on
-// Runs, app.js, but here). Backend: settings.go (Settings, SaveSettings, SetShortcut, SetAutostart, WipeList,
-// Wipe, WipeSession), webui.go (RunSettings).
+// terminal, About (version, build, licenses), and under Plugins each plugin with settings of its
+// own, run on the page (a run like on Runs, app.js, but here). Backend: settings.go (Settings,
+// SaveSettings, SetShortcut, SetAutostart, WipeList, Wipe, WipeSession), about.go (About), webui.go
+// (RunSettings).
 const settingsForm = $('settings-form'), settingsBody = $('settings-body');
 const saveButton = $('settings-save'), discardButton = $('settings-discard'), settingsNote = $('settings-note');
-const pluginPane = $('plugin-settings'), pluginRun = $('plugin-settings-run');
+const pluginPane = $('plugin-settings'), pluginRun = $('plugin-settings-run'), aboutPane = $('about-pane');
 
 const settingLabels = {
   AEXT_EMAIL: 'AEXT email',
@@ -15,7 +16,7 @@ const settingLabels = {
 };
 
 let fields = {};      // setting name -> {f, input, error, cleared}
-let settingsSection = 'general'; // or the name of the plugin shown
+let settingsSection = 'general'; // 'about', or the name of the plugin shown
 let settingsLoaded = false;
 let pluginRunning = ''; // the plugin whose settings run now, on the page
 
@@ -39,7 +40,7 @@ function note(text, isError = false) {
   settingsNote.classList.toggle('error', isError);
 }
 
-// openSettings shows the Settings page, on section when given ('general' or a plugin's name).
+// openSettings shows the Settings page, on section when given ('general', 'about' or a plugin's name).
 function openSettings(section) {
   showPage('settings');
   if (section) showSection(section);
@@ -70,21 +71,27 @@ function renderSettingsNav() {
     nav.appendChild(b);
   };
   item('general', 'General');
+  item('about', 'About');
   nav.appendChild(el('div', 'settings-nav-head', 'Plugins'));
   const plugins = pluginsWithSettings();
   for (const t of plugins) item(t.name, t.name);
   if (!plugins.length) nav.appendChild(el('div', 'settings-nav-empty', 'No plugin has settings. One not approved yet shows here once it is.'));
-  if (settingsSection !== 'general' && !plugins.some(t => t.name === settingsSection) && pluginRunning !== settingsSection) showSection('general');
+  if (!builtinSections.includes(settingsSection) && !plugins.some(t => t.name === settingsSection) && pluginRunning !== settingsSection) showSection('general');
 }
 
-// showSection shows General or a plugin's settings; picked (from the menu) starts the plugin's.
+// builtinSections are the Settings sections that are not a plugin's.
+const builtinSections = ['general', 'about'];
+
+// showSection shows General, About or a plugin's settings; picked (from the menu) starts the plugin's.
 function showSection(section, picked = false) {
   if (section !== settingsSection) leavePluginSettings();
   settingsSection = section;
   document.querySelectorAll('.settings-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.section === section)));
   settingsForm.hidden = section !== 'general';
-  pluginPane.hidden = section === 'general';
-  if (section === 'general') return;
+  aboutPane.hidden = section !== 'about';
+  pluginPane.hidden = builtinSections.includes(section);
+  if (section === 'about') loadAbout();
+  if (builtinSections.includes(section)) return;
   const t = tools.find(t => t.name === section);
   $('plugin-settings-name').textContent = section;
   $('plugin-settings-summary').textContent = t?.settings || '';
@@ -104,7 +111,7 @@ function syncPluginPane() {
 }
 
 async function startPluginSettings() {
-  if (run || settingsSection === 'general') return;
+  if (run || builtinSections.includes(settingsSection)) return;
   const name = settingsSection;
   pluginRun.textContent = '';
   pluginRunning = name;

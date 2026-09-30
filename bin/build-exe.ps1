@@ -19,8 +19,9 @@ if ($LASTEXITCODE) { exit $LASTEXITCODE }
 $hashes = & (Join-Path $PSScriptRoot '_plugin-hashes.ps1') $plugins.FullName
 
 # -trimpath also makes it a release build: it stops looking for the source checkout.
-# desktop,production: the Wails build tags the window needs.
-go build -C $root -tags desktop,production -trimpath -ldflags "-s -w -X aex/internal/plugin.preApproved=$hashes" -o $Out .
+# desktop,production: the Wails build tags the window needs. builtAt: when, for Settings > About.
+$builtAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+go build -C $root -tags desktop,production -trimpath -ldflags "-s -w -X aex/internal/plugin.preApproved=$hashes -X aex/internal/about.builtAt=$builtAt" -o $Out .
 if ($LASTEXITCODE) { exit $LASTEXITCODE }
 Write-Host "Built $Out"
 Get-ChildItem $plugins -Filter *.exe | ForEach-Object { Write-Host "Built $($_.FullName)" }

@@ -50,6 +50,7 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `ui` — ANSI colors (only on a terminal; `NO_COLOR=1` disables, `FORCE_COLOR=1` forces), line
     prompts, hidden input, key press; `ui.Remote` answers all prompts elsewhere (the window)
   - `webui` — the window ([Wails](https://wails.io), the system WebView2 on Windows): see Window
+  - `about` — version, build (time, commit) and licenses for Settings > About: see About and licenses
 - `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
 - `bin\build-exe.ps1` — builds the release `dist\aex.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
@@ -127,8 +128,8 @@ action directly: `--show`, `--login aext|jira|google`, `--logout aext|jira|googl
 ## configure
 
 In the window, settings are a page rather than a tool: Settings in the sidebar (or the Settings line under
-the tools, or typing `configure`) opens it. Its menu has General and, under Plugins, each plugin that has
-settings. General edits every setting below at once (checked before anything is saved; an empty field
+the tools, or typing `configure`) opens it. Its menu has General, About (see About and licenses) and, under
+Plugins, each plugin that has settings. General edits every setting below at once (checked before anything is saved; an empty field
 removes the setting, or resets it to its default), picks the theme, toggles the app launcher entry, and
 wipes after you type `CONFIRM`. A plugin's entry runs its settings (see Plugins) right there, its questions
 asked on the page. The rest of this section is the terminal tool, `aex configure`.
@@ -404,6 +405,39 @@ Widgets and the header never log in.
 The OAuth client is the `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` settings, built in through `.env`. To use
 your own, create a Desktop app OAuth client in a Google Cloud project with the Calendar API enabled and set
 both in app settings (the secret goes to the credential store). A login made with another client is not used.
+
+## About and licenses
+
+aex is Apache-2.0 (`LICENSE`, `NOTICE` at the root). Settings > About (`frontend/about.js`,
+`App.About` in `internal/webui/about.go`) shows:
+
+- Build (`about.Info`): version (`ProductVersion` in `winres/winres.json`), build time
+  (`-X aex/internal/about.builtAt=<RFC 3339>`, set by `build-exe.ps1`; else the exe file's modified
+  time, marked so), the git commit with a link to it on GitHub (`about.Repo`), its time and whether the
+  checkout had changes not committed (the `vcs.*` settings Go stamps into the exe; none with `go run`),
+  Go version, platform.
+- Pre-approved plugins (`plugin.PreApprovedList`): each hash built in (see Plugins), with the file in
+  the plugins folder that has it now (hashed, not run).
+- aex's license and NOTICE, and every third-party component with its version, license (SPDX) and
+  license files.
+
+The licenses are in `internal/about/about.json` (embedded), written by `go generate ./internal/about`
+(`internal/about/gen`) from the source:
+
+- Go modules: the packages aex and its plugins link on Windows, macOS and Linux (`go list -deps`, tags
+  `desktop,production`), with the license files (`LICENSE`, `COPYING`, `NOTICE`, `PATENTS`, …) in each
+  package's folder and those above it up to its module's, so a nested license (e.g. go-webview2's
+  `webviewloader`) is included only when that package is linked. The Go standard library from `GOROOT`.
+- Vendored files (`vendored` in the generator; every file in `frontend/vendor` must be listed), and
+  binaries a package builds in whose license is elsewhere (`embedded`: WebView2Loader.dll, its license
+  in `internal/about/notices/`).
+- A module without a license file is refused unless listed in `noLicenseFile` with what it states.
+
+Each license is named from its text (an SPDX identifier line, or the known wording of Apache-2.0, MIT,
+ISC, BSD-2/3-Clause, MPL-2.0, Unlicense); an unknown one fails the generator. So does one not in
+`allowed` (permissive licenses and MPL-2.0; no GPL, LGPL or AGPL), since aex could not ship under
+Apache-2.0 with it. `TestAboutJSONUpToDate` runs `gen -check` and fails while `about.json` differs
+from what the source gives.
 
 ## Adding a tool
 

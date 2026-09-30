@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"aex/internal/secrets"
@@ -39,5 +40,18 @@ func TestPreApproved(t *testing.T) {
 	}
 	if s, _ := state(path, one); s != Changed {
 		t.Errorf("custom tool state = %v, want %v", s, Changed)
+	}
+}
+
+func TestPreApprovedList(t *testing.T) {
+	defer func(v string) { preApproved = v }(preApproved)
+	preApproved = ""
+	if l := PreApprovedList(); l != nil {
+		t.Errorf("list = %v, want none", l)
+	}
+	one := "7692c3ad3540bb803c020b3aee66cd8887123234ea0c6e7143c0add73ff431ed"
+	preApproved = strings.ToUpper(one) + ","
+	if l := PreApprovedList(); len(l) != 1 || l[0].Hash != one {
+		t.Errorf("list = %v, want %s", l, one)
 	}
 }

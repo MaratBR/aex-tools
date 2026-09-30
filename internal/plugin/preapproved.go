@@ -1,6 +1,11 @@
 package plugin
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -24,4 +29,56 @@ func pluginState(path, hash string) (State, error) {
 		return Safe, nil
 	}
 	return state(path, hash)
+}
+
+// PreApprovedPlugin is a hash built in as pre-approved, and the file in the plugins folder that
+// has it now ("" when none has).
+type PreApprovedPlugin struct {
+	Hash string `json:"hash"`
+	File string `json:"file,omitempty"`
+}
+
+// PreApprovedList lists the hashes built in as pre-approved, each with the plugin file that has it.
+// Only the files are read (hashed), nothing is run.
+func PreApprovedList() []PreApprovedPlugin {
+	var list []PreApprovedPlugin
+	for h := range strings.SplitSeq(strings.ToLower(preApproved), ",") {
+		if h != "" {
+			list = append(list, PreApprovedPlugin{Hash: h})
+		}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	dir, err := Dir()
+	if err != nil {
+		return list
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if _, ok := pluginName(e); !ok {
+			continue
+		}
+		hash, err := fileHash(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		if i := slices.IndexFunc(list, func(p PreApprovedPlugin) bool { return p.Hash == hash }); i >= 0 && list[i].File == "" {
+			list[i].File = e.Name()
+		}
+	}
+	return list
+}
+
+func fileHash(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
