@@ -522,7 +522,7 @@ window.addEventListener('message', async e => {
     reply(true);
   } else if (m.op === 'remind') {
     try {
-      reply(true, await api().Remind(String(m.title || ''), String(m.message || '')));
+      reply(true, await api().Remind(String(m.title || ''), String(m.message || ''), !!m.urgent));
     } catch (err) {
       reply(false, undefined, String(err));
     }

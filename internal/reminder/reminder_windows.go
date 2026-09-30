@@ -21,7 +21,7 @@ import (
 // On Windows a reminder is a card on every screen (a topmost Win32 window per monitor, drawn with
 // GDI), in the upper part of its work area. It never takes the focus, so typing elsewhere goes on;
 // its × on any screen closes it on all of them. Links in the message open in their browser
-// (internal/browser) and leave it open. Each reminder has a thread of its own running its
+// (internal/browser) and leave it open, unless marked to close it (CloseMark). Each reminder has a thread of its own running its
 // windows' message loop; reminders shown at once are cascaded so each can be seen.
 
 var (
@@ -176,14 +176,14 @@ type trackMouseEvent struct {
 }
 
 // colors of a card, as COLORREFs (0x00BBGGRR).
-type palette struct{ bg, text, dim, accent, accentHover, hoverBg uintptr }
+type palette struct{ bg, text, dim, accent, accentHover, hoverBg, urgent uintptr }
 
 func rgb(r, g, b byte) uintptr { return uintptr(r) | uintptr(g)<<8 | uintptr(b)<<16 }
 
 // The window's colors (tokens.css), light or dark as Windows' app mode.
 var (
-	lightColors = palette{rgb(255, 255, 255), rgb(29, 29, 31), rgb(110, 110, 115), rgb(0, 113, 227), rgb(0, 94, 190), rgb(232, 232, 237)}
-	darkColors  = palette{rgb(44, 44, 46), rgb(245, 245, 247), rgb(152, 152, 157), rgb(10, 132, 255), rgb(64, 156, 255), rgb(58, 58, 60)}
+	lightColors = palette{rgb(255, 255, 255), rgb(29, 29, 31), rgb(110, 110, 115), rgb(0, 113, 227), rgb(0, 94, 190), rgb(232, 232, 237), rgb(215, 0, 21)}
+	darkColors  = palette{rgb(44, 44, 46), rgb(245, 245, 247), rgb(152, 152, 157), rgb(10, 132, 255), rgb(64, 156, 255), rgb(58, 58, 60), rgb(255, 69, 58)}
 )
 
 func colors() palette {
@@ -237,6 +237,14 @@ type shown struct {
 	open  int // cards not destroyed yet
 }
 
+// mark is the color of the card's border, dot and title: red for an urgent reminder.
+func (s *shown) mark() uintptr {
+	if s.r.Urgent {
+		return s.colrs.urgent
+	}
+	return s.colrs.accent
+}
+
 // run is a piece of the message's text placed on a card: a word, spaces, or a part of a word too
 // long for a line; link is its part's index in shown.parts when that is a link, else -1.
 type run struct {
@@ -285,7 +293,7 @@ func open(r Reminder) (<-chan struct{}, error) {
 			return
 		}
 		started <- nil
-		playChime()
+		announce(r.Urgent, done, playChime, stopChime)
 		var m msg
 		for {
 			if r, _, _ := pGetMessage.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0); int32(r) <= 0 {
@@ -406,7 +414,7 @@ func (s *shown) create(m monitor) windows.HWND {
 	cardsMu.Lock()
 	cards[hwnd] = c
 	cardsMu.Unlock()
-	corner, border := uint32(dwmCornerRound), uint32(s.colrs.accent)
+	corner, border := uint32(dwmCornerRound), uint32(s.mark())
 	if pDwmSetWindowAttribute.Find() == nil {
 		pDwmSetWindowAttribute.Call(uintptr(hwnd), dwmaCornerPreference, uintptr(unsafe.Pointer(&corner)), 4)
 		pDwmSetWindowAttribute.Call(uintptr(hwnd), dwmaBorderColor, uintptr(unsafe.Pointer(&border)), 4)
@@ -558,11 +566,11 @@ func (c *card) paint(dc uintptr) {
 	// Title line: a dot, the title, and when it appeared on the right; the close button after it.
 	dot := px(9)
 	cy := (c.title.Top + c.title.Bottom) / 2
-	shape(pEllipse, rect{c.title.Left - px(16), cy - dot/2, c.title.Left - px(16) + dot, cy - dot/2 + dot}, p.accent, 0)
+	shape(pEllipse, rect{c.title.Left - px(16), cy - dot/2, c.title.Left - px(16) + dot, cy - dot/2 + dot}, c.s.mark(), 0)
 	text(c.fontSmall, p.dim, c.s.at, c.title, dtRight|dtVCenter|dtSingleLine)
 	head := c.title
 	head.Right -= px(48)
-	text(c.fontTitle, p.accent, c.s.r.Heading(), head, dtVCenter|dtSingleLine|dtEndEllipsis)
+	text(c.fontTitle, c.s.mark(), c.s.r.Heading(), head, dtVCenter|dtSingleLine|dtEndEllipsis)
 	icon := p.dim
 	if c.hoverClose {
 		shape(pRoundRect, c.close, p.hoverBg, px(8))
@@ -682,13 +690,16 @@ func wndProc(hwnd windows.HWND, message uint32, wParam, lParam uintptr) uintptr 
 		if c.close.has(pt) {
 			c.dismiss()
 		} else if i := c.linkAt(pt); i >= 0 {
-			// The reminder stays: it may have more links.
-			link := c.s.parts[i].Link
+			// The reminder stays, as it may have more links, unless the link says to close it.
+			part := c.s.parts[i]
 			go func() {
-				if err := browser.Open(link); err != nil {
-					fmt.Fprintf(os.Stderr, "opening %s: %v\n", link, err)
+				if err := browser.Open(part.Link); err != nil {
+					fmt.Fprintf(os.Stderr, "opening %s: %v\n", part.Link, err)
 				}
 			}()
+			if part.Close {
+				c.dismiss()
+			}
 		}
 		return 0
 	case wmDestroy:
@@ -712,4 +723,11 @@ func playChime() {
 		return
 	}
 	pPlaySound.Call(uintptr(unsafe.Pointer(&chime()[0])), 0, sndMemory|sndAsync|sndNoDefault)
+}
+
+// stopChime cuts the chime playing short.
+func stopChime() {
+	if pPlaySound.Find() == nil {
+		pPlaySound.Call(0, 0, 0)
+	}
 }

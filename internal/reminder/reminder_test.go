@@ -3,7 +3,9 @@ package reminder
 import (
 	"encoding/binary"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestMarkRoundTrip(t *testing.T) {
@@ -59,11 +61,69 @@ func TestParts(t *testing.T) {
 		{Text: ")"},
 	}
 	if len(got) != len(want) {
-		t.Fatalf("parts %q", got)
+		t.Fatalf("parts %+v", got)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Errorf("part %d = %q, want %q", i, got[i], want[i])
+			t.Errorf("part %d = %+v, want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func TestPartsCloseMark(t *testing.T) {
+	r := Reminder{Message: "[Join](!aex+brave://meet.example.com/x) !https://a.example Hi!https://b.example [Keep](https://c.example)"}
+	got := r.Parts()
+	want := []Part{
+		{Text: "Join", Link: "aex+brave://meet.example.com/x", Close: true},
+		{Text: " "},
+		{Text: "https://a.example", Link: "https://a.example", Close: true},
+		{Text: " Hi!"},
+		{Text: "https://b.example", Link: "https://b.example"},
+		{Text: " "},
+		{Text: "Keep", Link: "https://c.example"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("parts %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("part %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAnnounce(t *testing.T) {
+	oldGap, oldEvery, oldFor := chimeGap, urgentEvery, urgentFor
+	chimeGap, urgentEvery, urgentFor = 5*time.Millisecond, 40*time.Millisecond, 95*time.Millisecond
+	t.Cleanup(func() { chimeGap, urgentEvery, urgentFor = oldGap, oldEvery, oldFor })
+
+	var mu sync.Mutex
+	plays, quiets := 0, 0
+	play := func() { mu.Lock(); plays++; mu.Unlock() }
+	quiet := func() { mu.Lock(); quiets++; mu.Unlock() }
+	count := func() (int, int) { mu.Lock(); defer mu.Unlock(); return plays, quiets }
+
+	announce(false, nil, play, quiet)
+	if p, _ := count(); p != 1 {
+		t.Fatalf("not urgent: %d chimes", p)
+	}
+
+	// Urgent, never closed: twice at 0, 40 and 80 ms, then urgentFor ends it.
+	plays = 0
+	announce(true, make(chan struct{}), play, quiet)
+	time.Sleep(200 * time.Millisecond)
+	if p, q := count(); p != 6 || q != 0 {
+		t.Fatalf("urgent for its time: %d chimes, %d quiets; want 6, 0", p, q)
+	}
+
+	// Closed after the first pair: it stops and goes quiet.
+	plays = 0
+	stop := make(chan struct{})
+	announce(true, stop, play, quiet)
+	time.Sleep(20 * time.Millisecond)
+	close(stop)
+	time.Sleep(60 * time.Millisecond)
+	if p, q := count(); p != 2 || q != 1 {
+		t.Fatalf("closed: %d chimes, %d quiets; want 2, 1", p, q)
 	}
 }

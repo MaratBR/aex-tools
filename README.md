@@ -62,7 +62,13 @@ Tools and widgets can show reminders: a message on top of every window on every 
 chime, until you close it (× at the top right) on any of them. It never takes the focus from what you
 are typing in. Links in it open in your default browser, or in the one a link names:
 `aex+brave://google.com` opens in Brave (also chrome, edge, firefox, vivaldi, yandex, opera, …), or
-the default browser when that one is not installed.
+the default browser when that one is not installed. A link stays clickable after you use it, unless it
+has a `!` before it, which closes the reminder once the link opens: `[Join the call](!https://…)`.
+
+Set up your own in **Settings > Reminders**: a time, the days of the week, a title and a message (with
+links). They show while aex runs, so let it start when you log in (Settings > General). An **extra
+urgent** one is marked red and chimes twice, then twice again every 30 seconds until you close it or
+10 minutes pass.
 
 ## Where your data is kept
 

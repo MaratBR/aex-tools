@@ -3,6 +3,7 @@ package webui
 import (
 	"fmt"
 
+	"aex/internal/dates"
 	"aex/internal/reminder"
 )
 
@@ -21,8 +22,28 @@ func (a *App) mark(name, payload string) {
 	}
 }
 
-// Remind shows a reminder for a widget (sdk.js: aex.remind); it stays until dismissed.
-func (a *App) Remind(title, message string) error {
-	_, err := reminder.Open(reminder.Reminder{Title: title, Message: message})
+// Remind shows a reminder for a widget (sdk.js: aex.remind) or the Settings page's Show now; it
+// stays until dismissed.
+func (a *App) Remind(title, message string, urgent bool) error {
+	_, err := reminder.Open(reminder.Reminder{Title: title, Message: message, Urgent: urgent})
 	return err
+}
+
+// RemindersInfo is the Settings page's Reminders: the reminders set up and the timezone their
+// times are in (TZ_OFFSET_HOURS).
+type RemindersInfo struct {
+	Reminders []reminder.Scheduled `json:"reminders"`
+	TZ        string               `json:"tz"`
+}
+
+// Reminders lists the reminders set up.
+func (a *App) Reminders() (RemindersInfo, error) {
+	list, err := reminder.LoadScheduled()
+	return RemindersInfo{Reminders: list, TZ: dates.TZLabel()}, err
+}
+
+// SaveReminders replaces the reminders set up, checking each (reminder.SaveScheduled), and gives
+// them back as saved.
+func (a *App) SaveReminders(list []reminder.Scheduled) ([]reminder.Scheduled, error) {
+	return reminder.SaveScheduled(list)
 }

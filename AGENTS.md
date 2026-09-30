@@ -98,6 +98,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `output\jira-export\` — generated files
 - `custom-tools.json` — the custom tools added (name, script path, adapter)
 - `update-check.json` — the last check of how far the build is behind GitHub (see About and licenses)
+- `reminders.json` — the reminders set up in Settings > Reminders, each with when it last showed
 - `home.json` — the window's home page: its widgets with their places, sizes and settings, and
   whether auto refresh is off
 
@@ -159,7 +160,8 @@ action directly: `--show`, `--login aext|jira|google`, `--logout aext|jira|googl
 ## configure
 
 In the window, settings are a page rather than a tool: Settings in the sidebar (or the Settings line under
-the tools, or typing `configure`) opens it. Its menu has General, About (see About and licenses) and, under
+the tools, or typing `configure`) opens it. Its menu has General, Reminders (see Reminders), About (see
+About and licenses) and, under
 Plugins, each plugin that has settings. General edits every setting below at once (checked before anything is saved; an empty field
 removes the setting, or resets it to its default), picks the theme, toggles the app launcher entry, and
 wipes after you type `CONFIRM`. A plugin's entry runs its settings (see Plugins) right there, its questions
@@ -371,7 +373,8 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
 - `aex.settings` / `aex.saveSettings(obj)` — this placement's own settings: a JSON object (8 KB at
   most) kept with it in `home.json` (`HomeWidget.Settings`), `{}` when it is added, such as which
   calendar it shows. home.js puts them in the page as it loads it.
-- `aex.remind({title, message})` — shows a reminder (see Reminders), a Promise; `App.Remind`.
+- `aex.remind({title, message, urgent})` — shows a reminder (see Reminders; `urgent`: extra urgent), a
+  Promise; `App.Remind`.
 - `aex.onRefresh(fn)` — `fn` runs after every run finishes (it may have changed the data; for a
   plugin's widget at most every 30 s, since each call starts the plugin) and on auto refresh. Widgets
   that could not load try again then.
@@ -483,15 +486,20 @@ dismissed.
 - Windows: a card per monitor (a topmost Win32 window drawn with GDI, per-monitor DPI), centred near
   the top of its work area, with the title, the time it appeared, a close button (×, top right) and
   the message, wrapped word by word (`layout`), its links underlined. × on any screen closes it on
-  all; a link opens and leaves it open. It never takes the focus (`WS_EX_NOACTIVATE`), is not on the taskbar,
+  all; a link opens and leaves it open, unless marked to close it (below). It never takes the focus (`WS_EX_NOACTIVATE`), is not on the taskbar,
   and follows Windows' light or dark app mode. Each reminder runs its windows on a thread of its own;
   several at once are cascaded. The chime is two bell notes made in code (`chime.go`, a WAV played
   with `PlaySound`).
+- Extra urgent (`Reminder.Urgent`): the card's border, dot and title are red, and it chimes twice
+  (2 s apart) when it shows, then twice again every 30 s until it is closed (cutting the chime
+  short) or 10 minutes pass; the card stays after that (`announce` in `chime.go`).
 - macOS and Linux: a system notification with a sound (`osascript`, `notify-send`); links show as
-  written.
+  written, and an urgent one chimes once.
 
 Links in the message (`Reminder.Parts`): `[label](link)` or a bare link, each `http(s)://…` or
-`aex+<browser>://<address>`; anything else (`file:`, `javascript:`, …) stays text. `browser.Open`
+`aex+<browser>://<address>`; anything else (`file:`, `javascript:`, …) stays text. `!` right before
+the link (`CloseMark`: `[label](!link)`, or a bare `!link` at the start or after a space, so
+`Hi!https://…` is a plain link) makes it close the reminder once it opens (`Part.Close`). `browser.Open`
 opens an `aex+` one in that browser, the address as https unless it has a scheme of its own
 (`aex+firefox://http://intranet`), and in the default browser when that one is not installed (or
 not known: then a command of that name is tried). Browsers (`browser.Browsers`): chrome, edge,
@@ -510,7 +518,14 @@ Triggering one:
   that mark (not a custom tool shown as a terminal, nor a widget call). In a terminal `Show` shows it
   itself and waits until it is dismissed, since it goes with the process.
 - A widget calls `aex.remind` (see Home and widgets).
-- `aex --debug debug reminder [--title T] [--in 10s] [message]` shows one (`internal/tools/remind`).
+- `aex --debug debug reminder [--title T] [--urgent] [--in 10s] [message]` shows one (`internal/tools/remind`).
+- Settings > Reminders (`frontend/reminders.js`, `App.Reminders` / `SaveReminders`) sets up
+  reminders that show at a time (HH:MM, in `TZ_OFFSET_HOURS`) on the days picked (`reminder.Scheduled`):
+  title, message (with links), time, days, extra urgent, on or off; Show now previews one. Kept in `reminders.json`
+  in the data folder (100 at most), each with the day it last showed (`last`), so it shows once a day.
+  The window runs `reminder.RunSchedule` while it is open: every 10 s it reads the file and shows
+  those due, up to 30 minutes late (aex closed or the device asleep at the time). Saving a new one, or
+  one whose time or days changed, whose time today has passed already, does not show it today.
 
 ## Google
 

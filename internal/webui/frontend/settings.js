@@ -1,5 +1,5 @@
 // The Settings page: its menu has General, the form of what the configure tool asks for in a
-// terminal, About (version, build, licenses), and under Plugins each plugin with settings of its
+// terminal, Reminders (reminders.js), About (version, build, licenses), and under Plugins each plugin with settings of its
 // own, run on the page (a run like on Runs, app.js, but here). Backend: settings.go (Settings,
 // SaveSettings, SetShortcut, SetAutostart, WipeList, Wipe, WipeSession), about.go (About), webui.go
 // (RunSettings).
@@ -16,7 +16,7 @@ const settingLabels = {
 };
 
 let fields = {};      // setting name -> {f, input, error, cleared}
-let settingsSection = 'general'; // 'about', or the name of the plugin shown
+let settingsSection = 'general'; // 'reminders', 'about', or the name of the plugin shown
 let settingsLoaded = false;
 let pluginRunning = ''; // the plugin whose settings run now, on the page
 
@@ -40,7 +40,7 @@ function note(text, isError = false) {
   settingsNote.classList.toggle('error', isError);
 }
 
-// openSettings shows the Settings page, on section when given ('general', 'about' or a plugin's name).
+// openSettings shows the Settings page, on section when given ('general', 'reminders', 'about' or a plugin's name).
 function openSettings(section) {
   showPage('settings');
   if (section) showSection(section);
@@ -71,6 +71,7 @@ function renderSettingsNav() {
     nav.appendChild(b);
   };
   item('general', 'General');
+  item('reminders', 'Reminders');
   item('about', 'About');
   nav.appendChild(el('div', 'settings-nav-head', 'Plugins'));
   const plugins = pluginsWithSettings();
@@ -80,17 +81,19 @@ function renderSettingsNav() {
 }
 
 // builtinSections are the Settings sections that are not a plugin's.
-const builtinSections = ['general', 'about'];
+const builtinSections = ['general', 'reminders', 'about'];
 
-// showSection shows General, About or a plugin's settings; picked (from the menu) starts the plugin's.
+// showSection shows General, Reminders, About or a plugin's settings; picked (from the menu) starts the plugin's.
 function showSection(section, picked = false) {
   if (section !== settingsSection) leavePluginSettings();
   settingsSection = section;
   document.querySelectorAll('.settings-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.section === section)));
   settingsForm.hidden = section !== 'general';
   aboutPane.hidden = section !== 'about';
+  remindersPane.hidden = section !== 'reminders';
   pluginPane.hidden = builtinSections.includes(section);
   if (section === 'about') loadAbout();
+  if (section === 'reminders') { reminderEditing = null; loadReminders(); }
   if (builtinSections.includes(section)) return;
   const t = tools.find(t => t.name === section);
   $('plugin-settings-name').textContent = section;

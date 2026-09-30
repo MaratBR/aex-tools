@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"math"
 	"sync"
+	"time"
 )
 
 // chime is the sound a reminder plays: two soft bell notes, a fifth apart, as a WAV file (16-bit
@@ -52,3 +53,40 @@ var chime = sync.OnceValue(func() []byte {
 	binary.LittleEndian.PutUint32(wav[40:], uint32(len(data)))
 	return append(wav, data...)
 })
+
+// announce plays the chime for a reminder shown, without waiting: once, or for an urgent one twice
+// at once and twice again every urgentEvery, until stop closes (quiet then cuts the chime short)
+// or urgentFor passes.
+func announce(urgent bool, stop <-chan struct{}, play, quiet func()) {
+	if !urgent {
+		play()
+		return
+	}
+	go func() {
+		end := time.NewTimer(urgentFor)
+		defer end.Stop()
+		tick := time.NewTicker(urgentEvery)
+		defer tick.Stop()
+		wait := func(c <-chan time.Time) bool {
+			select {
+			case <-stop:
+				quiet()
+				return false
+			case <-end.C:
+				return false
+			case <-c:
+				return true
+			}
+		}
+		for {
+			play()
+			if !wait(time.After(chimeGap)) {
+				return
+			}
+			play()
+			if !wait(tick.C) {
+				return
+			}
+		}
+	}()
+}

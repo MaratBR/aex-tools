@@ -103,6 +103,8 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.emit = func(event string, data any) { runtime.EventsEmit(ctx, event, data) }
 	ui.Remote = a
+	// The reminders set up on the Settings page, while the window is open.
+	go reminder.RunSchedule(ctx.Done())
 	out, err := captureOutput(func(text string) { a.emit("output", text) }, a.mark)
 	if err != nil {
 		runtime.LogErrorf(ctx, "capturing output: %v", err)

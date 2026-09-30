@@ -550,6 +550,49 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .plugin-settings-actions .settings-note { white-space: normal; }
 #plugin-settings-run .run { margin: 0; }
 
+/* Reminders (reminders.js). */
+#reminders-pane { padding: 0 0 24px; }
+.reminders-empty { color: var(--muted); }
+.reminders-add { color: var(--accent); }
+.reminder-row { padding: 0 14px 0 0; }
+.reminder-open {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 0 10px 14px;
+  border: 0; background: none; color: inherit; text-align: left; font: inherit;
+  cursor: pointer;
+}
+.reminder-open:hover .reminder-title { color: var(--accent); }
+.reminder-time { flex: none; font: 600 20px/1 var(--display); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.reminder-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.reminder-title, .reminder-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-title { font-weight: 500; }
+.reminder-sub { font-size: 12px; color: var(--muted); }
+.reminder-row.off .reminder-time, .reminder-row.off .reminder-text { opacity: .45; }
+.reminder-urgent {
+  display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, var(--fail) 16%, transparent); color: var(--fail);
+  font-size: 11px; font-weight: 600; vertical-align: 1px;
+}
+.reminder-urgent-row .row-text { display: flex; flex-direction: column; gap: 3px; }
+.reminder-days .field-line { flex-wrap: wrap; }
+.reminder-days .segmented span { padding: 3px 9px; }
+.field input[type="time"] { flex: 0 0 auto; width: 9em; }
+.field textarea {
+  flex: 1; min-width: 0; resize: vertical;
+  padding: 7px 11px;
+  border: 0; border-radius: 8px;
+  background: var(--fill); color: var(--ink);
+  font: 13px/1.5 var(--sans);
+  outline: none;
+  transition: box-shadow .15s, background-color .15s;
+}
+.field textarea:focus { background: var(--surface); box-shadow: var(--ring); }
+.field textarea::placeholder { color: var(--faint); }
+.field-hint code { font: 11.5px var(--mono); padding: 0 3px; border-radius: 4px; background: var(--fill); }
+.reminders-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.reminders-foot .settings-note { white-space: normal; }
+
 /* About (about.js). */
 #about-pane { padding: 14px 0 24px; }
 .about-head { display: flex; align-items: center; gap: 14px; }

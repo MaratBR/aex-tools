@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -17,7 +18,18 @@ import (
 type Reminder struct {
 	Title   string `json:"title,omitempty"` // "Reminder" when empty
 	Message string `json:"message"`
+	// Urgent (extra urgent) reminders chime twice when they show, and twice again every
+	// urgentEvery until closed or urgentFor passes; the card is marked red.
+	Urgent bool `json:"urgent,omitempty"`
 }
+
+// How an urgent reminder keeps chiming: twice (chimeGap apart, the chime being a little shorter)
+// every urgentEvery, for urgentFor. Variables for the tests.
+var (
+	chimeGap    = 2 * time.Second
+	urgentEvery = 30 * time.Second
+	urgentFor   = 10 * time.Minute
+)
 
 // Longest title and message shown, in characters; longer ones are cut.
 const (
