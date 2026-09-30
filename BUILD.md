@@ -98,6 +98,13 @@ Double-click it to open the window, or run `aex.exe <tool> [args]` in a terminal
 - `.\bin\build-exe.ps1 -Out <file>` builds elsewhere, e.g. while `dist\aex.exe` is running (it cannot be
   replaced then).
 
+## Distribution
+
+`.\bin\dist.ps1` runs `go vet ./...` and `go test ./...`, builds the release exe and plugins (as
+`build-exe.ps1`), and zips them with `LICENSE` and `NOTICE` to `dist\aex-<version>-windows-<arch>.zip`
+(version from `ProductVersion` in `winres\winres.json`). `-Arch arm64` for ARM Windows (default `amd64`),
+`-SkipTests` to skip vet and tests. Stops at the first failure.
+
 ## Tests
 
 `go test ./...`

@@ -57,7 +57,8 @@ people using aex: keep it short, and put the details here. Building, dev builds 
 - `plugins/<name>` — plugin sources (`main` packages), built to `plugins\<name>.exe` next to the exe
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
 - `bin\build-exe.ps1` — builds the release `dist\aex.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
-  plugins just built, for aex's pre-approved hashes (see Plugins)
+  plugins just built, for aex's pre-approved hashes (see Plugins); `bin\dist.ps1` — vets, tests, builds
+  and zips the Windows distribution to `dist\aex-<version>-windows-<arch>.zip`
 - `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
 - `winres\winres.json`, `rsrc_windows_*.syso` — exe icon and version info
 
