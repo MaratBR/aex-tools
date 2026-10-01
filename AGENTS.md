@@ -102,6 +102,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `reminders.json` — the reminders set up in Settings > Reminders, each with when it last showed
 - `home.json` — the window's home page: its widgets with their places, sizes and settings, and
   whether auto refresh is off
+- `themes\*.json` — custom themes for the window (see Themes)
 
 Change it with `--data-dir <dir>` (accepted before or after the tool name) or the `AEX_DATA_DIR`
 environment variable (real environment only). Click its path in the window's sidebar to open it.
@@ -167,7 +168,7 @@ the tools, or typing `configure`) opens it. Its menu has General, Widgets (the s
 Reminders (see Reminders), About (see
 About and licenses) and, under
 Plugins, each plugin that has settings. General edits every setting below at once (checked before anything is saved; an empty field
-removes the setting, or resets it to its default), picks the theme, toggles the app launcher entry, and
+removes the setting, or resets it to its default), picks the theme and mode (see Themes), toggles the app launcher entry, and
 wipes after you type `CONFIRM`. A plugin's entry runs its settings (see Plugins) right there, its questions
 asked on the page. The rest of this section is the terminal tool, `aex configure`.
 
@@ -326,6 +327,32 @@ a run printed while Home was shown. Tools are the same console programs as in th
 Frontend: plain HTML, CSS and JS in `internal/webui/frontend` (no build step), embedded in the exe.
 Colors and fonts are in `tokens.css`, shared by the window and the widgets.
 
+### Themes
+
+The window's look is a mode (System, Light or Dark) and a theme: its colors (and fonts), the
+variables of `tokens.css` without their `--`, for light mode, dark mode or both. A theme with only one
+of them uses it whatever the mode; a variable it leaves out keeps the default's. Settings > General >
+Appearance picks both (`themeRows` in `settings.js`), each theme a card drawn in its own colors.
+
+- `themes.go`: `App.Themes` lists the default theme first (its variables read from `tokens.css`, only
+  to draw its card), the built-in ones (`internal/webui/themes/*.json`, embedded: GitHub, Solarized,
+  Nord, Gruvbox, Catppuccin with both modes; Dracula, Tokyo Night, Monokai dark only), then the custom
+  ones, `<data folder>\themes\*.json` (id `custom:<file>`), each by name; a file that is not a theme is
+  listed under the cards with why. A file is `{"name", "light": {…}, "dark": {…}}` (64 KB at most; the
+  name defaults to the file's): only the variables in `themeVars` (colors, `c0`–`c15`, shadows, fonts;
+  not `ring`), each value without `;{}<>\!@`, `/*`, `url(` and the like, since it goes into widgets'
+  pages too. `App.CopyTheme` copies a theme into the folder (`<name>-custom.json`, then `-2`, …) for
+  Customize, which picks the copy and opens the folder; `App.OpenThemes` opens it. Reload reads them
+  again.
+- `theme.js` (in `<head>`) keeps the mode and the theme picked, with its colors, in the web view's
+  storage, so the page starts in them; `theme.refresh()` (at start and on the Settings page) takes the
+  theme again from `Themes` (its file may have changed) or goes back to the default when it is gone.
+  It sets `data-theme` on `<html>` to light or dark (what `style.css` and widgets key on) and the
+  theme's variables as inline styles, then fires `aex:theme` on `window`: terminals (`term.js`) and
+  widgets (`home.js`) follow it.
+- Widgets get the scheme and variables in their page (`widgetDoc`) and in each `theme` message
+  (`{theme, vars}`, set by `sdk.js`).
+
 ### Home and widgets
 
 Home takes the whole window: the sidebar slides away there, and the button at the top left (or Ctrl+B)
@@ -458,7 +485,9 @@ Widgets so far:
   it shows only the count and the warning.
 - `cat` — Cat as a service: a random cat from `https://cataas.com/cat` (`cat.go`, fetched by aex and
   handed to the widget as a `data:` URL, since widgets have no network), filling the whole widget with
-  no padding (cropped to fit). Clicking it brings another. No auto refresh. On hover, 5 stars over the
+  no padding (cropped to fit). Clicking it brings another: 4 cats are fetched (two at a time) and
+  decoded ahead, so it shows at once, coming in from a little larger and blurred over the one before
+  (a plain swap with reduced motion). No auto refresh. On hover, 5 stars over the
   bottom of the picture rate the cat; the rating does nothing (not kept or sent anywhere), and each of
   the 5 ratings has its own message saying so. Each cat is a he or a she at random, for the messages.
 - `2048` — the game of 2048 on a 4×4 board: arrow keys or WASD once the widget has the focus (click

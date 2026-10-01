@@ -43,7 +43,11 @@ const aex = (() => {
       if (m.ok) p.resolve(m.value);
       else p.reject(new Error(m.error || 'failed'));
     } else if (m.op === 'theme') {
-      document.documentElement.dataset.theme = m.theme;
+      const root = document.documentElement;
+      root.dataset.theme = m.theme;
+      // The theme's colors (variables of tokens.css) replace the ones set before.
+      for (const k of [...root.style]) if (k.startsWith('--')) root.style.removeProperty(k);
+      for (const [k, v] of Object.entries(m.vars || {})) if (k.startsWith('--')) root.style.setProperty(k, String(v));
     } else if (m.op === 'refresh') {
       dispatchEvent(new Event('aex:refresh'));
     } else if (m.op === 'settings') {

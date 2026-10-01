@@ -97,10 +97,10 @@ window.addEventListener('resize', () => {
   pruneTerminals();
   terminals.forEach(t => { if (t.live) fitCols(t); });
 });
-new MutationObserver(() => {
+window.addEventListener('aex:theme', () => {
   pruneTerminals();
   terminals.forEach(t => (t.term.options.theme = termTheme()));
-}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+});
 
 window.runtime.EventsOn('terminal', onTerminal);
 window.runtime.EventsOn('term-output', onTermOutput);

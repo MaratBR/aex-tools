@@ -35,6 +35,8 @@ var (
 	CustomToolsFile string
 	// HomeFile holds the window's home page: its widgets, in order, with their sizes.
 	HomeFile string
+	// ThemesDir holds custom themes for the window, one JSON file each (internal/webui: themes.go).
+	ThemesDir string
 	// OnboardedFile is there once the window's onboarding (logging in to each service) was done or
 	// skipped: the window opens it on first start only.
 	OnboardedFile string
@@ -94,6 +96,7 @@ func Init(dataDir, embeddedEnv string) error {
 	PluginSettingsDir = filepath.Join(DataDir, "plugin-settings")
 	CustomToolsFile = filepath.Join(DataDir, "custom-tools.json")
 	HomeFile = filepath.Join(DataDir, "home.json")
+	ThemesDir = filepath.Join(DataDir, "themes")
 	OnboardedFile = filepath.Join(DataDir, "onboarded")
 	ConfigEnvFile = filepath.Join(DataDir, ".env.config")
 

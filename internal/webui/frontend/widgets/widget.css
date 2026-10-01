@@ -18,6 +18,9 @@ body {
 html.aex-popup { height: auto; overflow: auto; }
 html.aex-popup body { height: auto; overflow: visible; }
 button { font: inherit; color: inherit; }
+/* A select's list opens light in a widget's frame whatever its color-scheme, while its options take
+   the select's text color: give them the theme's colors. */
+option, optgroup { background: var(--surface); color: var(--ink); }
 :focus-visible { outline: none; box-shadow: var(--ring); }
 
 .btn {

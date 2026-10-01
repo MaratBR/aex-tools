@@ -6,8 +6,17 @@
   <style>
     /* The picture fills the whole widget, edge to edge, cropped to fit. */
     body { position: relative; cursor: pointer; }
-    #cat { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0; transition: opacity .3s ease; }
-    #cat.shown { opacity: 1; }
+    #stage { position: absolute; inset: 0; overflow: hidden; }
+    #stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    /* A new cat comes in the way Photos does it: from a little larger and out of focus, settling into
+       place as it fades in over the one before, which recedes a touch under it. */
+    #stage img.enter { opacity: 0; transform: scale(1.08); filter: blur(12px); }
+    #stage img.leave { transform: scale(.97); filter: brightness(.85); }
+    #stage img.enter.in { opacity: 1; transform: none; filter: none; }
+    #stage img.enter, #stage img.leave {
+      transition: opacity .45s cubic-bezier(.32, .72, 0, 1), transform .7s cubic-bezier(.32, .72, 0, 1), filter .6s cubic-bezier(.32, .72, 0, 1);
+    }
 
     .notice { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; padding: 14px 16px; color: var(--muted); font-size: 13px; text-align: center; }
     .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
@@ -27,7 +36,7 @@
       opacity: 0; transition: opacity .2s ease;
     }
     body:hover .rate, .rate:focus-within, .rate.rated { opacity: 1; }
-    #cat:not(.shown) ~ .rate { display: none; }
+    body:not(.has-cat) .rate { display: none; }
 
     .msg { max-height: 4.1em; overflow: hidden; }
     .msg em { font-style: italic; }
@@ -49,7 +58,7 @@
   </style>
 </head>
 <body title="Another cat">
-  <img id="cat" alt="A cat">
+  <div id="stage"></div>
   <div class="rate" id="rate" title="">
     <div class="msg" id="msg" aria-live="polite"></div>
     <div class="stars" id="stars" role="group" aria-label="Rate this cat"></div>
@@ -64,15 +73,21 @@
 
   <script>
     // A random cat from Cat as a service (cat.go: catAPI, as a data: URL); a click brings another.
+    // A few cats are fetched and decoded ahead (ready), so the next one shows at once.
     // It can be rated out of 5 stars, which does nothing: the rating is not kept or sent anywhere,
     // and each message says so. Nobody knows the cat's sex, so each cat gets one at random.
-    const img = document.getElementById('cat');
+    const stage = document.getElementById('stage');
     const loading = document.getElementById('loading');
     const failed = document.getElementById('failed');
     const rate = document.getElementById('rate');
     const msg = document.getElementById('msg');
     const stars = document.getElementById('stars');
-    let busy = false;
+
+    const AHEAD = 4; // cats kept ready
+    const ready = []; // decoded Images, oldest first
+    let fetching = 0; // cats being fetched
+    let waiting = false; // a click is waiting for the next cat
+    let lastError = null; // why the last fetch failed; fetching ahead stops until the next click
 
     const pronouns = [
       { he: 'he', him: 'him', his: 'his' },
@@ -123,32 +138,77 @@
       rate.classList.remove('rated');
     }
 
-    async function load() {
-      if (busy) return;
-      busy = true;
-      failed.hidden = true;
-      loading.hidden = img.classList.contains('shown'); // the old cat stays until the new one is in
+    // fill fetches cats until AHEAD are ready or on their way, two at a time.
+    function fill() {
+      while (!lastError && fetching < 2 && ready.length + fetching < AHEAD) fetchOne();
+    }
+
+    async function fetchOne() {
+      fetching++;
       try {
         const { url } = await aex.call('cat');
         const next = new Image();
+        next.alt = 'A cat';
         next.src = url;
         await next.decode();
-        img.src = url;
-        img.classList.add('shown');
-        cat = pronouns[Math.floor(Math.random() * pronouns.length)];
-        unrated();
+        ready.push(next);
       } catch (e) {
-        document.getElementById('error').textContent = e.message;
-        img.classList.remove('shown');
-        failed.hidden = false;
+        lastError = e;
       } finally {
-        loading.hidden = true;
-        busy = false;
+        fetching--;
       }
+      if (waiting) showNext(); else fill();
     }
 
-    document.body.addEventListener('click', load);
-    load();
+    // showNext shows the next ready cat, or waits for one (the old cat stays until it is in).
+    function showNext() {
+      if (ready.length) {
+        waiting = false;
+        loading.hidden = true;
+        show(ready.shift());
+        fill();
+        return;
+      }
+      if (lastError && !fetching) {
+        waiting = false;
+        loading.hidden = true;
+        document.getElementById('error').textContent = lastError.message;
+        stage.replaceChildren();
+        document.body.classList.remove('has-cat');
+        failed.hidden = false;
+        return;
+      }
+      waiting = true;
+      loading.hidden = document.body.classList.contains('has-cat');
+      fill();
+    }
+
+    function show(next) {
+      const old = [...stage.children];
+      next.className = 'enter';
+      stage.append(next);
+      next.getBoundingClientRect(); // starts the transition from the enter state
+      next.classList.add('in');
+      for (const o of old) o.className = 'leave';
+      setTimeout(() => {
+        for (const o of old) o.remove();
+        if (next.classList.contains('in')) next.className = ''; // unless another came over it
+      }, 800);
+      document.body.classList.add('has-cat');
+      failed.hidden = true;
+      cat = pronouns[Math.floor(Math.random() * pronouns.length)];
+      unrated();
+    }
+
+    function another() {
+      if (waiting) return;
+      lastError = null;
+      failed.hidden = true;
+      showNext();
+    }
+
+    document.body.addEventListener('click', another);
+    showNext();
   </script>
 </body>
 </html>

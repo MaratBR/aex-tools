@@ -1,0 +1,33 @@
+{
+  "name": "Tokyo Night",
+  "dark": {
+    "accent": "#7aa2f7",
+    "accent-2": "#7dcfff",
+    "on-accent": "#1a1b26",
+    "ink": "#c0caf5",
+    "muted": "#a9b1d6",
+    "faint": "#565f89",
+    "bg": "#1a1b26",
+    "side": "#16161e",
+    "surface": "#24283b",
+    "ok": "#9ece6a",
+    "fail": "#f7768e",
+    "warn": "#e0af68",
+    "c0": "#414868",
+    "c1": "#f7768e",
+    "c2": "#9ece6a",
+    "c3": "#e0af68",
+    "c4": "#7aa2f7",
+    "c5": "#bb9af7",
+    "c6": "#7dcfff",
+    "c7": "#a9b1d6",
+    "c8": "#565f89",
+    "c9": "#f7768e",
+    "c10": "#9ece6a",
+    "c11": "#e0af68",
+    "c12": "#7aa2f7",
+    "c13": "#bb9af7",
+    "c14": "#7dcfff",
+    "c15": "#c0caf5"
+  }
+}

@@ -2,7 +2,7 @@
 // terminal, Widgets (the same form: the settings of widgets, by widget), Reminders (reminders.js), About (version, build, licenses), and under Plugins each plugin with settings of its
 // own, run on the page (a run like on Runs, app.js, but here). Backend: settings.go (Settings,
 // SaveSettings, SetShortcut, SetAutostart, WipeList, Wipe, WipeSession), about.go (About), webui.go
-// (RunSettings).
+// (RunSettings), themes.go (Themes, CopyTheme, OpenThemes).
 const settingsForm = $('settings-form'), settingsBody = $('settings-body');
 const saveButton = $('settings-save'), discardButton = $('settings-discard'), settingsNote = $('settings-note');
 const pluginPane = $('plugin-settings'), pluginRun = $('plugin-settings-run'), aboutPane = $('about-pane');
@@ -175,7 +175,10 @@ async function loadSettings(message) {
   }
   const widgets = [...new Set(form.fields.filter(f => f.widget).map(f => f.widget))];
   for (const w of widgets) group(w, 'Leave a field empty to go back to its default.', true).append(...form.fields.filter(f => f.widget === w).map(fieldRow));
-  group('Appearance').appendChild(themeRow());
+  const themes = await loadThemes();
+  group('Appearance', themes.dir ? 'A custom theme is a JSON file in ' + themes.dir + ': {"name", "light": {…}, "dark": {…}}, ' +
+    'the colors of tokens.css by name (accent, ink, bg, surface, c0–c15, …). Customize copies the theme picked there to start from.' : '')
+    .append(...themeRows(themes));
   if (form.shortcut) group('App launcher').appendChild(shortcutRow(form.shortcut));
   if (form.autostart) group('Start with the system', 'On a day not picked, aex started when you log in closes at once.')
     .append(...autostartRows(form.autostart, saveAutostart));
@@ -409,13 +412,45 @@ async function saveAutostart({ enabled, days }) {
   }
 }
 
-// themeRow picks the window's theme, which applies (and is kept) at once, not on Save.
-function themeRow() {
-  const row = el('div', 'row');
-  row.appendChild(el('span', 'row-text', 'Theme'));
+// loadThemes lists the themes, taking the one picked again from them (theme.refresh).
+const loadThemes = () => theme.refresh().catch(e => ({ themes: [], problems: [String(e)] }));
+
+// themeRows pick the window's theme and mode, which apply (and are kept) at once, not on Save:
+// a card per theme showing its colors, the mode, and buttons to start a custom theme and open the
+// themes folder. list is api().Themes().
+function themeRows(list) {
+  const pick = el('div', 'theme-pick');
+  pick.setAttribute('role', 'radiogroup');
+  pick.setAttribute('aria-label', 'Theme');
+  const mode = el('div', 'row');
+  const modeText = el('span', 'row-text');
   const seg = el('div', 'segmented');
   seg.setAttribute('role', 'radiogroup');
-  seg.setAttribute('aria-label', 'Theme');
+  seg.setAttribute('aria-label', 'Mode');
+  // syncMode greys the mode out for a theme with only light or dark colors.
+  const syncMode = () => {
+    const p = theme.palette();
+    const only = p.light && !p.dark ? 'light' : p.dark && !p.light ? 'dark' : '';
+    modeText.textContent = '';
+    modeText.append('Mode');
+    if (only) modeText.append(el('span', 'row-note', (p.name || 'This theme') + ' is ' + only + ' only'));
+    seg.classList.toggle('off', !!only);
+    seg.querySelectorAll('input').forEach(i => (i.disabled = !!only));
+    pick.querySelectorAll('input').forEach(i => (i.checked = i.value === p.id));
+    for (const card of pick.children) card.querySelector('.theme-swatch').replaceWith(themeSwatch(card.theme));
+  };
+  for (const t of list.themes) {
+    const label = el('label', 'theme-card');
+    label.theme = t;
+    const input = el('input');
+    input.type = 'radio';
+    input.name = 'palette';
+    input.value = t.id;
+    input.onchange = () => { theme.setPalette(t); syncMode(); };
+    label.append(input, el('span', 'theme-swatch'), el('span', 'theme-name', t.name));
+    if (t.custom) label.title = t.file;
+    pick.appendChild(label);
+  }
   for (const [value, text] of [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']]) {
     const label = el('label');
     const input = el('input');
@@ -423,12 +458,51 @@ function themeRow() {
     input.name = 'theme';
     input.value = value;
     input.checked = theme.get() === value;
-    input.onchange = () => theme.set(value);
+    input.onchange = () => { theme.set(value); syncMode(); };
     label.append(input, el('span', null, text));
     seg.appendChild(label);
   }
-  row.appendChild(seg);
-  return row;
+  mode.append(modeText, seg);
+  // reload lists the themes again, in place of these rows (the rest of the form keeps its changes).
+  const reload = async () => {
+    const card = pick.parentElement;
+    const rows = themeRows(await loadThemes());
+    card?.replaceChildren(...rows);
+  };
+  const actions = el('div', 'row theme-actions');
+  actions.append(el('span', 'row-text', 'Custom themes'),
+    button('Customize', 'btn small', async () => {
+      try {
+        const t = await api().CopyTheme(theme.palette().id);
+        theme.setPalette(t);
+        note('Copied to ' + t.file + '. Edit it, then Reload to see the changes.');
+        await reload();
+        await api().OpenThemes();
+      } catch (e) { note(String(e), true); }
+    }),
+    button('Open folder', 'btn small', () => api().OpenThemes().catch(e => note(String(e), true))),
+    button('Reload', 'btn small', () => reload().catch(e => note(String(e), true))));
+  const rows = [pick, mode, actions];
+  if (list.problems?.length) {
+    const box = el('div', 'field');
+    list.problems.forEach(p => box.appendChild(el('div', 'field-note', 'Not a theme: ' + p)));
+    rows.push(box);
+  }
+  syncMode();
+  return rows;
+}
+
+// themeSwatch is a small picture of a theme in the mode shown (or the one it has): its background,
+// sidebar, a card with text and its accent.
+function themeSwatch(t) {
+  const vars = t[theme.scheme()] || t.light || t.dark || {};
+  const box = el('span', 'theme-swatch');
+  for (const k of ['bg', 'side', 'surface', 'ink', 'muted', 'accent', 'ok', 'fail', 'warn']) {
+    if (vars[k]) box.style.setProperty('--t-' + k, vars[k]);
+  }
+  box.innerHTML = '<span class="ts-side"></span><span class="ts-card"><span class="ts-line"></span><span class="ts-line short"></span>' +
+    '<span class="ts-dots"><i class="ok"></i><i class="warn"></i><i class="fail"></i></span><span class="ts-accent"></span></span>';
+  return box;
 }
 
 // wipeRow deletes all settings, or (all) everything in the data folder, once CONFIRM is typed.

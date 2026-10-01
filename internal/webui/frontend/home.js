@@ -433,7 +433,8 @@ function widgetDoc(html, [tokens, base, sdk], settings, popup = null) {
   const json = v => JSON.stringify(v).replace(/</g, '\\u003c');
   script.textContent = 'const aexSettings = ' + json(settings || {}) + ';\nconst aexPopup = ' + json(popup) + ';\n' + sdk;
   doc.head.prepend(csp, style, script);
-  doc.documentElement.dataset.theme = document.documentElement.dataset.theme;
+  doc.documentElement.dataset.theme = theme.scheme();
+  for (const [k, v] of Object.entries(theme.vars())) doc.documentElement.style.setProperty(k, v);
   return '<!doctype html>\n' + doc.documentElement.outerHTML;
 }
 
@@ -598,13 +599,14 @@ function closePopup(value) {
 $('popup-close').onclick = () => closePopup();
 popupBack.addEventListener('mousedown', e => { if (e.target === popupBack) closePopup(); });
 
-// The theme follows the window's.
-new MutationObserver(() => {
-  if (popup && popupFrame.contentWindow) post(popupFrame.contentWindow, { op: 'theme', theme: document.documentElement.dataset.theme });
+// The theme follows the window's: its mode and colors (theme.js).
+window.addEventListener('aex:theme', () => {
+  const m = { op: 'theme', theme: theme.scheme(), vars: theme.vars() };
+  if (popup && popupFrame.contentWindow) post(popupFrame.contentWindow, m);
   for (const f of grid.querySelectorAll('iframe')) {
-    if (f.contentWindow) post(f.contentWindow, { op: 'theme', theme: document.documentElement.dataset.theme });
+    if (f.contentWindow) post(f.contentWindow, m);
   }
-}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+});
 
 // A plugin's widget refreshes at most this often on its own: each of its calls starts the plugin.
 const pluginRefreshMs = 30000;

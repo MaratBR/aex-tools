@@ -1,0 +1,33 @@
+{
+  "name": "Dracula",
+  "dark": {
+    "accent": "#bd93f9",
+    "accent-2": "#ff79c6",
+    "on-accent": "#282a36",
+    "ink": "#f8f8f2",
+    "muted": "#a9abc0",
+    "faint": "#6272a4",
+    "bg": "#282a36",
+    "side": "#21222c",
+    "surface": "#343746",
+    "ok": "#50fa7b",
+    "fail": "#ff5555",
+    "warn": "#ffb86c",
+    "c0": "#6272a4",
+    "c1": "#ff5555",
+    "c2": "#50fa7b",
+    "c3": "#f1fa8c",
+    "c4": "#bd93f9",
+    "c5": "#ff79c6",
+    "c6": "#8be9fd",
+    "c7": "#f8f8f2",
+    "c8": "#6272a4",
+    "c9": "#ff6e6e",
+    "c10": "#69ff94",
+    "c11": "#ffffa5",
+    "c12": "#d6acff",
+    "c13": "#ff92df",
+    "c14": "#a4ffff",
+    "c15": "#ffffff"
+  }
+}

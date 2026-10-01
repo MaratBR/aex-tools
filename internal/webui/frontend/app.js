@@ -675,6 +675,8 @@ window.runtime.EventsOn('prompt', onPrompt);
 window.runtime.EventsOn('finished', finished);
 window.runtime.OnFileDrop((x, y, paths) => { if (dropHandler && paths && paths.length) dropHandler(paths); }, false);
 updateCommand();
+// The theme picked may be a custom one whose file changed since.
+theme.refresh().catch(() => {});
 refresh().then(async () => {
   if (run) return;
   // First start: onboarding before the start-up questions.

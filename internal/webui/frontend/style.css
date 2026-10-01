@@ -682,6 +682,35 @@ div.row { cursor: default; }
 .segmented span { display: block; padding: 3px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; transition: background-color .15s, box-shadow .15s; }
 .segmented input:checked + span { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-weight: 500; }
 .segmented input:focus-visible + span { box-shadow: var(--ring); }
+/* Themes (settings.js: themeRows): a card per theme, its swatch drawn in its own colors. */
+.theme-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; padding: 14px; }
+.theme-card { position: relative; display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
+.theme-card input { position: absolute; opacity: 0; pointer-events: none; }
+.theme-name { font-size: 12px; text-align: center; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-card input:checked ~ .theme-name { color: var(--ink); font-weight: 500; }
+.theme-swatch {
+  --t-bg: #f5f5f7; --t-side: #ebebef; --t-surface: #fff; --t-ink: #1d1d1f; --t-muted: #6e6e73; --t-accent: #0071e3;
+  --t-ok: #248a3d; --t-warn: #b25000; --t-fail: #d70015;
+  display: flex; gap: 5px; height: 64px; padding: 6px 6px 6px 0; border-radius: 9px; overflow: hidden;
+  background: var(--t-bg); box-shadow: 0 0 0 1px var(--sep); transition: box-shadow .15s;
+}
+.theme-card:hover .theme-swatch { box-shadow: 0 0 0 1px var(--faint); }
+.theme-card input:checked ~ .theme-swatch { box-shadow: 0 0 0 2px var(--accent); }
+.theme-card input:focus-visible ~ .theme-swatch { box-shadow: 0 0 0 2px var(--accent), var(--ring); }
+.ts-side { width: 22%; margin: -6px 0; background: var(--t-side); }
+.ts-card { position: relative; flex: 1; display: flex; flex-direction: column; gap: 5px; padding: 7px; border-radius: 5px; background: var(--t-surface); }
+.ts-line { height: 4px; width: 80%; border-radius: 2px; background: var(--t-ink); }
+.ts-line.short { width: 50%; background: var(--t-muted); }
+.ts-dots { display: flex; gap: 3px; margin-top: auto; }
+.ts-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--t-ok); }
+.ts-dots i.warn { background: var(--t-warn); }
+.ts-dots i.fail { background: var(--t-fail); }
+.ts-accent { position: absolute; right: 7px; bottom: 7px; width: 18px; height: 8px; border-radius: 4px; background: var(--t-accent); }
+.theme-actions { flex-wrap: wrap; }
+.row-note { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.segmented.off { opacity: .5; }
+.segmented input:disabled + span { cursor: default; }
+
 /* The days aex starts on (settings.js: autostartRows), dimmed while it does not start at all. */
 .autostart-days { flex-wrap: wrap; }
 .autostart-days .segmented span { padding: 3px 9px; }

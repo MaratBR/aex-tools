@@ -72,9 +72,16 @@ links). They show while aex runs, so let it start when you log in (Settings > Ge
 urgent** one is marked red and chimes twice, then twice again every 30 seconds until you close it or
 10 minutes pass.
 
+## Themes
+
+**Settings > General > Appearance** picks a theme: Default, GitHub, Solarized, Nord, Gruvbox, Catppuccin
+(each light and dark, following the mode you pick), or Dracula, Tokyo Night and Monokai (dark only).
+Widgets follow it. To make your own, pick the closest one, click **Customize** (it copies it to the
+`themes` folder in the data folder), change the colors in that file and click **Reload**.
+
 ## Where your data is kept
 
-- Settings and output files are in the data folder, `%APPDATA%\aex` by default. You can open it from the
+- Settings, custom themes and output files are in the data folder, `%APPDATA%\aex` by default. You can open it from the
   sidebar, or use another one with `--data-dir <dir>`.
 - Logins (the AEXT session, Jira token and Google login) are kept in the Windows Credential Manager
   (the Keychain on macOS), not in plain files.
