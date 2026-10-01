@@ -77,6 +77,17 @@ Type: files; Name: "{app}\*.old*"
 Type: files; Name: "{app}\plugins\*.old*"
 
 [Code]
+// Whether /LAUNCH is on the command line.
+function LaunchParam: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/LAUNCH') = 0 then
+      Result := True;
+end;
+
 // aex starts on login through an "aex" value in the Run key (internal/autostart); remove it with aex.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin

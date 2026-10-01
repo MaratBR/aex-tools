@@ -61,7 +61,8 @@ people using aex: keep it short, and put the details here. Building, dev builds 
 - `bin\<name>.ps1` — PowerShell entrypoint per tool (thin wrapper over `bin\_invoke.ps1`)
 - `bin\build-exe.ps1` — builds the release `dist\aex.exe` and `dist\aex-cli.exe`; `bin\_plugin-hashes.ps1` — the hashes of the
   plugins just built, for aex's pre-approved hashes (see Plugins); `bin\dist.ps1` — vets, tests, builds
-  the exes and the installer, and zips the installer with `SHA256SUMS` to `dist\aex-<version>-windows-<arch>.zip`
+  the exes and the installer, and zips the installer with `SHA256SUMS` to `dist\aex-<version>-windows-<arch>.zip`;
+  `bin\dist-install.ps1` — runs `dist.ps1`, unzips its zip to `dist\install\` and runs the installer
 - `installer\aex.iss` — the Windows installer (Inno Setup 6): per user, no admin, into
   `%LOCALAPPDATA%\Programs\aex`; adds the same `aex.lnk` to the Start menu as `internal/shortcut`
   (so aex does not offer it), optionally a desktop shortcut; uninstalling removes the files, the

@@ -115,12 +115,18 @@ and `plugins/*.exe`, in `sha256sum -c` format) to `dist\aex-<version>-windows-<a
 `ProductVersion` in `winres\winres.json`). `-Arch arm64` for ARM Windows (default `amd64`), `-SkipTests`
 to skip vet and tests. Stops at the first failure.
 
+`.\bin\dist-install.ps1` runs `dist.ps1` (same `-Arch`, `-SkipTests`), unzips the zip to `dist\install\`,
+checks the installer against `SHA256SUMS` and runs it without asking, waiting for it to finish: only
+its progress bar shows, no desktop shortcut, and aex opens at the end (`/SILENT /SUPPRESSMSGBOXES
+/NORESTART /MERGETASKS="!desktopicon" /LAUNCH`). `-Wizard` runs the installer's wizard instead.
+
 Needs [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`): `ISCC.exe`
 on `PATH` or in its usual install folder.
 
 The installer installs for the current user (no admin) into `%LOCALAPPDATA%\Programs\aex`, adds aex to
-the Start menu (and, if picked, the desktop), and can open aex at the end. Silent: `/VERYSILENT`,
-`/DIR=<folder>`. Uninstalling (Settings > Apps) removes the files, the shortcuts and starting on login;
+the Start menu (and, if picked, the desktop), and can open aex at the end. Silent: `/SILENT`
+(progress bar only) or `/VERYSILENT`, `/DIR=<folder>`, `/MERGETASKS="desktopicon"` for the desktop
+shortcut, `/LAUNCH` to open aex at the end (a silent install does not otherwise). Uninstalling (Settings > Apps) removes the files, the shortcuts and starting on login;
 the data folder stays.
 
 ## Tests
