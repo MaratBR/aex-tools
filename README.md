@@ -45,7 +45,8 @@ this aex does not have (e.g. from another version) stays on the page with a warn
 - **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that
   syncs this week (Monday through today). ‹ › show other months. Leave (approved green, pending blue)
   and holidays show on the bar and are skipped, with a warning when you logged hours on them. A month
-  short by less than an hour shows in yellow (Settings > Widgets to change it).
+  short by less than an hour shows in yellow (Settings > Widgets to change it). It also compares this
+  week's hours in Jira with AEXT and says when they differ.
 - **Google Calendar**: what's on now and coming up in one calendar.
 - **Jira tickets**: your open tickets, tickets where you are in a field you pick, or a JQL query; add
   tabs for several lists. To Do tickets not updated for 2 weeks are faded.

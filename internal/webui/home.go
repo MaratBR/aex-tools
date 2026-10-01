@@ -65,6 +65,7 @@ var renamedWidgets = map[string]string{"cm-release/cm-repos-state": "git-status"
 // no run to ask its questions in, so one that needs a login says so instead.
 var widgetAPIs = map[string]func(args map[string]any) (any, error){
 	"quota":           quotaAPI,
+	"worklogCheck":    worklogCheckAPI,
 	"googleCalendars": googleCalendarsAPI,
 	"googleNow":       googleNowAPI,
 	"jiraFields":      jiraFieldsAPI,

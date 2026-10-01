@@ -443,6 +443,14 @@ Widgets so far:
   warning color (yellow) instead of red, here and in the quota tool. While it loads (the first time, or
   a month not loaded yet) grey blocks stand where the numbers go. One row high it shows only the
   numbers and the bar.
+  With this month shown, a Jira week row compares this week (Monday through today) in Jira with AEXT
+  (`worklogCheck` call, `worklogcheck.go`): Jira's worklogs per day and issue, as worklog-sync's CSV
+  rows (project mapped, hours to hundredths), against AEXT entries of the same day, project and
+  description; AEXT entries whose description is not an issue key (logged by hand) are left out. It
+  says ✔ matches, or how many differ and by how much in all, each day and issue with both hours on
+  hover, and Sync this week becomes the main button. Jira's worklogs (a request per issue) are reused
+  for 5 minutes, unless the refresh button is clicked; AEXT's are asked for every time. Nothing shows
+  without a Jira login.
   Without an AEXT session it offers to log in (`account --login aext`).
   With `--debug` the `quota` call also returns what the numbers came from (`QuotaDebug` in `home.go`:
   now, the device's clock, the settings, AEXT's raw working days, summary and leaves with how long each
