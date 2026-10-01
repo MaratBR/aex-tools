@@ -424,17 +424,41 @@ func (a *App) WidgetCall(widget, name string, args map[string]any) (any, error) 
 	return api(args)
 }
 
-// QuotaReply is the quota API's result: this month, then last month.
+// QuotaReply is the quota API's result: the month asked for (this month by default), then the one before.
 type QuotaReply struct {
 	NeedLogin   bool          `json:"needLogin,omitempty"` // no valid AEXT session: nothing else is set
 	Today       string        `json:"today,omitempty"`
 	HoursPerDay float64       `json:"hoursPerDay,omitempty"`
+	WarnHours   float64       `json:"warnHours"` // a month over short by less than this is a warning, not a failure
 	Country     string        `json:"country,omitempty"`
 	Months      []quota.Month `json:"months,omitempty"`
 	Warnings    []string      `json:"warnings,omitempty"` // leave warnings (quota --verbose)
+	Debug       *QuotaDebug   `json:"debug,omitempty"`    // only with --debug: the widget's debug view
 }
 
-func quotaAPI(map[string]any) (any, error) {
+// QuotaDebug is everything the quota was computed from, for the quota widget's debug view.
+type QuotaDebug struct {
+	Now           string                    `json:"now"`    // in TZ_OFFSET_HOURS
+	Device        string                    `json:"device"` // the device's clock and zone
+	TZOffset      any                       `json:"tzOffset"`
+	IgnoredStatus []string                  `json:"ignoredStatuses"`
+	Took          string                    `json:"took"`
+	Raw           quota.Raw                 `json:"raw"`
+	WorkingDays   map[string]bool           `json:"workingDays"`
+	LeaveDays     map[string]quota.LeaveDay `json:"leaveDays"`
+	OffDays       map[string]bool           `json:"offDays"`
+	HoursByDay    map[string]float64        `json:"hoursByDay"`
+}
+
+func quotaAPI(args map[string]any) (any, error) {
+	now := dates.Today()
+	month := now
+	if m, _ := args["month"].(string); m != "" {
+		if _, err := time.Parse("2006-01", m); err != nil {
+			return nil, fmt.Errorf("bad month %q", m)
+		}
+		month = m + "-01"
+	}
 	c, err := aext.NewQuiet()
 	if err != nil {
 		return nil, err
@@ -442,21 +466,42 @@ func quotaAPI(map[string]any) (any, error) {
 	if !c.HasSession() {
 		return QuotaReply{NeedLogin: true}, nil
 	}
-	now := dates.Today()
-	d, err := quota.FetchMonths(c, now)
+	prev := dates.PrevMonthStart(month)
+	start := time.Now()
+	d, err := quota.Fetch(c, prev, dates.MonthEnd(month))
 	if errors.Is(err, aext.ErrNoSession) {
 		return QuotaReply{NeedLogin: true}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return QuotaReply{
+	reply := QuotaReply{
 		Today:       now,
 		HoursPerDay: settings.HoursPerDay(),
+		WarnHours:   settings.QuotaWarnHours(),
 		Country:     settings.WorkingDaysCountry,
-		Months:      []quota.Month{quota.ComputeMonth(now, now, d), quota.ComputeMonth(dates.PrevMonthStart(now), now, d)},
+		Months:      []quota.Month{quota.ComputeMonth(month, now, d), quota.ComputeMonth(prev, now, d)},
 		Warnings:    d.Warnings,
-	}, nil
+	}
+	if settings.Debug {
+		var tz any = "auto"
+		if hours, ok := settings.TZOffsetHours(); ok {
+			tz = hours
+		}
+		reply.Debug = &QuotaDebug{
+			Now:           dates.Now().Format(time.RFC3339),
+			Device:        time.Now().Format(time.RFC3339 + " MST"),
+			TZOffset:      tz,
+			IgnoredStatus: settings.IgnoredLeaveStatuses,
+			Took:          time.Since(start).Round(time.Millisecond).String(),
+			Raw:           d.Raw,
+			WorkingDays:   d.WorkingDays,
+			LeaveDays:     d.LeaveDays,
+			OffDays:       d.OffDays,
+			HoursByDay:    d.HoursByDay,
+		}
+	}
+	return reply, nil
 }
 
 // CalendarsReply is the googleCalendars API's result.

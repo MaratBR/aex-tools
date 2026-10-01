@@ -8,7 +8,10 @@
     .head { display: flex; align-items: center; gap: 8px; }
     .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .title .muted { font-weight: 400; }
-    .loading svg { animation: spin .9s linear infinite; }
+    .loading #refresh svg { animation: spin .9s linear infinite; }
+    .icon-btn:disabled { opacity: .35; cursor: default; background: none; }
+    .now { padding: 1px 8px; border: 0; border-radius: 999px; background: var(--fill); color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+    .now:hover { background: var(--hover); color: var(--ink); }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
@@ -17,12 +20,30 @@
     .verdict { margin-left: auto; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
     .verdict.good { color: var(--ok); background: color-mix(in srgb, var(--ok) 13%, transparent); }
     .verdict.bad { color: var(--fail); background: color-mix(in srgb, var(--fail) 12%, transparent); }
+    .verdict.near { color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+    .verdict.neutral { color: var(--muted); background: var(--fill); }
 
-    /* Logged hours filled, and a marker where the hours due by today end. */
-    .bar { position: relative; height: 8px; border-radius: 8px; background: var(--fill); }
-    .bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--ok); transition: width .4s ease; }
-    .bar.bad .fill { background: var(--fail); }
+    /* The month's weekdays, one slot each: working days fill with the hours logged, in order, at a
+       day's hours each; leave (approved green, pending blue) and holidays are hatched and skipped.
+       A marker shows where the hours due by today end. */
+    :root { --approved: var(--ok); --pending: var(--c12); --holiday: var(--faint); }
+    .bar { position: relative; }
+    .track { display: flex; height: 10px; border-radius: 10px; overflow: hidden; background: var(--fill); }
+    .slot { flex: 1; position: relative; min-width: 0; }
+    .slot .fill { position: absolute; inset: 0 auto 0 0; background: var(--ok); transition: width .4s ease; }
+    .bar.bad .slot .fill { background: var(--fail); }
+    .bar.near .slot .fill { background: var(--warn); }
+    .slot.off { --c: var(--holiday); background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--c) 70%, transparent) 0 2px, color-mix(in srgb, var(--c) 28%, transparent) 2px 4px); }
+    .slot.approved { --c: var(--approved); }
+    .slot.pending { --c: var(--pending); }
+    .slot.off + .slot:not(.off), .slot:not(.off) + .slot.off { margin-left: 1px; }
     .bar .due { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--warn); }
+
+    .period { margin-right: 10px; }
+    .sw { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 2px; background: var(--c, var(--holiday)); vertical-align: 0; }
+    .sw.approved { --c: var(--approved); }
+    .sw.pending { --c: var(--pending); }
+    .offwork { color: var(--warn); font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .rows { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 13px; min-height: 0; overflow: hidden; }
     .rows dt { color: var(--muted); white-space: nowrap; }
@@ -35,7 +56,13 @@
     .last .name { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .last .good { color: var(--ok); font-weight: 600; }
     .last .bad { color: var(--fail); font-weight: 600; }
+    .last .near { color: var(--warn); font-weight: 600; }
     .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    /* Loading: grey blocks where the numbers, bar and rows go. */
+    .sk { display: block; border-radius: 6px; background: var(--fill); animation: pulse 1.4s ease-in-out infinite; }
+    .sk-rows { display: flex; flex-direction: column; gap: 7px; min-height: 0; overflow: hidden; }
+    @keyframes pulse { 50% { opacity: .45; } }
 
     .notice { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; }
     .notice .error { color: var(--fail); overflow-wrap: anywhere; max-height: 5.5em; overflow: hidden; }
@@ -43,16 +70,46 @@
     /* One row high: the numbers and the bar only. */
     @media (max-height: 200px) {
       body { gap: 8px; padding-top: 12px; }
-      .rows, .last, .actions { display: none; }
+      .rows, .last, .actions, .offwork, .sk-rows { display: none; }
       .logged { font-size: 28px; }
     }
     @media (max-height: 330px) { .rows .extra { display: none; } }
     @media (max-width: 300px) { .of .pct { display: none; } }
+
+    /* Debug view (--debug only): everything the quota was computed from, in the popup. */
+    .dbg { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .dbg h3 { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .dbg .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0; }
+    .dbg .kv dt { color: var(--muted); }
+    .dbg .kv dd, .dbg td { margin: 0; font-family: var(--mono, ui-monospace, monospace); }
+    .dbg .kv dd { overflow-wrap: anywhere; }
+    .dbg .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+    .dbg table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .dbg th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: .5px solid var(--sep); padding: 2px 6px; }
+    .dbg td { padding: 1px 6px; white-space: nowrap; }
+    .dbg tr.weekend td, .dbg tr.holiday td { color: var(--faint); }
+    .dbg tr.leave td { color: var(--c12); }
+    .dbg tr.today td { box-shadow: inset 2px 0 var(--warn); }
+    .dbg tr.ignored td { text-decoration: line-through; color: var(--faint); }
+    .dbg .flag { color: var(--warn); }
+    .dbg pre { margin: 0; max-height: 360px; overflow: auto; padding: 8px; border-radius: 6px; background: var(--fill); font-size: 11px; }
+    .dbg .top { display: flex; gap: 6px; align-items: center; }
+    .dbg .top .muted { flex: 1; }
   </style>
 </head>
 <body>
   <div class="head">
     <div class="title">AEXT quota <span class="muted" id="month"></span></div>
+    <button class="now" id="now" type="button" title="Back to this month" hidden>This month</button>
+    <button class="icon-btn" id="prev" type="button" title="Previous month" aria-label="Previous month" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <button class="icon-btn" id="next" type="button" title="Next month" aria-label="Next month" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+    </button>
+    <button class="icon-btn" id="debug" type="button" title="Debug view (--debug)" aria-label="Debug view" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7a3 3 0 0 1 6 0M12 11v9M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-3M20 20l-3-3"/></svg>
+    </button>
     <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
     </button>
@@ -60,18 +117,23 @@
   <div id="content"></div>
 
   <script>
-    // This month's AEXT hours against the quota, and last month's: the quota tool's numbers
-    // (home.go: quotaAPI), laid out for a glance.
+    // A month's AEXT hours against the quota (this month by default, ‹ › for others), and the month
+    // before it: the quota tool's numbers (home.go: quotaAPI), laid out for a glance.
     const content = document.getElementById('content');
     const epsilon = 0.05; // below this a difference is rounding, not hours to log (as in quota.go)
+    let warnHours = 1; // a month over short by less than this is a warning, not a failure (QUOTA_WARN_HOURS)
+    const maxAhead = 12; // months after this one › goes to
 
     const h = n => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '') + 'h';
+    const dayOf = d => new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
     const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' });
-    const shortDay = d => {
-      const t = new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
-      return t.toLocaleString('en', { weekday: 'short' }) + ' ' + d.slice(5, 7) + '.' + d.slice(8, 10);
-    };
+    const shortDay = d => dayOf(d).toLocaleString('en', { weekday: 'short' }) + ' ' + d.slice(5, 7) + '.' + d.slice(8, 10);
     const plural = (n, one, many) => (n === 1 ? '1 ' + one : n + ' ' + many);
+    const addMonths = (ym, n) => {
+      const t = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1);
+      return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
+    };
+    const rangeDay = d => d.replaceAll('-', '.'); // 2026.09.20, as worklog-sync's --range takes it
 
     function node(tag, cls, text) {
       const e = document.createElement(tag);
@@ -80,28 +142,90 @@
       return e;
     }
 
+    const shortCls = q => (q.remaining < warnHours ? 'near' : 'bad');
+
     function verdict(q) {
-      if (q.remaining <= epsilon) return { good: true, text: 'Quota filled' };
-      if (q.behind > epsilon) return { good: false, text: h(q.behind) + ' behind' };
-      if (q.behind < -epsilon) return { good: true, text: h(-q.behind) + ' ahead' };
-      return { good: true, text: 'On track' };
+      if (q.future) return { cls: 'neutral', text: 'Upcoming' };
+      if (q.remaining <= epsilon) return { cls: 'good', text: q.current ? 'Quota filled' : 'Complete' };
+      if (!q.current) return { cls: shortCls(q), text: h(q.remaining) + ' short' };
+      if (q.behind > epsilon) return { cls: 'bad', text: h(q.behind) + ' behind' };
+      if (q.behind < -epsilon) return { cls: 'good', text: h(-q.behind) + ' ahead' };
+      return { cls: 'good', text: 'On track' };
     }
 
-    function bar(q, bad) {
-      const b = node('div', 'bar' + (bad ? ' bad' : ''));
-      const pct = v => (q.expected > 0 ? Math.min(100, (v / q.expected) * 100) : 0);
-      const fill = node('div', 'fill');
-      fill.style.width = pct(q.logged) + '%';
-      b.appendChild(fill);
-      if (q.current && q.daysLeft > 0 && q.expectedToDate > q.logged) {
-        const due = node('div', 'due');
-        due.style.left = pct(q.expectedToDate) + '%';
-        due.title = h(q.expectedToDate) + ' due by today';
-        b.appendChild(due);
+    // What a day off is: its class on the bar and its name; null for a working day or a weekend.
+    function offKind(d) {
+      if (d.kind === 'leave') {
+        const type = (d.leave.type || 'leave').replaceAll('_', ' ');
+        return { cls: d.leave.approved ? 'approved' : 'pending', name: d.leave.approved ? type : type + ' (pending)' };
+      }
+      if (d.kind === 'holiday') return { cls: 'holiday', name: 'holiday' };
+      return null;
+    }
+
+    function bar(q, r, cls) {
+      const b = node('div', 'bar ' + cls);
+      const track = node('div', 'track');
+      const slots = q.days.filter(d => d.kind !== 'weekend');
+      let left = q.logged, worked = 0, due = -1;
+      slots.forEach((d, i) => {
+        const s = node('div', 'slot');
+        const off = offKind(d);
+        let title = shortDay(d.date) + ' · ' + (off ? off.name : 'working day');
+        if (off) s.className += ' off ' + off.cls;
+        else {
+          const f = r.hoursPerDay > 0 ? Math.max(0, Math.min(1, left / r.hoursPerDay)) : 0;
+          left -= r.hoursPerDay;
+          const fill = node('div', 'fill');
+          fill.style.width = f * 100 + '%';
+          s.appendChild(fill);
+          if (++worked === q.daysDue) due = i + 1;
+        }
+        if (d.hours) title += ' · ' + h(d.hours) + ' logged';
+        s.title = title;
+        track.appendChild(s);
+      });
+      b.appendChild(track);
+      if (q.current && q.daysLeft > 0 && q.expectedToDate > q.logged && due > 0) {
+        const m = node('div', 'due');
+        m.style.left = (due / slots.length) * 100 + '%';
+        m.title = h(q.expectedToDate) + ' due by today';
+        b.appendChild(m);
       }
       b.setAttribute('role', 'img');
       b.setAttribute('aria-label', `${h(q.logged)} of ${h(q.expected)} logged`);
       return b;
+    }
+
+    // Leave and holidays as periods: days in a row of the same kind, weekends between them included.
+    function periods(q) {
+      const list = [];
+      let run = null;
+      for (const d of q.days) {
+        if (d.kind === 'weekend') continue;
+        const off = offKind(d);
+        const key = off && off.cls + ':' + off.name;
+        if (run && key === run.key) run.to = d.date;
+        else {
+          run = off ? { key, ...off, from: d.date, to: d.date } : null;
+          if (run) list.push(run);
+        }
+      }
+      return list;
+    }
+
+    function periodText(p) {
+      const month = dayOf(p.from).toLocaleString('en', { month: 'short' });
+      const days = p.from === p.to ? +p.from.slice(8) : `${+p.from.slice(8)}–${+p.to.slice(8)}`;
+      return `${month} ${days} ${p.name}`;
+    }
+
+    // Hours logged on leave days and on weekends and holidays (quota.go: OffWork).
+    function offWork(q) {
+      const parts = [];
+      if (q.leaveHours > epsilon) parts.push(h(q.leaveHours) + ' during your off time');
+      if (q.offDayHours > epsilon) parts.push(h(q.offDayHours) + ' on non-working days');
+      return parts.length ? 'You worked ' + parts.join(' and ') : '';
     }
 
     function row(list, label, value, cls) {
@@ -113,7 +237,10 @@
     }
 
     function render(r) {
+      content.removeAttribute('aria-busy');
       const [q, last] = r.months;
+      warnHours = r.warnHours ?? 1;
+      debugBtn.hidden = !r.debug;
       document.getElementById('month').textContent = '· ' + monthName(q.month);
       content.textContent = '';
       content.style.display = 'contents';
@@ -123,15 +250,33 @@
       big.append(node('span', 'logged', h(q.logged)));
       const of = node('span', 'of', '/ ' + h(q.expected) + ' ');
       of.append(node('span', 'pct', `· ${Math.round(q.percent)}%`));
-      big.append(of, node('span', 'verdict ' + (v.good ? 'good' : 'bad'), v.text));
-      content.append(big, bar(q, !v.good));
+      big.append(of, node('span', 'verdict ' + v.cls, v.text));
+      content.append(big, bar(q, r, v.cls));
+
+      const warn = offWork(q);
+      if (warn) {
+        const w = node('div', 'offwork', '▲ ' + warn);
+        w.title = warn;
+        content.append(w);
+      }
 
       const rows = node('dl', 'rows');
-      row(rows, 'Today', q.today > 0 ? h(q.today) + ' logged' : node('span', 'muted', 'nothing logged yet'));
-      row(rows, 'Due by today', [h(q.expectedToDate) + ' ', node('span', 'muted', `(${q.daysDue} of ${q.workingDays} days)`)]);
-      if (q.daysLeft > 0 && q.remaining > epsilon) {
-        const need = node('span', q.perDayLeft > r.hoursPerDay + epsilon ? 'over' : 'strong', h(q.perDayLeft) + '/day');
-        row(rows, 'To finish', [need, ` over ${plural(q.daysLeft, 'day', 'days')} left`]);
+      if (q.current) row(rows, 'Today', q.today > 0 ? h(q.today) + ' logged' : node('span', 'muted', 'nothing logged yet'));
+      const off = periods(q);
+      if (off.length) {
+        const list = off.map(p => {
+          const e = node('span', 'period');
+          e.append(node('span', 'sw ' + p.cls), periodText(p));
+          return e;
+        });
+        row(rows, 'Off', list).title = off.map(periodText).join('\n');
+      }
+      if (q.current) {
+        row(rows, 'Due by today', [h(q.expectedToDate) + ' ', node('span', 'muted', `(${q.daysDue} of ${q.workingDays} days)`)]);
+        if (q.daysLeft > 0 && q.remaining > epsilon) {
+          const need = node('span', q.perDayLeft > r.hoursPerDay + epsilon ? 'over' : 'strong', h(q.perDayLeft) + '/day');
+          row(rows, 'To finish', [need, ` over ${plural(q.daysLeft, 'day', 'days')} left`]);
+        }
       }
       const missing = q.missing || [];
       if (missing.length) {
@@ -143,7 +288,7 @@
       row(rows, 'Expected', node('span', 'muted', expected), 'extra');
       content.append(rows);
 
-      // worklog-sync's "this week" is from Monday through today.
+      // worklog-sync's "this week" is from Monday through today; a past month syncs its missing days.
       const actions = node('div', 'actions');
       const action = (label, primary, line) => {
         const b = node('button', 'btn' + (primary ? ' primary' : ''), label);
@@ -151,19 +296,51 @@
         b.onclick = () => aex.run(line);
         actions.append(b);
       };
-      if (missing.length) action('Run worklog-sync', true, 'worklog-sync');
-      action('Sync this week', !missing.length, 'worklog-sync --range "this week"');
-      content.append(actions);
+      if (q.current) {
+        if (missing.length) action('Run worklog-sync', true, 'worklog-sync');
+        action('Sync this week', !missing.length, 'worklog-sync --range "this week"');
+      } else if (missing.length) {
+        action('Sync missing days', true, `worklog-sync --range "${rangeDay(missing[0])}-${rangeDay(missing[missing.length - 1])}"`);
+      }
+      if (actions.childElementCount) content.append(actions);
 
+      // The month before, when it is over.
+      if (last.current || last.future) return;
       const foot = node('div', 'last');
       foot.append(node('span', 'name', monthName(last.month)));
       if (last.remaining <= epsilon) foot.append(node('span', 'good', '✔ complete'), node('span', 'muted', `${h(last.logged)} / ${h(last.expected)}`));
-      else foot.append(node('span', 'bad', '✖ ' + h(last.remaining) + ' short'), node('span', 'muted', `${h(last.logged)} / ${h(last.expected)}`));
-      if (r.warnings && r.warnings.length) foot.title = r.warnings.join('\n');
+      else foot.append(node('span', shortCls(last), '✖ ' + h(last.remaining) + ' short'), node('span', 'muted', `${h(last.logged)} / ${h(last.expected)}`));
+      const tip = [offWork(last), ...(r.warnings || [])].filter(Boolean);
+      if (tip.length) foot.title = tip.join('\n');
       content.append(foot);
     }
 
+    // skeleton stands in for the quota while the first reply (or a month not loaded yet) comes.
+    function skeleton() {
+      content.textContent = '';
+      content.className = '';
+      content.style.display = 'contents';
+      const block = (w, h, cls) => {
+        const e = node('span', 'sk' + (cls ? ' ' + cls : ''));
+        e.style.width = w;
+        e.style.height = h + 'px';
+        return e;
+      };
+      const big = node('div', 'big');
+      const pill = block('72px', 20);
+      pill.style.marginLeft = 'auto';
+      pill.style.borderRadius = '999px';
+      big.append(block('84px', 34), block('70px', 15), pill);
+      const rows = node('div', 'sk-rows');
+      rows.append(block('62%', 13), block('48%', 13), block('55%', 13));
+      const foot = node('div', 'last');
+      foot.append(block('40%', 13));
+      content.append(big, block('100%', 10), rows, foot);
+      content.setAttribute('aria-busy', 'true');
+    }
+
     function notice(text, error, action) {
+      content.removeAttribute('aria-busy');
       content.textContent = '';
       content.style.display = '';
       content.className = 'notice';
@@ -177,19 +354,47 @@
       }
     }
 
-    let seq = 0, shown = false;
+    // The month shown is kept as months from this one, so it follows when the month turns. This
+    // month (YYYY-MM) is known from the first reply; until then ‹ › are off.
+    const debugBtn = document.getElementById('debug');
+    let offset = 0, thisMonth = '', seq = 0, shown = false;
+    const cache = new Map(); // month → its last reply, shown at once when going back to it
+    const prevBtn = document.getElementById('prev'), nextBtn = document.getElementById('next'), nowBtn = document.getElementById('now');
+    const shownMonth = () => (offset ? addMonths(thisMonth, offset) : thisMonth);
+
+    function updateNav() {
+      prevBtn.disabled = !thisMonth;
+      nextBtn.disabled = !thisMonth || offset >= maxAhead;
+      nowBtn.hidden = !offset;
+    }
+
+    function go(n) {
+      offset = n;
+      updateNav();
+      const r = cache.get(shownMonth());
+      shown = !!r;
+      if (r) {
+        content.className = '';
+        render(r);
+      }
+      load();
+    }
+
     async function load() {
       const n = ++seq;
       document.body.classList.add('loading');
-      if (!shown) notice('Loading…');
+      if (!shown) skeleton();
       try {
-        const r = await aex.call('quota');
+        const r = await aex.call('quota', offset ? { month: shownMonth() } : {});
         if (n !== seq) return;
         if (r.needLogin) {
           shown = false;
+          cache.clear();
           document.getElementById('month').textContent = '';
           notice('Not logged in to AEXT.', '', { label: 'Log in', run: () => aex.run('account --login aext') });
         } else {
+          if (!offset) thisMonth = r.today.slice(0, 7);
+          cache.set(r.months[0].month, r);
           content.className = '';
           render(r);
           shown = true;
@@ -199,13 +404,141 @@
         shown = false;
         notice('Could not load the quota.', e.message, { label: 'Try again', run: load });
       } finally {
-        if (n === seq) document.body.classList.remove('loading');
+        if (n === seq) {
+          document.body.classList.remove('loading');
+          updateNav();
+        }
       }
     }
 
-    document.getElementById('refresh').onclick = load;
-    aex.onRefresh(load);
-    load();
+    // The debug view: with --debug the reply has debug (home.go: QuotaDebug), and the bug button
+    // opens the month shown in a popup, which loads it again itself (Reload, and on every refresh).
+    debugBtn.onclick = () => aex.openPopup({ title: 'AEXT quota · debug', width: 760, data: { month: offset ? shownMonth() : '' } }).catch(() => {});
+
+    async function loadDebug() {
+      let dbg = document.getElementById('dbg');
+      if (!dbg) {
+        dbg = document.body.appendChild(node('div', 'dbg'));
+        dbg.id = 'dbg';
+      }
+      try {
+        const month = aex.popup.data.month;
+        renderDebug(dbg, await aex.call('quota', month ? { month } : {}));
+      } catch (e) {
+        dbg.textContent = '';
+        dbg.append(node('div', 'notice', 'Could not load the quota: ' + e.message));
+      }
+    }
+
+    function kv(pairs) {
+      const dl = node('dl', 'kv');
+      for (const [k, v] of pairs) dl.append(node('dt', '', k), node('dd', '', typeof v === 'string' ? v : JSON.stringify(v)));
+      return dl;
+    }
+
+    function table(head, rows) {
+      const t = node('table');
+      const tr = node('tr');
+      for (const h of head) tr.append(node('th', '', h));
+      t.append(tr);
+      for (const { cls, cells } of rows) {
+        const row = node('tr', cls);
+        for (const c of cells) row.append(node('td', '', c == null ? '' : String(c)));
+        t.append(row);
+      }
+      return t;
+    }
+
+    function renderDebug(dbg, r) {
+      dbg.textContent = '';
+      const top = node('div', 'top');
+      const button = (label, onclick) => {
+        const b = node('button', 'btn', label);
+        b.type = 'button';
+        b.onclick = onclick;
+        return b;
+      };
+      top.append(node('span', 'muted', 'Loaded at ' + new Date().toLocaleTimeString()), button('Reload', loadDebug));
+      dbg.append(top);
+      if (r.needLogin) return dbg.append(node('div', 'notice', 'No AEXT session (needLogin).'));
+      const d = r.debug;
+      if (!d) return dbg.append(node('div', 'notice', 'No debug data: aex is not running with --debug.'));
+      const raw = d.raw;
+
+      dbg.append(node('h3', '', 'Inputs'), kv([
+        ['today', r.today], ['now', d.now], ['device', d.device], ['TZ_OFFSET_HOURS', d.tzOffset],
+        ['country', r.country], ['HOURS_PER_DAY', r.hoursPerDay], ['QUOTA_WARN_HOURS', r.warnHours],
+        ['ignored statuses', d.ignoredStatuses], ['fetched', raw.from + ' – ' + raw.to],
+        ['took', d.took + ' (' + Object.entries(raw.took || {}).map(([k, v]) => k + ' ' + v).join(', ') + ')'],
+        ['AEXT rows', `${(raw.workingDays || []).length} days, ${(raw.summary || []).length} summary, ${(raw.leaves || []).length} leaves`],
+      ]));
+
+      // Both months' numbers side by side: every field but the days.
+      const cols = node('div', 'cols');
+      for (const q of r.months) {
+        const box = node('div');
+        box.append(node('h3', '', monthName(q.month)), kv(Object.entries(q).filter(([k]) => k !== 'days')));
+        cols.append(box);
+      }
+      dbg.append(cols);
+
+      // Every day of both months: what AEXT said and what the quota made of it.
+      const calendar = new Map((raw.workingDays || []).map(w => [w.date, w.is_working_day]));
+      const summary = new Map();
+      for (const s of raw.summary || []) summary.set(s.date, (summary.get(s.date) || 0) + s.hours_total);
+      const missing = new Set(r.months.flatMap(q => q.missing || []));
+      const days = [...r.months].reverse().flatMap(q => q.days || []);
+      dbg.append(node('h3', '', 'Days'), table(
+        ['date', 'day', 'calendar', 'kind', 'leave', 'quota', 'summary', 'hours', 'flags'],
+        days.map(day => {
+          const flags = [];
+          if (day.date === r.today) flags.push('today');
+          if (missing.has(day.date)) flags.push('missing');
+          if (day.hours && day.kind !== 'work') flags.push('off-time hours');
+          if (!calendar.has(day.date)) flags.push('not in calendar');
+          const cal = calendar.get(day.date);
+          return {
+            cls: day.kind + (day.date === r.today ? ' today' : ''),
+            cells: [day.date, dayOf(day.date).toLocaleString('en', { weekday: 'short' }),
+              cal == null ? '—' : cal ? 'working' : 'off', day.kind,
+              day.leave ? (day.leave.type || '?') + (day.leave.approved ? '' : ' (pending)') : '',
+              d.workingDays[day.date] ? 'counted' : '', summary.has(day.date) ? summary.get(day.date) : '',
+              day.hours ? h(day.hours) : '', flags.join(', ')],
+          };
+        })));
+
+      const ignored = new Set(d.ignoredStatuses || []);
+      dbg.append(node('h3', '', 'Leaves'), (raw.leaves || []).length ? table(
+        ['id', 'type', 'start', 'end', 'status', 'user', 'created by'],
+        raw.leaves.map(l => ({
+          cls: ignored.has(l.status) ? 'ignored' : '',
+          cells: [JSON.stringify(l.id), l.leave_type, l.start, l.end, l.status, l.user?.email, l.created?.user?.email],
+        }))) : node('div', 'muted', 'none'));
+
+      if ((r.warnings || []).length) {
+        const list = node('ul');
+        for (const w of r.warnings) list.append(node('li', 'flag', w));
+        dbg.append(node('h3', '', 'Warnings'), list);
+      }
+
+      const json = node('details');
+      json.append(node('summary', '', 'Raw reply'), node('pre', '', JSON.stringify(r, null, 2)));
+      dbg.append(json);
+    }
+
+    if (aex.popup) {
+      document.querySelector('.head').hidden = true;
+      content.hidden = true;
+      aex.onRefresh(loadDebug);
+      loadDebug();
+    } else {
+      prevBtn.onclick = () => go(offset - 1);
+      nextBtn.onclick = () => go(offset + 1);
+      nowBtn.onclick = () => go(0);
+      document.getElementById('refresh').onclick = load;
+      aex.onRefresh(load);
+      load();
+    }
   </script>
 </body>
 </html>

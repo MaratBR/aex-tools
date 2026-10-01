@@ -4,6 +4,9 @@ package settings
 // worklog days, file timestamps) are read on every call, so configure changes apply without a restart.
 func HoursPerDay() float64 { return Number("HOURS_PER_DAY") }
 
+// QuotaWarnHours is how short of its quota a month that is over may be to show as a warning, not a failure.
+func QuotaWarnHours() float64 { return Number("QUOTA_WARN_HOURS") }
+
 // TZOffsetHours is the UTC offset set in TZ_OFFSET_HOURS; ok is false when it is auto (the device's zone).
 func TZOffsetHours() (hours float64, ok bool) {
 	if Value("TZ_OFFSET_HOURS") == Auto {

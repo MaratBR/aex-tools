@@ -18,7 +18,7 @@ func TestH(t *testing.T) {
 func TestComputeMonthMissing(t *testing.T) {
 	d := &Data{
 		WorkingDays: map[string]bool{"2026-09-14": true, "2026-09-15": true, "2026-09-16": true, "2026-09-17": true},
-		LeaveDays:   map[string]bool{},
+		LeaveDays:   map[string]LeaveDay{},
 		HoursByDay:  map[string]float64{"2026-09-15": 8, "2026-09-16": 2.5},
 	}
 	q := ComputeMonth("2026-09-16", "2026-09-16", d)
@@ -32,5 +32,35 @@ func TestComputeMonthMissing(t *testing.T) {
 	// Today counts as due: 3 days × hours per day, 10.5h logged.
 	if due := 3 * settings.HoursPerDay(); q.ExpectedToDate != due || q.Behind != due-10.5 {
 		t.Errorf("ExpectedToDate %v Behind %v", q.ExpectedToDate, q.Behind)
+	}
+}
+
+func TestComputeMonthOffTime(t *testing.T) {
+	d := &Data{
+		// Fri 10.02 works, Mon 10.05 is on leave, Tue 10.06 pending leave, Wed 10.07 a holiday.
+		WorkingDays: map[string]bool{"2026-10-02": true},
+		LeaveDays:   map[string]LeaveDay{"2026-10-05": {Approved: true, Type: "vacation"}, "2026-10-06": {}},
+		OffDays:     map[string]bool{"2026-10-03": true, "2026-10-04": true, "2026-10-07": true},
+		HoursByDay:  map[string]float64{"2026-10-02": 8, "2026-10-03": 2, "2026-10-05": 4, "2026-10-06": 1, "2026-10-07": 1},
+	}
+	q := ComputeMonth("2026-10-01", "2026-10-15", d)
+	if q.LeaveDays != 2 || q.LeaveHours != 5 || q.OffDayHours != 3 || q.Logged != 16 {
+		t.Errorf("LeaveDays %d LeaveHours %v OffDayHours %v Logged %v", q.LeaveDays, q.LeaveHours, q.OffDayHours, q.Logged)
+	}
+	kinds := map[string]string{}
+	for _, day := range q.Days {
+		kinds[day.Date] = day.Kind
+	}
+	want := map[string]string{"2026-10-02": "work", "2026-10-03": "weekend", "2026-10-05": "leave", "2026-10-07": "holiday"}
+	for day, kind := range want {
+		if kinds[day] != kind {
+			t.Errorf("%s is %q, want %q", day, kinds[day], kind)
+		}
+	}
+	if len(q.Days) != 31 {
+		t.Errorf("%d days", len(q.Days))
+	}
+	if got, want := OffWork(q), "You worked 5h during your off time and 3h on non-working days"; got != want {
+		t.Errorf("OffWork = %q", got)
 	}
 }

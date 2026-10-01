@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"aex/internal/aext"
@@ -96,33 +97,62 @@ func leaveWarnings(leaves []aext.Leave) []string {
 	return warnings
 }
 
-// Data is last month + current month from AEXT.
+// Data is AEXT's working days, leaves and hours over a span of days.
 type Data struct {
-	WorkingDays map[string]bool    // working days per calendar, minus leave days
-	LeaveDays   map[string]bool    // calendar working days covered by a leave
-	HoursByDay  map[string]float64 // only days with hours
+	WorkingDays map[string]bool     // working days per calendar, minus leave days
+	LeaveDays   map[string]LeaveDay // calendar working days covered by a leave
+	OffDays     map[string]bool     // days the calendar has as not working (weekends, holidays)
+	HoursByDay  map[string]float64  // only days with hours
 	Warnings    []string
+	Raw         Raw // what AEXT answered, for the quota widget's debug view
+}
+
+// Raw is what AEXT answered for a Fetch, and how long each request took.
+type Raw struct {
+	From        string            `json:"from"`
+	To          string            `json:"to"`
+	WorkingDays []aext.WorkingDay `json:"workingDays"`
+	Summary     []aext.DaySummary `json:"summary"`
+	Leaves      []aext.Leave      `json:"leaves"` // ignored ones (declined, cancelled) too
+	Took        map[string]string `json:"took"`   // request: duration
+}
+
+// LeaveDay is the leave covering a day. Approved wins over one still pending on the same day.
+type LeaveDay struct {
+	Approved bool   `json:"approved,omitempty"`
+	Type     string `json:"type,omitempty"`
 }
 
 // FetchMonths loads last month and the month of now.
 func FetchMonths(c *aext.Client, now string) (*Data, error) {
-	from := dates.PrevMonthStart(now)
-	to := dates.MonthEnd(now)
+	return Fetch(c, dates.PrevMonthStart(now), dates.MonthEnd(now))
+}
+
+// Fetch loads the days from through to.
+func Fetch(c *aext.Client, from, to string) (*Data, error) {
 	var (
 		days    []aext.WorkingDay
 		summary []aext.DaySummary
 		leaves  []aext.Leave
+		took    [3]time.Duration
 	)
+	timed := func(i int, fn func() error) func() error {
+		return func() error {
+			start := time.Now()
+			defer func() { took[i] = time.Since(start) }()
+			return fn()
+		}
+	}
 	err := parallel(
-		func() (err error) { days, err = c.WorkingDays(from, to); return },
-		func() (err error) { summary, err = c.TimeSummary(from, to); return },
-		func() (err error) { leaves, err = fetchLeaves(c, from, to); return },
+		timed(0, func() (err error) { days, err = c.WorkingDays(from, to); return }),
+		timed(1, func() (err error) { summary, err = c.TimeSummary(from, to); return }),
+		timed(2, func() (err error) { leaves, err = fetchLeaves(c, from, to); return }),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	d := &Data{WorkingDays: map[string]bool{}, LeaveDays: map[string]bool{}, HoursByDay: map[string]float64{}}
+	d := &Data{WorkingDays: map[string]bool{}, LeaveDays: map[string]LeaveDay{}, OffDays: map[string]bool{}, HoursByDay: map[string]float64{}}
 	for _, s := range summary {
 		if *s.HoursTotal > 0 {
 			d.HoursByDay[s.Date] += *s.HoursTotal
@@ -132,6 +162,8 @@ func FetchMonths(c *aext.Client, now string) (*Data, error) {
 	for _, day := range days {
 		if *day.IsWorkingDay {
 			calendarWorking[day.Date] = true
+		} else {
+			d.OffDays[day.Date] = true
 		}
 	}
 	for _, l := range leaves {
@@ -139,18 +171,31 @@ func FetchMonths(c *aext.Client, now string) (*Data, error) {
 			continue
 		}
 		for _, day := range dates.EachDay(max(l.Start, from), min(l.End, to)) {
-			if calendarWorking[day] {
-				d.LeaveDays[day] = true
+			if calendarWorking[day] && !d.LeaveDays[day].Approved {
+				d.LeaveDays[day] = LeaveDay{Approved: l.Status == "approved", Type: l.LeaveType}
 			}
 		}
 	}
 	for day := range calendarWorking {
-		if !d.LeaveDays[day] {
+		if _, leave := d.LeaveDays[day]; !leave {
 			d.WorkingDays[day] = true
 		}
 	}
 	d.Warnings = leaveWarnings(leaves)
+	d.Raw = Raw{From: from, To: to, WorkingDays: days, Summary: summary, Leaves: leaves, Took: map[string]string{
+		"working-days": took[0].Round(time.Millisecond).String(),
+		"time-summary": took[1].Round(time.Millisecond).String(),
+		"leaves":       took[2].Round(time.Millisecond).String(),
+	}}
 	return d, nil
+}
+
+// Day is one day of a month as the widget draws it.
+type Day struct {
+	Date  string    `json:"date"`
+	Kind  string    `json:"kind"` // work, leave, holiday (not working on a weekday) or weekend
+	Leave *LeaveDay `json:"leave,omitempty"`
+	Hours float64   `json:"hours,omitempty"`
 }
 
 // Month is the quota of one month as of now.
@@ -165,11 +210,15 @@ type Month struct {
 	ExpectedToDate float64  `json:"expectedToDate"`
 	Behind         float64  `json:"behind"` // negative when ahead
 	Remaining      float64  `json:"remaining"`
-	DaysLeft       int      `json:"daysLeft"`   // working days from today on
-	PerDayLeft     float64  `json:"perDayLeft"` // only when DaysLeft > 0
-	Missing        []string `json:"missing"`    // working days before today without hours, sorted
-	Current        bool     `json:"current"`    // the month of now
-	Today          float64  `json:"today"`      // hours logged today, when Current
+	DaysLeft       int      `json:"daysLeft"`    // working days from today on
+	PerDayLeft     float64  `json:"perDayLeft"`  // only when DaysLeft > 0
+	Missing        []string `json:"missing"`     // working days before today without hours, sorted
+	Current        bool     `json:"current"`     // the month of now
+	Future         bool     `json:"future"`      // after the month of now
+	Today          float64  `json:"today"`       // hours logged today, when Current
+	LeaveHours     float64  `json:"leaveHours"`  // logged on leave days
+	OffDayHours    float64  `json:"offDayHours"` // logged on weekends and holidays
+	Days           []Day    `json:"days"`
 }
 
 func ComputeMonth(month, now string, d *Data) Month {
@@ -178,7 +227,7 @@ func ComputeMonth(month, now string, d *Data) Month {
 	in := func(day string) bool { return day >= from && day <= to }
 	perDay := settings.HoursPerDay()
 
-	q := Month{Month: from[:7], Current: in(now)}
+	q := Month{Month: from[:7], Current: in(now), Future: from > now}
 	for day := range d.WorkingDays {
 		if !in(day) {
 			continue
@@ -196,15 +245,22 @@ func ComputeMonth(month, now string, d *Data) Month {
 		}
 	}
 	slices.Sort(q.Missing)
-	for day := range d.LeaveDays {
-		if in(day) {
+	for _, day := range dates.EachDay(from, to) {
+		hours := d.HoursByDay[day]
+		q.Logged += hours
+		dd := Day{Date: day, Kind: "work", Hours: hours}
+		if leave, ok := d.LeaveDays[day]; ok {
+			dd.Kind, dd.Leave = "leave", &leave
 			q.LeaveDays++
+			q.LeaveHours += hours
+		} else if d.OffDays[day] {
+			dd.Kind = "holiday"
+			if wd := dates.DayStart(day).Weekday(); wd == time.Saturday || wd == time.Sunday {
+				dd.Kind = "weekend"
+			}
+			q.OffDayHours += hours
 		}
-	}
-	for day, h := range d.HoursByDay {
-		if in(day) {
-			q.Logged += h
-		}
+		q.Days = append(q.Days, dd)
 	}
 	if q.Current {
 		q.Today = d.HoursByDay[now]
@@ -269,7 +325,10 @@ func bar(q Month, c ui.Palette) string {
 		due = cells(q.ExpectedToDate)
 	}
 	fill := c.Green
-	if q.Current && q.Behind > epsilon || !q.Current && q.Remaining > epsilon {
+	switch {
+	case !q.Current && q.Remaining > epsilon && q.Remaining < settings.QuotaWarnHours():
+		fill = c.Yellow
+	case q.Current && q.Behind > epsilon || !q.Current && q.Remaining > epsilon:
 		fill = c.Red
 	}
 	var b strings.Builder
@@ -297,6 +356,21 @@ func row(label, value string, c ui.Palette) string {
 	return "  " + c.Dim(fmt.Sprintf("%-14s", label)) + " " + value
 }
 
+// OffWork says how many hours were logged on leave days and on weekends and holidays, or "" when none.
+func OffWork(q Month) string {
+	var parts []string
+	if q.LeaveHours > epsilon {
+		parts = append(parts, h(q.LeaveHours)+" during your off time")
+	}
+	if q.OffDayHours > epsilon {
+		parts = append(parts, h(q.OffDayHours)+" on non-working days")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "You worked " + strings.Join(parts, " and ")
+}
+
 func formatMonth(q Month, c ui.Palette) []string {
 	perDay := settings.HoursPerDay()
 	good := func(s string) (string, string) { return c.Green(c.Bold("✔ " + s)), "✔ " + s }
@@ -311,10 +385,16 @@ func formatMonth(q Month, c ui.Palette) []string {
 			return []string{header(q.Month, v, p, c)}
 		}
 		v, p := bad(h(q.Remaining) + " short")
+		if q.Remaining < settings.QuotaWarnHours() {
+			v = c.Yellow(c.Bold(p))
+		}
 		lines = append(lines, header(q.Month, v, p, c),
 			bar(q, c)+"  "+total+c.Dim(fmt.Sprintf(" · %.0f%%", q.Percent)))
 		if len(q.Missing) > 0 {
 			lines = append(lines, row("Missing hours", c.Yellow(shortDays(q.Missing, 8)), c))
+		}
+		if w := OffWork(q); w != "" {
+			lines = append(lines, row("Off time", c.Yellow("▲ "+w), c))
 		}
 		return lines
 	}
@@ -343,6 +423,9 @@ func formatMonth(q Month, c ui.Palette) []string {
 		today = h(q.Today) + " logged"
 	}
 	lines = append(lines, row("Today", today, c))
+	if w := OffWork(q); w != "" {
+		lines = append(lines, row("Off time", c.Yellow("▲ "+w), c))
+	}
 	if q.DaysLeft > 0 && q.Remaining > epsilon {
 		need := h(q.PerDayLeft) + "/day"
 		if q.PerDayLeft > perDay+epsilon {

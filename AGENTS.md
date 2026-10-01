@@ -136,7 +136,8 @@ nothing logged today is a full day behind), and hours/day needed over the remain
 included).
 
 Leaves (`/api/leaves/my-requests`, fetched per calendar year) remove their working days from the quota
-and from gap detection in `worklog-sync`. `declined` and `cancelled` leaves are ignored with a warning
+and from gap detection in `worklog-sync`. Hours logged on leave days, and on days the calendar has as not working
+(weekends, holidays), are warned about under the month ("Off time"). `declined` and `cancelled` leaves are ignored with a warning
 (`IgnoredLeaveStatuses` in `internal/settings/config.go`); `pending` (or any other non-`approved` status) is counted, with a warning;
 a leave created by someone other than you (by email) is also reported. Leave records are mostly
 redacted, so only ids, emails, dates, type and status are used.
@@ -162,7 +163,8 @@ action directly: `--show`, `--login aext|jira|google`, `--logout aext|jira|googl
 ## configure
 
 In the window, settings are a page rather than a tool: Settings in the sidebar (or the Settings line under
-the tools, or typing `configure`) opens it. Its menu has General, Reminders (see Reminders), About (see
+the tools, or typing `configure`) opens it. Its menu has General, Widgets (the settings of widgets, by widget: the same form, saved the same way),
+Reminders (see Reminders), About (see
 About and licenses) and, under
 Plugins, each plugin that has settings. General edits every setting below at once (checked before anything is saved; an empty field
 removes the setting, or resets it to its default), picks the theme, toggles the app launcher entry, and
@@ -170,7 +172,7 @@ wipes after you type `CONFIRM`. A plugin's entry runs its settings (see Plugins)
 asked on the page. The rest of this section is the terminal tool, `aex configure`.
 
 `.\bin\configure.ps1` lists the settings with their current values: the auth settings `AEXT_EMAIL`,
-`JIRA_EMAIL` and `JIRA_TOKEN` (hidden input), then `HOURS_PER_DAY` and `TZ_OFFSET_HOURS` (validated). Pick one
+`JIRA_EMAIL` and `JIRA_TOKEN` (hidden input), then `HOURS_PER_DAY`, `QUOTA_WARN_HOURS` and `TZ_OFFSET_HOURS` (validated). Pick one
 to change it; it is saved to app settings (`.env.config` in the data folder) right away, then the list comes
 back until Done. When some have no value, "Fill in the N not set" asks for just those.
 `configure NAME` asks for one setting; `configure NAME=value` saves it without asking (not for `JIRA_TOKEN`).
@@ -402,8 +404,24 @@ Widgets so far:
 - `quota` (refreshes every minute) — AEXT quota: this month's hours against the quota (the quota tool's numbers: behind or
   ahead, due by today, hours/day to finish, working days without hours with a button to run
   worklog-sync), a button to sync this week (`worklog-sync --range "this week"`: Monday through today)
-  and whether last month is complete. One row high it shows only the numbers and the bar.
+  and whether last month is complete. ‹ › show other months (up to 12 ahead; the `quota` call takes
+  `{"month": "YYYY-MM"}`), kept as months from this one, so it follows when the month turns; This
+  month goes back. A past month shows complete or short, its missing days with a button to sync
+  them (`--range` from the first to the last), and the month before it; a future one is Upcoming.
+  The bar has a slot per weekday (`Month.Days`): working days fill with the hours logged, in order,
+  a day's hours each, and leave (approved green, pending blue, hatched) and holidays (grey) are
+  skipped; an Off row lists them as periods. Hours logged on leave days and on weekends and
+  holidays are a warning ("You worked 12h during your off time and 3h on non-working days",
+  `quota.OffWork`). A month over and short by less than `QUOTA_WARN_HOURS` (default 1) shows in the
+  warning color (yellow) instead of red, here and in the quota tool. While it loads (the first time, or
+  a month not loaded yet) grey blocks stand where the numbers go. One row high it shows only the
+  numbers and the bar.
   Without an AEXT session it offers to log in (`account --login aext`).
+  With `--debug` the `quota` call also returns what the numbers came from (`QuotaDebug` in `home.go`:
+  now, the device's clock, the settings, AEXT's raw working days, summary and leaves with how long each
+  took, `quota.Raw`, and the day maps made of them), and a bug button opens the month shown in a popup
+  with it all: both months' fields, every day (calendar, kind, leave, counted, hours, flags), the
+  leaves (ignored ones struck through), warnings and the raw reply.
 - `google-calendars` (every minute) — Google Calendar: the events on now in one calendar, each with the
   time left and (smaller) when it ends (an all-day one: "all day", or "last day" on the last of several), then the upcoming ones through the third working day after today
   (AEXT working-days calendar with a session, else Monday to Friday), by day, one line each: start time,
@@ -754,6 +772,9 @@ fallback source). Invalid values fall back to the default with a warning. Read l
 apply in the open window:
 
 - `HOURS_PER_DAY` (default `8`) — working hours per day for the quota.
+- `QUOTA_WARN_HOURS` (default `1`) — a month over and short of its quota by less than this many
+  hours shows as a warning (yellow), not red; `0`: always red. Shown under Settings > Widgets (AEXT quota):
+  a setting with `Setting.Widget` set is listed there, by widget, instead of on General.
 - `TZ_OFFSET_HOURS` (default `auto`) — timezone all dates are computed in (ranges, "today", worklog days,
   file timestamps): `auto` follows the device's (daylight saving included), a number pins a UTC offset;
   quarter hours allowed, e.g. `5.5` = UTC+5:30. The settings page picks it from a list, each offset

@@ -35,6 +35,8 @@ type SettingField struct {
 	Auto string `json:"auto,omitempty"`
 	// Warning is something off about the value in effect.
 	Warning string `json:"warning,omitempty"`
+	// Widget is the widget it is for, shown under Settings > Widgets; "" for General.
+	Widget string `json:"widget,omitempty"`
 }
 
 // SettingsForm is everything the form shows.
@@ -94,7 +96,7 @@ func (a *App) Settings() SettingsForm {
 	form := SettingsForm{File: settings.ConfigEnvFile}
 	for _, s := range settings.All {
 		f := SettingField{Name: s.Name, Hint: s.Hint, Rule: s.Rule, Default: s.Default, Secret: s.Secret,
-			Overridden: configure.Overrides(s.Name)}
+			Overridden: configure.Overrides(s.Name), Widget: s.Widget}
 		if v := settings.Get(s.Name); v != "" {
 			if s.Secret {
 				f.Masked = settings.Mask(v)

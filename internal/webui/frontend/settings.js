@@ -1,5 +1,5 @@
 // The Settings page: its menu has General, the form of what the configure tool asks for in a
-// terminal, Reminders (reminders.js), About (version, build, licenses), and under Plugins each plugin with settings of its
+// terminal, Widgets (the same form: the settings of widgets, by widget), Reminders (reminders.js), About (version, build, licenses), and under Plugins each plugin with settings of its
 // own, run on the page (a run like on Runs, app.js, but here). Backend: settings.go (Settings,
 // SaveSettings, SetShortcut, SetAutostart, WipeList, Wipe, WipeSession), about.go (About), webui.go
 // (RunSettings).
@@ -12,11 +12,12 @@ const settingLabels = {
   JIRA_EMAIL: 'Jira email',
   JIRA_TOKEN: 'Jira API token',
   HOURS_PER_DAY: 'Hours per day',
+  QUOTA_WARN_HOURS: 'Nearly full quota (h)',
   TZ_OFFSET_HOURS: 'Timezone',
 };
 
 let fields = {};      // setting name -> {f, input, error, cleared}
-let settingsSection = 'general'; // 'reminders', 'about', or the name of the plugin shown
+let settingsSection = 'general'; // 'widgets', 'reminders', 'about', or the name of the plugin shown
 let settingsLoaded = false;
 let pluginRunning = ''; // the plugin whose settings run now, on the page
 
@@ -40,7 +41,7 @@ function note(text, isError = false) {
   settingsNote.classList.toggle('error', isError);
 }
 
-// openSettings shows the Settings page, on section when given ('general', 'reminders', 'about' or a plugin's name).
+// openSettings shows the Settings page, on section when given ('general', 'widgets', 'reminders', 'about' or a plugin's name).
 function openSettings(section) {
   showPage('settings');
   if (section) showSection(section);
@@ -71,6 +72,7 @@ function renderSettingsNav() {
     nav.appendChild(b);
   };
   item('general', 'General');
+  item('widgets', 'Widgets');
   item('reminders', 'Reminders');
   item('about', 'About');
   nav.appendChild(el('div', 'settings-nav-head', 'Plugins'));
@@ -81,14 +83,15 @@ function renderSettingsNav() {
 }
 
 // builtinSections are the Settings sections that are not a plugin's.
-const builtinSections = ['general', 'reminders', 'about'];
+const builtinSections = ['general', 'widgets', 'reminders', 'about'];
 
-// showSection shows General, Reminders, About or a plugin's settings; picked (from the menu) starts the plugin's.
+// showSection shows General, Widgets, Reminders, About or a plugin's settings; picked (from the menu) starts the plugin's.
 function showSection(section, picked = false) {
   if (section !== settingsSection) leavePluginSettings();
   settingsSection = section;
   document.querySelectorAll('.settings-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.section === section)));
-  settingsForm.hidden = section !== 'general';
+  settingsForm.hidden = section !== 'general' && section !== 'widgets';
+  showFormGroups();
   aboutPane.hidden = section !== 'about';
   remindersPane.hidden = section !== 'reminders';
   pluginPane.hidden = builtinSections.includes(section);
@@ -146,8 +149,10 @@ function runChanged() {
 }
 
 // group adds a titled group of rows to the form and returns where its rows go.
-function group(title, foot) {
+// group adds a group of the form, shown on General, or on Widgets when widgets is set.
+function group(title, foot, widgets = false) {
   const g = el('section', 'group');
+  g.dataset.section = widgets ? 'widgets' : 'general';
   if (title) g.appendChild(el('h3', null, title));
   const card = el('div', 'card');
   g.appendChild(card);
@@ -165,17 +170,25 @@ async function loadSettings(message) {
     ['Work', f => !!f.default, 'Leave a field empty to go back to its default.'],
   ];
   for (const [title, pick, foot] of groups) {
-    const list = form.fields.filter(pick);
+    const list = form.fields.filter(f => !f.widget && pick(f));
     if (list.length) group(title, foot).append(...list.map(fieldRow));
   }
+  const widgets = [...new Set(form.fields.filter(f => f.widget).map(f => f.widget))];
+  for (const w of widgets) group(w, 'Leave a field empty to go back to its default.', true).append(...form.fields.filter(f => f.widget === w).map(fieldRow));
   group('Appearance').appendChild(themeRow());
   if (form.shortcut) group('App launcher').appendChild(shortcutRow(form.shortcut));
   if (form.autostart) group('Start with the system', 'On a day not picked, aex started when you log in closes at once.')
     .append(...autostartRows(form.autostart, saveAutostart));
   group('Reset', `Settings are saved in ${form.file}. .env and environment variables are never touched and still apply.`)
     .append(wipeRow(false), wipeRow(true));
+  showFormGroups();
   updateDirty();
   note(message);
+}
+
+// showFormGroups shows the form's groups of the section shown: General's or Widgets'.
+function showFormGroups() {
+  settingsBody.querySelectorAll('.group').forEach(g => { g.hidden = g.dataset.section !== settingsSection; });
 }
 
 // tzOffsets are the UTC offsets in use somewhere, in hours.

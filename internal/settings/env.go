@@ -24,6 +24,8 @@ type Setting struct {
 	Valid   func(float64) bool
 	// Auto allows the value "auto" (Auto) besides numbers.
 	Auto bool
+	// Widget is the name of the widget the setting is for; the window shows it under Settings > Widgets.
+	Widget string
 	// Credential is the key the setting is kept under in Credentials (the OS credential store)
 	// instead of app settings.
 	Credential string
@@ -59,6 +61,14 @@ var AppSettings = []Setting{
 		Hint:    "Working hours per day, used for the quota",
 		Rule:    "a number above 0, at most 24",
 		Valid:   func(n float64) bool { return n > 0 && n <= 24 },
+	},
+	{
+		Name:    "QUOTA_WARN_HOURS",
+		Default: "1",
+		Widget:  "AEXT quota",
+		Hint:    "A month over and short by less than this many hours shows as a warning (yellow), not red; 0: always red",
+		Rule:    "a number from 0 to 24",
+		Valid:   func(n float64) bool { return n >= 0 && n <= 24 },
 	},
 	{
 		Name:    "TZ_OFFSET_HOURS",
