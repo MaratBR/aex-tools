@@ -104,3 +104,5 @@ the build is behind master on GitHub (checked every few hours, or with Check now
 
 Build steps are in [BUILD.md](BUILD.md). How the code works is in [AGENTS.md](AGENTS.md), which is
 written for coding agents but is readable by people too.
+
+On Linux, `bin/build-linux.sh` checks build dependencies and offers to install missing packages; see [BUILD.md](BUILD.md).

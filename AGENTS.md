@@ -70,6 +70,14 @@ people using aex: keep it short, and put the details here. Building, dev builds 
 - `assets\logo.svg` — icon source; `assets\logo.ico` rendered from it (16–256 px)
 - `winres\winres.json`, `rsrc_windows_*.syso` — exe icon and version info
 
+## Linux build script
+
+`bin/build-linux.sh` checks the C compiler and pkg-config modules for GTK3, GLib, WebKit2GTK
+and libsoup before building. Missing dependencies prompt for package installation (default no)
+through apt-get or dnf, using sudo unless already root; an unanswered prompt exits. Packages
+include their dependencies and are checked again after installation. `WEBKIT_TAG=webkit2_40`
+selects the older WebKit and libsoup packages; the default is `webkit2_41`. Go is a prerequisite.
+
 ## Windows exes
 
 On Windows aex is two builds of the same program, side by side (`settings.WindowExeName`,

@@ -39,6 +39,41 @@ GOOS=windows GOARCH=amd64 go build -tags desktop,production -trimpath -ldflags "
 - The committed `rsrc_windows_*.syso` give the icon and version info; `go generate ./...` is needed only
   after changing them (see Release exe).
 
+## Linux build
+
+Linux has one executable, `dist/aex`, which opens the window when run without a tool and runs tools
+in the terminal when given one. The window uses the system GTK3 and WebKit2GTK libraries through
+Wails. `build-linux.sh` checks the C compiler, pkg-config and the GTK3, GLib, WebKit2GTK and
+libsoup development files before building. If any are missing, it lists the packages and asks
+“Install these?” (default no). It supports apt-get (Debian/Ubuntu) and dnf (Fedora), using sudo
+when needed, then checks again before continuing. Without an answer it exits. Go must already
+be installed as described above. To install the libraries yourself, on Fedora 40 and newer:
+
+```sh
+sudo dnf install gcc pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel
+```
+
+On Debian 12 / Ubuntu 22.04 and newer:
+
+```sh
+sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+Build from the repository root:
+
+```sh
+./bin/build-linux.sh
+```
+
+This writes `dist/aex` and Linux plugin executables in `dist/plugins/`. The script builds the
+plugins first and embeds their hashes in aex, so they run without a first-use approval prompt. Run
+`./dist/aex` to open the window or `./dist/aex quota` to use a tool in the terminal. The target
+machine needs GTK3 and WebKit2GTK 4.1 runtime libraries; for Fedora install `gtk3` and
+`webkit2gtk4.1`, and for Debian/Ubuntu install `libgtk-3-0` and `libwebkit2gtk-4.1-0`.
+
+For older distributions that provide WebKit2GTK 4.0, install its matching development packages and
+build with `WEBKIT_TAG=webkit2_40 ./bin/build-linux.sh`.
+
 ## With Docker (optional)
 
 Builds in a `golang` container, without Go on the machine (Docker Desktop with Linux containers). From
