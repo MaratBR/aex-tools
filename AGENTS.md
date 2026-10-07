@@ -334,6 +334,10 @@ a run printed while Home was shown. Tools are the same console programs as in th
 
 Frontend: plain HTML, CSS and JS in `internal/webui/frontend` (no build step), embedded in the exe.
 Colors and fonts are in `tokens.css`, shared by the window and the widgets.
+Drop-down lists are drawn by `select.js` (in the window and in every widget's page): each `<select>`
+shows as a button opening a list in the theme's colors, like Add widget's (a native one opens in the
+system's), with a search field from 10 options and an option's `title` under it. The `<select>` stays,
+hidden, with the options and the value: code sets `value` and listens for `change` as usual.
 
 ### Themes
 
@@ -367,18 +371,28 @@ Home takes the whole window: the sidebar slides away there, and the button at th
 brings it back or hides it again, remembered in the web view's storage; a dot on the button says a run
 printed meanwhile. Runs always shows the sidebar.
 
-Home is a grid of widgets (12 columns, 6 or 1 when the window is narrow, a widget taking the whole row
-when it is wider than that; rows 150 px). Each widget has a place at full width (`HomeWidget.X`, `Y`:
+Home is a grid of widgets (2 to 64 columns, 12 by default, picked in Edit; 6 (or fewer) or 1 when the window is narrow,
+widths then in twelfths of the full one, a widget taking the whole row when it is wider than that;
+rows 150 px). Each widget has a place at full width (`HomeWidget.X`, `Y`:
 the column and row of its top left corner), anywhere, gaps allowed; in a narrow window the widgets
 follow one another in that order (top to bottom, then left to right). Add widget picks one (a widget
 can be added more than once) and puts it in the first free place it fits, from the top left.
 Edit shows the grid's cells, with room below the lowest widget, and puts a cover on each widget to drag
 it to any cell (in a narrow window: onto another widget, to trade places), move it a cell at a time
-with the arrows, change its width (1–12 columns, up to the right edge) and height (1–4 rows), with the
+with the arrows, change its width (1 column to all of them, up to the right edge) and height (1–4 rows), with the
 steppers or by dragging its right edge, bottom edge or corner, or remove it (its place stays empty). A
 widget moved or grown onto others pushes them down to the first row where they fit (`settle` in
 home.js); while dragging, they come back as it goes on, and letting go outside the grid (or Esc) puts
-everything back. Every change is saved to `home.json` in the data folder (`App.SaveHome`; sizes and
+everything back. Edit also shows a handle on each side of the page: dragging either sets how wide the
+page is at most, centred, both sides moving (at least 900 px, so the grid keeps all its columns; as wide
+as the window is full width, which follows the window); the Width button above the grid (or a double
+click on a handle) goes back to full width. Kept as `width` in `home.json` (`HomeLayout.Width`, px, 0:
+full). Columns − / + there (held, they repeat) set the grid's columns (`HomeLayout.Columns`,
+`minColumns` to `maxColumns` in `home.go`): more for finer widths and places. Every widget's width
+and column are scaled to the new count, rounded (`setColumns` in home.js; `rescale` in home.go for a
+file with a count out of range), and widgets that come to overlap go down; steps one after another
+scale from the widgets before the first one (`colsBase`), so going back puts them back. The gaps
+between columns narrow with many of them (`--gap-x`, 2–14 px). Every change is saved to `home.json` in the data folder (`App.SaveHome`; sizes and
 places are clamped on load, overlapping widgets moved down: `placeWidgets`; plugins' widgets stay, see
 below). A file from before places (no `x`, `y`) gets them as the grid packed it then. A placement of a widget aex does not have
 (removed, renamed without `renamedWidgets`, or from a newer aex) stays too, and shows a warning in its
@@ -386,8 +400,10 @@ cell: unknown widget, with its id, to remove in Edit (`WidgetPage.Unknown`); onl
 widget id at all are dropped. With `--debug`, Add widget also offers "Unknown widget"
 (`unknownDebugWidget`): a made-up id (`debug-unknown-…`) and settings, new each time, to see how one
 looks. A
-`home.json` from the 4-column grid (no `"columns": 12`) has its widths multiplied by 3 on load. A
-plugin's widget sizes (`plugin.Widget.W`) are still in quarters of the width, multiplied by 3 too.
+`home.json` from the 4-column grid (no `"columns"`) has its widths multiplied by 3 on load. The sizes
+widgets are added with (`WidgetInfo.W`) are in twelfths whatever the columns, scaled when added; a
+plugin's widget sizes (`plugin.Widget.W`) are still in quarters of the width, multiplied by 3 to
+twelfths.
 
 Auto refresh: a widget can ask to be refreshed on its own every so many seconds (`WidgetInfo.Refresh`
 in `widgetCatalog`, `plugin.Widget.Refresh` for a plugin's, at least 5 s; none by default). The Auto
@@ -427,6 +443,11 @@ theme follows the window's. `sdk.js` gives it `aex`, which works through message
   at a time (a second rejects). Settings saved in one page reach the other (`aex.onSettings(fn)`,
   `aex.settings` already updated); refreshes and the theme reach both. `openPopup` in home.js.
 
+A widget's frame (in its cell or the popup) stays invisible until its page has loaded: before,
+its blank page has another `color-scheme` than a dark window, which the web view draws as an opaque
+white box; a widget's page paints the theme's surface itself (`widget.css`), over that. Each popup
+gets a new frame (`freshPopupFrame`): reusing one raced the last page leaving with the next coming.
+Once loaded a page gets the theme again, in case it changed meanwhile (`sendTheme`).
 A widget that leaves its page (a link, `location`) is replaced by a note. The sandbox protects the
 window from a widget; blocking the network is only a second line, since an approved plugin is trusted
 like any program.
@@ -514,8 +535,9 @@ Widgets so far:
   its date, marked Tomorrow / Yesterday (or the date) when it is not today on the device. 24-hour by
   default, or AM/PM. The clock button (on hover) picks the zones, from every zone the web view knows
   (`Intl.supportedValuesOf`), and the format, kept in the placement's settings (`zones`, `h24`). Two
-  clocks sit side by side or one under the other, whichever lets the time be larger, and the time
-  is sized to fill its cell (`fit`, measured on every resize). It redraws
+  clocks sit side by side or one under the other, whichever lets the time be larger (one where the
+  date would be cut short loses), and the time is sized to fill its cell with its place and date
+  whole (`fit`, measured on every resize). It redraws
   itself every minute; no auto refresh.
 - `git-status` (every 5 s) — Git status (`gitstatus.go`): the repos this placement watches, each with
   its branch and uncommitted changes, commits to push (↑) and to pull (↓, as of the last fetch), with
@@ -538,8 +560,9 @@ Widgets so far:
   window goes back to Home, unless the button is set to stay on Runs. Kept in the placement's
   settings (`name`: an optional title, `buttons`: `name`, `icon`, `color`, `tool`, `args`, `stay`;
   24 at most); the pencil button (on hover) edits them, in a popup (`aex.openPopup`), since the widget is
-  often too small for it. One button fills the widget; several fill it as a grid (scrolling when they
-  do not fit), under the title when one is set. A button whose tool aex no longer has
+  often too small for it. The buttons fill the widget as a grid of square tiles, in the number of
+  columns that makes them largest (`fit`: two side by side take half each), scrolling when they would
+  be smaller than 36 px; under the title when there are several and one is set. A button whose tool aex no longer has
   is greyed out. No auto refresh; the tool list is read again after every run.
 
 ## Reminders

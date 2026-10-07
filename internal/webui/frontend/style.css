@@ -242,7 +242,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .controls { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 2px; }
 .controls.row { flex-direction: row; flex-wrap: wrap; }
 .q-input { display: flex; gap: 6px; width: 100%; }
-.q-input input, .field input, .field select, .wipe-panel input {
+.q-input input, .field input, .field select, .field .xs-btn, .wipe-panel input {
   flex: 1; min-width: 0;
   padding: 6px 11px;
   border: 0;
@@ -253,7 +253,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
   transition: box-shadow .15s, background-color .15s;
 }
 .q-input input { font: 13px/1.5 var(--mono); }
-.q-input input:focus, .field input:focus, .field select:focus, .wipe-panel input:focus { background: var(--surface); box-shadow: var(--ring); }
+.q-input input:focus, .field input:focus, .field select:focus, .field .xs-btn:focus-visible, .field .xs-btn[aria-expanded="true"], .wipe-panel input:focus { background: var(--surface); box-shadow: var(--ring); }
 .q-input input[type="password"], .field input[type="password"] { letter-spacing: .15em; }
 .q-input input::placeholder, .field input::placeholder, .wipe-panel input::placeholder { color: var(--faint); letter-spacing: normal; }
 .answer { font: 600 13px/1.45 var(--mono); }
@@ -322,6 +322,25 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 /* Home: a grid of widgets (home.js), each a frame showing widgets/<id>.html. ------------------ */
 
 #home { padding: 4px 28px 24px; }
+/* The page's width (home.js: homeWidth), centred; in Edit its edges drag to change it. */
+#home-frame { position: relative; max-width: var(--home-w, none); margin: 0 auto; }
+.home-edge { display: none; position: absolute; top: 0; bottom: 0; width: 16px; cursor: ew-resize; touch-action: none; }
+.home-edge.left { left: -22px; }
+.home-edge.right { right: -22px; }
+.home-edge::after {
+  content: ''; position: absolute; left: 6px; top: 50%; width: 4px; height: 56px; transform: translateY(-50%);
+  border-radius: 2px; background: color-mix(in srgb, var(--accent) 40%, transparent);
+  transition: background-color .15s, height .15s;
+}
+.home-edge:hover::after, .home-edge.dragging::after { height: 96px; background: var(--accent); }
+.home-editing .home-edge { display: block; }
+body.home-sizing, body.home-sizing * { cursor: ew-resize !important; user-select: none; }
+body.home-sizing iframe { pointer-events: none; }
+#home-width { font-variant-numeric: tabular-nums; }
+.home-cols { margin-right: 2px; font-size: 13px; }
+.home-cols span { color: var(--muted); }
+.home-cols b { display: inline-block; min-width: 2ch; color: var(--ink); font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.step:disabled { opacity: .35; cursor: default; background: none; }
 .home-head { display: flex; align-items: center; gap: 8px; margin: 6px 0 18px; }
 .home-head h1 { flex: 1; margin: 0; font: 700 28px/1.15 var(--display); letter-spacing: -.03em; }
 .home-add { position: relative; }
@@ -361,15 +380,15 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   grid-auto-rows: var(--row);
   grid-auto-flow: dense;
-  gap: 14px;
+  gap: 14px var(--gap-x, 14px); /* columns: narrower with many of them (home.js: fitGrid) */
 }
 /* At full width each widget is at its place (home.js: fitGrid). In Edit, the grid's cells show, so
    a widget can be moved to a free one. */
 .home-editing #grid.placed {
-  --step-x: calc((100% + 14px) / 12);
+  --step-x: calc((100% + var(--gap-x, 14px)) / var(--cols));
   --step-y: calc(var(--row) + 14px);
   background:
-    linear-gradient(to right, transparent calc(100% - 14px), var(--bg) 0) 0 0 / var(--step-x) var(--step-y),
+    linear-gradient(to right, transparent calc(100% - var(--gap-x, 14px)), var(--bg) 0) 0 0 / var(--step-x) var(--step-y),
     linear-gradient(to bottom, transparent calc(100% - 14px), var(--bg) 0) 0 0 / var(--step-x) var(--step-y),
     color-mix(in srgb, var(--fill) 55%, transparent);
   border-radius: 16px;
@@ -455,6 +474,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 }
 #widget-popup header { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 8px 0 16px; }
 #widget-popup h2 { flex: 1; min-width: 0; margin: 0; font: 600 15px/1.3 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A frame shows once its page is in (home.js): before, its blank page would be drawn opaque in the
+   light scheme when the window is dark, since their color-scheme differs. */
+iframe.loading { visibility: hidden; }
 #popup-frame { flex: 0 1 auto; display: block; width: 100%; height: 120px; min-height: 0; border: 0; background: transparent; }
 
 /* Command line --------------------------------------------------------------------------------- */
@@ -634,7 +656,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: r
 .field-name { flex: 1; font-weight: 500; }
 .field-env { font: 11px/1 var(--mono); color: var(--faint); }
 .field-line { display: flex; gap: 6px; align-items: center; }
-.field input, .field select { font: 13px/1.5 var(--sans); }
+.field input, .field select, .field .xs-btn { font: 13px/1.5 var(--sans); }
 .field-hint { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .field-note { font-size: 12px; color: var(--warn); }
 .field-error { font-size: 12px; color: var(--fail); }
@@ -752,6 +774,7 @@ div.row { cursor: default; }
 @media (max-width: 720px) {
   aside, [data-page="home"] #side-toggle { display: none; }
   #page, #home { padding: 20px 16px; }
+  .home-editing .home-edge { display: none; }
   #dock { padding: 0 16px 16px; }
   #welcome h1 { font-size: 30px; }
   #settings { padding: 20px 16px 0; }

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="tokens.css">
   <link rel="stylesheet" href="style.css">
   <script src="theme.js"></script>
+  <script src="select.js"></script>
 </head>
 <body>
   <aside id="side">
@@ -55,23 +56,33 @@
     </header>
     <div id="scroll">
       <div id="home" hidden>
-        <header class="home-head">
-          <h1>Home</h1>
-          <label id="home-auto" class="home-auto" title="Widgets load their data again on their own, each as often as it needs (paused while the window is minimised)" hidden>
-            <input id="home-auto-refresh" class="switch small" type="checkbox" checked>
-            <span>Auto refresh</span>
-          </label>
-          <button id="home-edit" class="btn small" type="button" aria-pressed="false">Edit</button>
-          <div class="home-add">
-            <button id="home-add" class="btn small primary" type="button" aria-haspopup="true" aria-expanded="false">Add widget</button>
-            <div id="widget-picker" role="menu" hidden></div>
+        <div id="home-frame">
+          <header class="home-head">
+            <h1>Home</h1>
+            <label id="home-auto" class="home-auto" title="Widgets load their data again on their own, each as often as it needs (paused while the window is minimised)" hidden>
+              <input id="home-auto-refresh" class="switch small" type="checkbox" checked>
+              <span>Auto refresh</span>
+            </label>
+            <div id="home-cols-field" class="stepper home-cols" title="The grid's columns: more for finer widths and places" hidden>
+              <button id="home-cols-less" class="step" type="button" aria-label="Fewer columns">−</button>
+              <span>Columns <b id="home-cols">12</b></span>
+              <button id="home-cols-more" class="step" type="button" aria-label="More columns">+</button>
+            </div>
+            <button id="home-width" class="btn small" type="button" title="Drag the page's edges to change its width; click for the window's width" hidden></button>
+            <button id="home-edit" class="btn small" type="button" aria-pressed="false">Edit</button>
+            <div class="home-add">
+              <button id="home-add" class="btn small primary" type="button" aria-haspopup="true" aria-expanded="false">Add widget</button>
+              <div id="widget-picker" role="menu" hidden></div>
+            </div>
+          </header>
+          <div id="home-empty" hidden>
+            <p>Nothing here yet. Widgets show what matters at a glance, like this month's AEXT hours.</p>
+            <p class="dim">While the home page is empty, the window opens on Runs.</p>
           </div>
-        </header>
-        <div id="home-empty" hidden>
-          <p>Nothing here yet. Widgets show what matters at a glance, like this month's AEXT hours.</p>
-          <p class="dim">While the home page is empty, the window opens on Runs.</p>
+          <div id="grid"></div>
+          <div class="home-edge left" aria-hidden="true"></div>
+          <div class="home-edge right" aria-hidden="true"></div>
         </div>
-        <div id="grid"></div>
       </div>
       <div id="settings" hidden>
         <header class="page-head"><h1>Settings</h1></header>
@@ -145,7 +156,7 @@
           <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
       </header>
-      <iframe id="popup-frame" sandbox="allow-scripts"></iframe>
+      <iframe id="popup-frame" class="loading" sandbox="allow-scripts"></iframe>
     </div>
   </div>
 

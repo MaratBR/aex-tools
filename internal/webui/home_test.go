@@ -16,7 +16,7 @@ func TestEveryWidgetHasItsPage(t *testing.T) {
 		if _, err := assets.Open("frontend/widgets/" + w.ID + ".html"); err != nil {
 			t.Errorf("widget %q: %v", w.ID, err)
 		}
-		if w.W < 1 || w.W > maxWidgetW || w.H < 1 || w.H > maxWidgetH {
+		if w.W < 1 || w.W > gridColumns || w.H < 1 || w.H > maxWidgetH {
 			t.Errorf("widget %q: size %dx%d is outside the grid", w.ID, w.W, w.H)
 		}
 	}
@@ -35,8 +35,8 @@ func TestCleanWidgets(t *testing.T) {
 		{ID: "f", Widget: "../x/y", W: 1, H: 1},
 		{ID: "g", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`{"calendar":"x"}`)},
 		{ID: "h", Widget: "quota", W: 1, H: 1, Settings: json.RawMessage(`[1]`)}, // not an object: dropped
-	})
-	want := []HomeWidget{{ID: "a", Widget: "quota", W: maxWidgetW, H: 1, X: at(0), Y: at(0)},
+	}, gridColumns)
+	want := []HomeWidget{{ID: "a", Widget: "quota", W: gridColumns, H: 1, X: at(0), Y: at(0)},
 		{ID: "b", Widget: "nope", W: 1, H: 1, X: at(0), Y: at(1)},
 		{ID: "c", Widget: "quota", W: 2, H: 3, X: at(1), Y: at(1)},
 		{ID: "d", Widget: "cm-release/cm-repos-state", W: 2, H: 1, X: at(3), Y: at(1)},
@@ -80,7 +80,7 @@ func TestPlaceWidgets(t *testing.T) {
 			{ID: "a", W: 3, H: 1}, {ID: "b", W: 12, H: 1, X: at(0), Y: at(1)}, {ID: "c", W: 9, H: 1, X: at(3), Y: at(0)}},
 			[]string{"a@0,0", "c@3,0", "b@0,1"}},
 	} {
-		if got := places(placeWidgets(c.in)); !reflect.DeepEqual(got, c.want) {
+		if got := places(placeWidgets(c.in, gridColumns)); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -103,7 +103,7 @@ func TestHomeSaveLoad(t *testing.T) {
 		t.Fatal("settings that are not an object saved")
 	}
 	saved := HomeLayout{Widgets: []HomeWidget{{ID: "x1", Widget: "quota", W: 2, H: 2, X: at(3), Y: at(5), Settings: json.RawMessage(`{"a":1}`)}},
-		AutoRefreshOff: true}
+		AutoRefreshOff: true, Width: 1200, Columns: 24}
 	if err := a.SaveHome(saved); err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,20 @@ func TestHomeSaveLoad(t *testing.T) {
 	l, err = a.Home()
 	if err != nil || len(l.Widgets) != 2 || l.Widgets[0].W != 3 || l.Widgets[1].W != 12 {
 		t.Fatalf("4-column file: got %+v, %v; want widths 3 and 12", l, err)
+	}
+	// Columns out of range (an edited file): the widths and places go to twelfths.
+	if err := os.WriteFile(settings.HomeFile, []byte(`{"columns":120,"widgets":[{"id":"a","widget":"quota","w":60,"h":1,"x":60,"y":0}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	l, err = a.Home()
+	if err != nil || l.Columns != gridColumns || len(l.Widgets) != 1 || l.Widgets[0].W != 6 || *l.Widgets[0].X != 6 {
+		t.Fatalf("120-column file: got %+v, %v; want 12 columns, width 6 at 6", l, err)
+	}
+	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{}, Columns: 65}); err == nil {
+		t.Fatal("65 columns saved")
+	}
+	if err := a.SaveHome(HomeLayout{Widgets: []HomeWidget{}, Columns: 7}); err != nil {
+		t.Fatalf("7 columns: %v", err)
 	}
 	// The cm-release plugin's repos state widget became the built-in Git status one.
 	if err := os.WriteFile(settings.HomeFile, []byte(`{"columns":12,"widgets":[{"id":"a","widget":"cm-release/cm-repos-state","w":6,"h":2}]}`), 0o600); err != nil {

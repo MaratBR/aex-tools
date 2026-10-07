@@ -39,7 +39,9 @@ In a terminal: `aex-cli <tool> --help` shows what a tool takes, and `aex-cli --h
 ## Home
 
 Home is a grid of widgets. Use **Add widget** to add one, and **Edit** to move or resize them: drag a
-widget to any cell, leaving gaps if you like; widgets in the way move down. A widget
+widget to any cell, leaving gaps if you like; widgets in the way move down. Drag the handles on the
+page's sides to make it narrower (centred), or click Width to make it full width again; Columns
+− / + (2 to 64) set how fine widths and places are. A widget
 this aex does not have (e.g. from another version) stays on the page with a warning, to remove in Edit.
 
 - **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that

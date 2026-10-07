@@ -37,20 +37,15 @@
     .launch:active { transform: scale(.96); }
     .launch .label { max-width: 100%; font-size: 12px; font-weight: 500; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-    /* One button: it fills the widget. */
-    #single { flex: 1; min-width: 0; display: grid; place-items: center; padding: 8px; }
-    #single .launch { width: 100%; height: 100%; justify-content: center; }
-    #single .tile { --t: clamp(36px, min(48vh, 60vw), 120px); }
-    #single .label { font-size: 13px; }
-
-    /* Several: a grid of them, under their title when there is one. */
+    /* The buttons: a grid filling the widget, under their title when there is one. fit() picks the
+       columns that make the tiles largest (--tile), or scrolls when they would be too small. */
     #several { flex: 1; min-width: 0; display: flex; flex-direction: column; }
     #several h1 { margin: 0; padding: 8px 40px 0 14px; font: 600 14px/1.3 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #grid {
-      flex: 1; min-height: 0; overflow-y: auto; padding: 8px;
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); align-content: start; gap: 2px;
-    }
-    #grid .tile { --t: 44px; }
+    #grid { --tile: 44px; flex: 1; min-height: 0; overflow-y: auto; padding: 8px; display: grid; gap: 2px; }
+    #grid.scroll { align-content: start; }
+    #grid .launch { justify-content: center; }
+    #grid .tile { --t: var(--tile); }
+    #grid .label { font-size: clamp(12px, calc(var(--tile) * .12), 15px); }
 
     /* Nothing yet. */
     #empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; font-size: 13px; }
@@ -67,17 +62,17 @@
 
     /* Settings: the title and the buttons, each with its icon, name, tool and arguments. */
     #settings { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; font-size: 13px; overflow-y: auto; }
-    #settings input, #settings select {
+    #settings input, #settings .xs-btn {
       min-width: 0; padding: 4px 8px; border: 0; border-radius: 6px; font: inherit; font-size: 13px;
       color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep);
     }
-    #settings input:focus, #settings select:focus { outline: none; box-shadow: var(--ring); }
+    #settings input:focus, #settings .xs-btn:focus-visible, #settings .xs-btn[aria-expanded="true"] { outline: none; box-shadow: var(--ring); }
     #settings .lbl { color: var(--muted); font-size: 12px; }
     #rows { display: flex; flex-direction: column; gap: 8px; }
     #titleField { display: flex; flex-direction: column; gap: 3px; }
     .row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; background: var(--fill-2); }
     .row .line { display: flex; align-items: center; gap: 6px; }
-    .row .line > input, .row .line > select { flex: 1; }
+    .row .line > input, .row .line > .xs-btn { flex: 1; }
     .row .pick { padding: 0; border: 0; background: none; border-radius: 8px; cursor: pointer; }
     .row .pick .tile { --t: 30px; }
     .row .pick .tile.clear { box-shadow: inset 0 0 0 1px var(--sep); }
@@ -131,8 +126,9 @@
     //   {name: title over several buttons, buttons: [{name, icon, color, tool, args, stay}]}
     // After its tool succeeds the window goes back to Home, unless stay (then Runs stays shown).
     // color is one of `colors` below or "transparent" (no tile); none picks one by its place.
-    // Each button has a name, an icon or both: icon is one of `icons` below or an emoji. One button
-    // fills the widget; several fill it as a grid, under the title when set. They are edited in a
+    // Each button has a name, an icon or both: icon is one of `icons` below or an emoji. The buttons
+    // fill the widget as a grid of square tiles, as large as they fit (fit), under the title when
+    // there are several and it is set. They are edited in a
     // popup over the window (aex.openPopup: the cell is often too small), this same page with
     // aex.popup set.
     const view = document.getElementById('view'), settingsEl = document.getElementById('settings');
@@ -261,20 +257,16 @@
     function render() {
       const list = buttons();
       view.textContent = '';
-      if (list.length > 1) {
+      if (list.length) {
         const box = node('div');
         box.id = 'several';
-        if (title()) box.append(node('h1', null, title()));
+        if (list.length > 1 && title()) box.append(node('h1', null, title()));
         const grid = node('div');
         grid.id = 'grid';
         list.forEach((b, i) => grid.append(launcher(b, i)));
         box.append(grid);
         view.append(box);
-      } else if (list.length === 1) {
-        const box = node('div');
-        box.id = 'single';
-        box.append(launcher(list[0], 0));
-        view.append(box);
+        fit();
       } else {
         const box = node('div');
         box.id = 'empty';
@@ -286,6 +278,35 @@
       }
       editBtn.hidden = !list.length;
     }
+
+    // fit lays the buttons out in the columns that make their square tiles largest, filling the
+    // grid (two buttons side by side take half each). When even that makes them smaller than
+    // minTile, they keep that size and the grid scrolls.
+    const minTile = 36, gap = 2, padX = 8, padY = 12, labelGap = 6;
+    function fit() {
+      const grid = document.getElementById('grid');
+      if (!grid || view.hidden) return;
+      const n = grid.children.length, s = getComputedStyle(grid);
+      const W = grid.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+      const H = grid.clientHeight - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom);
+      if (!n || W <= 0 || H <= 0) return;
+      const label = grid.querySelector('.label');
+      const labelH = label ? label.offsetHeight + labelGap : 0;
+      let best = { t: 0, c: 1 };
+      for (let c = 1; c <= n; c++) {
+        const r = Math.ceil(n / c);
+        const t = Math.floor(Math.min((W - gap * (c - 1)) / c - padX, (H - gap * (r - 1)) / r - padY - labelH));
+        if (t > best.t) best = { t, c };
+      }
+      const scroll = best.t < minTile;
+      if (scroll) best = { t: minTile, c: Math.max(1, Math.floor((W + gap) / (minTile + padX + 32 + gap))) };
+      grid.classList.toggle('scroll', scroll);
+      grid.style.setProperty('--tile', best.t + 'px');
+      grid.style.gridTemplateColumns = `repeat(${best.c}, minmax(0, 1fr))`;
+      grid.style.gridTemplateRows = scroll ? '' : `repeat(${Math.ceil(n / best.c)}, minmax(0, 1fr))`;
+    }
+    new ResizeObserver(fit).observe(view);
+    document.fonts?.ready.then(fit);
 
     async function loadTools() {
       try {

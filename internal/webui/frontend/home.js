@@ -15,15 +15,21 @@ const scrollTops = { home: 0, runs: 0, settings: 0 };
 let catalog = { widgets: [], inactive: [] }; // WidgetList
 let layout = [];        // HomeWidget: {id, widget, w, h, x, y, settings}, sorted by place (byPlace)
 let autoRefresh = true; // !HomeLayout.autoRefreshOff
+let homeWidth = 0;      // HomeLayout.width: the page's width at most, in px; 0: the window's
 let editing = false;
 let popup = null;       // a widget's popup (openPopup): {w, from: the cell's window, id: its request}
-let cols = 12;
-// Widths are in twelfths of the grid (home.go: gridColumns), heights in rows; as clamped in home.go.
-const maxW = 12, maxH = 4;
+let cols = 12;          // the grid's columns now: maxW, or fewer when the window is narrow (colsFor)
+// maxW is the grid's columns at full width (HomeLayout.columns, minColumns to maxColumns, picked in
+// Edit): widths and places are in them. Heights are in rows. As clamped in home.go.
+let maxW = 12;
+const maxH = 4;
+const minColumns = 2, maxColumns = 64; // home.go
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
-// shownW is how many columns a widget takes now: all of its width, or the whole row when the
-// window is too narrow for it.
-const shownW = w => Math.min(w.w, cols);
+// shownW is how many columns a widget takes now: all of its width at full width; narrower, its
+// width in twelfths, or the whole row when the window is too narrow for it. fromShown is the width
+// that shows as n columns.
+const shownW = w => (full() ? w.w : Math.min(Math.max(1, Math.round(w.w * 12 / maxW)), cols));
+const fromShown = n => (full() ? n : clamp(Math.round(n * maxW / 12), 1, maxW));
 // full: the grid is at its full width, where each widget is at its place (x, y: column and row of its
 // top left corner, gaps allowed). Narrower, they follow one another in that order.
 const full = () => cols === maxW;
@@ -133,7 +139,7 @@ const widgetName = id => info(id)?.name || id.slice(id.indexOf('/') + 1);
 const newID = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const cellOf = w => grid.querySelector(`.cell[data-id="${w.id}"]`);
 
-const homeLayout = () => ({ widgets: layout, autoRefreshOff: !autoRefresh });
+const homeLayout = () => ({ widgets: layout, autoRefreshOff: !autoRefresh, width: homeWidth, columns: maxW });
 
 async function save() {
   try {
@@ -196,6 +202,8 @@ function fitGrid() {
   if (!width) return;
   cols = colsFor(width);
   grid.style.setProperty('--cols', cols);
+  // Many columns get narrower gaps between them, so the columns keep some width.
+  grid.style.setProperty('--gap-x', clamp(Math.round(width / cols / 4), 2, 14) + 'px');
   // At full width the rows go down to the lowest widget; in Edit, a widget's height more to move one below.
   const rows = Math.max(0, ...layout.map(w => w.y + w.h)) + (editing ? maxH : 0);
   grid.style.gridTemplateRows = full() ? `repeat(${rows}, var(--row))` : '';
@@ -208,7 +216,7 @@ function fitGrid() {
     cell.querySelector('.size').textContent = `${shownW(w)}/${cols} × ${w.h}`;
   }
 }
-function colsFor(width) { return width >= 900 ? 12 : width >= 440 ? 6 : 1; }
+function colsFor(width) { return width >= 900 ? maxW : width >= 440 ? Math.min(6, maxW) : 1; }
 // The widgets glide into a new number of columns (the window resized, the sidebar slid).
 new ResizeObserver(() => (grid.clientWidth && colsFor(grid.clientWidth) !== cols ? glide(fitGrid) : fitGrid())).observe(grid);
 
@@ -217,6 +225,7 @@ function makeCell(w) {
   cell.dataset.id = w.id;
   const frame = el('iframe');
   frame.setAttribute('sandbox', 'allow-scripts');
+  frame.classList.add('loading');
   const problem = el('div', 'cell-problem');
   problem.hidden = true;
   cell.append(frame, problem);
@@ -228,7 +237,7 @@ function makeCell(w) {
   // Widths change from what is shown: in a narrow window a widget is at most as wide as it is. At
   // full width it grows up to the right edge. Widgets it grows over go down.
   const change = (dw, dh) => {
-    if (dw) w.w = clamp(shownW(w) + dw, 1, full() ? maxW - w.x : cols);
+    if (dw) w.w = fromShown(clamp(shownW(w) + dw, 1, full() ? maxW - w.x : cols));
     w.h = clamp(w.h + dh, 1, maxH);
     settle(w);
     glide(fitGrid);
@@ -370,7 +379,7 @@ function resizer(cell, w, dir) {
     // Widgets it grows over go down, and come back as it shrinks again.
     const x0 = e.clientX, y0 = e.clientY, w0 = shownW(w), h0 = w.h, before = `${w.w}x${w.h}`, from = placesOf();
     const move = ev => {
-      const nw = dir === 's' ? w.w : clamp(w0 + Math.round((ev.clientX - x0) / colStep), 1, full() ? maxW - w.x : cols);
+      const nw = dir === 's' ? w.w : fromShown(clamp(w0 + Math.round((ev.clientX - x0) / colStep), 1, full() ? maxW - w.x : cols));
       const nh = dir === 'e' ? w.h : clamp(h0 + Math.round((ev.clientY - y0) / rowStep), 1, maxH);
       if (nw === w.w && nh === w.h) return;
       w.w = nw;
@@ -402,15 +411,126 @@ function setEditing(on) {
   b.setAttribute('aria-pressed', String(on));
   b.classList.toggle('primary', on);
   for (const cell of grid.children) cell.draggable = on;
+  syncWidth();
+  $('home-cols-field').hidden = !on;
   fitGrid(); // in Edit, room below the lowest widget to move one there
 }
 $('home-edit').onclick = () => setEditing(!editing);
 
+// The page's width ----------------------------------------------------------------------------
+
+// At least this wide, so the grid keeps all its columns (colsFor; home.go: minHomeWidth).
+const minHomeWidth = 900;
+const homeFrame = $('home-frame');
+
+// syncWidth sets the page's width, and in Edit shows it on the button that resets it.
+function syncWidth() {
+  homeFrame.style.setProperty('--home-w', homeWidth ? homeWidth + 'px' : 'none');
+  const b = $('home-width');
+  b.hidden = !editing;
+  b.textContent = homeWidth ? `Width ${homeWidth} px` : 'Full width';
+  b.disabled = !homeWidth;
+}
+
+function setWidth(w) {
+  if (w === homeWidth) return;
+  homeWidth = w;
+  syncWidth();
+}
+
+// Dragging either edge of the page changes its width, from the middle: both edges move. As wide as
+// the window (or nearly) is its full width, which follows the window.
+for (const edge of document.querySelectorAll('.home-edge')) {
+  const sign = edge.classList.contains('left') ? -1 : 1;
+  edge.addEventListener('pointerdown', e => {
+    if (!editing || e.button !== 0) return;
+    e.preventDefault();
+    edge.setPointerCapture(e.pointerId);
+    edge.classList.add('dragging');
+    document.body.classList.add('home-sizing');
+    const home = $('home'), pad = parseFloat(getComputedStyle(home).paddingLeft) + parseFloat(getComputedStyle(home).paddingRight);
+    const room = home.clientWidth - pad, x0 = e.clientX, w0 = homeFrame.getBoundingClientRect().width, before = homeWidth;
+    const move = ev => {
+      const w = Math.round((w0 + 2 * sign * (ev.clientX - x0)) / 10) * 10;
+      setWidth(w >= room - 10 ? 0 : clamp(w, minHomeWidth, Math.floor(room)));
+    };
+    const end = () => {
+      edge.removeEventListener('pointermove', move);
+      edge.removeEventListener('pointerup', end);
+      edge.removeEventListener('pointercancel', end);
+      edge.classList.remove('dragging');
+      document.body.classList.remove('home-sizing');
+      if (homeWidth !== before) save();
+    };
+    edge.addEventListener('pointermove', move);
+    edge.addEventListener('pointerup', end);
+    edge.addEventListener('pointercancel', end);
+  });
+  edge.addEventListener('dblclick', () => { setWidth(0); save(); });
+}
+$('home-width').onclick = () => { setWidth(0); save(); };
+
+// The grid's columns: more for finer widths and places, changed with − and + (held, they repeat).
+// Widths and places are scaled to the new columns (home.go: rescale); widgets that come to overlap
+// go down. Steps one after another scale from where the widgets were before the first one (colsBase),
+// so going up and back down puts them back, without rounding piling up. Moving, resizing, adding or
+// removing a widget in between starts again from there.
+let colsBase = null; // {cols, places: id → {x, y, w}, after: the layout the last step left}
+const layoutKey = () => JSON.stringify(layout.map(w => [w.id, w.x, w.y, w.w, w.h]));
+let colsSave = 0;
+function setColumns(n) {
+  n = clamp(n, minColumns, maxColumns);
+  if (n === maxW) return;
+  if (!colsBase || colsBase.after !== layoutKey()) {
+    colsBase = { cols: maxW, places: new Map(layout.map(w => [w.id, { x: w.x, y: w.y, w: w.w }])) };
+  }
+  const { cols: from, places } = colsBase;
+  const conv = v => Math.round(v * n / from);
+  glide(() => {
+    for (const w of layout) {
+      const p = places.get(w.id) || { x: w.x * from / maxW, y: w.y, w: w.w * from / maxW };
+      w.w = clamp(conv(p.w), 1, n);
+      w.x = clamp(conv(p.x), 0, n - w.w);
+      w.y = p.y;
+    }
+    maxW = n;
+    settle();
+    fitGrid();
+  });
+  colsBase.after = layoutKey();
+  syncColumns();
+  clearTimeout(colsSave);
+  colsSave = setTimeout(save, 400);
+}
+
+function syncColumns() {
+  $('home-cols').textContent = maxW;
+  $('home-cols-less').disabled = maxW <= minColumns;
+  $('home-cols-more').disabled = maxW >= maxColumns;
+}
+
+// holdStep runs step on a press, and again and again while the button is held.
+function holdStep(b, step) {
+  let timer = 0;
+  const stop = () => clearTimeout(timer);
+  b.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    step();
+    const again = delay => (timer = setTimeout(() => { if (!b.disabled) { step(); again(70); } }, delay));
+    again(400);
+  });
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, stop);
+  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); step(); } });
+}
+holdStep($('home-cols-less'), () => setColumns(maxW - 1));
+holdStep($('home-cols-more'), () => setColumns(maxW + 1));
+
 // Widgets' frames -------------------------------------------------------------------------------
 
-// What every widget's page gets at the top of its <head>: fetched once.
+// What every widget's page gets at the top of its <head>: fetched once. select.js shows its
+// drop-down lists in the theme's colors.
 let kit = null;
-const widgetKit = () => (kit ??= Promise.all(['tokens.css', 'widgets/widget.css', 'widgets/sdk.js']
+const widgetKit = () => (kit ??= Promise.all(['tokens.css', 'widgets/widget.css', 'widgets/sdk.js', 'select.js']
   .map(f => fetch(f).then(r => (r.ok ? r.text() : Promise.reject(new Error(f + ': ' + r.status)))))));
 
 // No network, inline scripts and styles only: a widget's data comes through aex.call.
@@ -421,7 +541,7 @@ const maxSettings = 8 << 10;
 
 // widgetDoc is a widget's page with the kit, its placement's settings and the window's theme put in.
 // popup: {data} for the page in a popup (openPopup), null in its cell.
-function widgetDoc(html, [tokens, base, sdk], settings, popup = null) {
+function widgetDoc(html, [tokens, base, sdk, select], settings, popup = null) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const csp = doc.createElement('meta');
   csp.httpEquiv = 'Content-Security-Policy';
@@ -431,7 +551,7 @@ function widgetDoc(html, [tokens, base, sdk], settings, popup = null) {
   const script = doc.createElement('script');
   // No "<" in the JSON, so nothing in it can end the script.
   const json = v => JSON.stringify(v).replace(/</g, '\\u003c');
-  script.textContent = 'const aexSettings = ' + json(settings || {}) + ';\nconst aexPopup = ' + json(popup) + ';\n' + sdk;
+  script.textContent = 'const aexSettings = ' + json(settings || {}) + ';\nconst aexPopup = ' + json(popup) + ';\n' + sdk + '\n' + select;
   doc.head.prepend(csp, style, script);
   doc.documentElement.dataset.theme = theme.scheme();
   for (const [k, v] of Object.entries(theme.vars())) doc.documentElement.style.setProperty(k, v);
@@ -479,8 +599,11 @@ async function loadWidget(w, cell) {
   // A second load without a new page is the widget leaving it (a link, location): not allowed.
   frame.dataset.expect = '1';
   frame.onload = () => {
-    if (frame.dataset.expect) delete frame.dataset.expect;
-    else showProblem(cell, 'the widget left its page');
+    if (frame.dataset.expect) {
+      delete frame.dataset.expect;
+      frame.classList.remove('loading');
+      sendTheme(frame.contentWindow);
+    } else showProblem(cell, 'the widget left its page');
   };
   frame.srcdoc = page;
   w.refreshed = Date.now();
@@ -549,7 +672,18 @@ window.addEventListener('message', async e => {
 // not fit in its cell, such as its settings. One at a time. It closes with aex.closePopup(value) in
 // it, the ×, Esc, a click outside, leaving Home or the widget being removed; the widget's openPopup
 // gets value (undefined but for aex.closePopup).
-const popupBack = $('widget-popup'), popupBox = popupBack.querySelector('.popup'), popupFrame = $('popup-frame');
+const popupBack = $('widget-popup'), popupBox = popupBack.querySelector('.popup');
+let popupFrame = $('popup-frame');
+
+// freshPopupFrame puts a new, empty frame in the popup's place: each popup gets its own, since
+// reusing one raced its last page leaving with the next one coming (shown in the wrong colors).
+function freshPopupFrame() {
+  const f = el('iframe', 'loading');
+  f.id = 'popup-frame';
+  f.setAttribute('sandbox', 'allow-scripts');
+  popupFrame.replaceWith(f);
+  popupFrame = f;
+}
 
 async function openPopup(w, from, id, opts) {
   const fail = error => post(from, { op: 'reply', id, ok: false, error });
@@ -568,12 +702,12 @@ async function openPopup(w, from, id, opts) {
   popup = { w, from, id };
   $('popup-title').textContent = String(opts.title || widgetName(w.widget)).slice(0, 120);
   popupBox.style.width = clamp(Number(opts.width) || 480, 240, 1200) + 'px';
-  popupFrame.style.height = '';
+  freshPopupFrame();
   popupFrame.title = widgetName(w.widget);
   // As in a cell: a second load is the page leaving (a link, location), which closes it.
   let loaded = false;
   popupFrame.onload = () => {
-    if (!loaded) { loaded = true; popupFrame.focus(); } else closePopup();
+    if (!loaded) { loaded = true; popupFrame.classList.remove('loading'); sendTheme(popupFrame.contentWindow); popupFrame.focus(); } else closePopup();
   };
   popupFrame.srcdoc = doc;
   popupBack.hidden = false;
@@ -590,22 +724,19 @@ function closePopup(value) {
   const { from, id } = popup;
   popup = null;
   popupBack.hidden = true;
-  popupFrame.onload = null;
-  popupFrame.removeAttribute('srcdoc');
-  popupFrame.src = 'about:blank';
+  freshPopupFrame();
   post(from, { op: 'reply', id, ok: true, value: value ?? undefined });
 }
 
 $('popup-close').onclick = () => closePopup();
 popupBack.addEventListener('mousedown', e => { if (e.target === popupBack) closePopup(); });
 
-// The theme follows the window's: its mode and colors (theme.js).
+// The theme follows the window's: its mode and colors (theme.js). A page gets it again once it has
+// loaded too, since a change while it loaded went to the page before it.
+const sendTheme = win => win && post(win, { op: 'theme', theme: theme.scheme(), vars: theme.vars() });
 window.addEventListener('aex:theme', () => {
-  const m = { op: 'theme', theme: theme.scheme(), vars: theme.vars() };
-  if (popup && popupFrame.contentWindow) post(popupFrame.contentWindow, m);
-  for (const f of grid.querySelectorAll('iframe')) {
-    if (f.contentWindow) post(f.contentWindow, m);
-  }
+  if (popup) sendTheme(popupFrame.contentWindow);
+  for (const f of grid.querySelectorAll('iframe')) sendTheme(f.contentWindow);
 });
 
 // A plugin's widget refreshes at most this often on its own: each of its calls starts the plugin.
@@ -678,7 +809,9 @@ function openPicker() {
   for (const w of catalog.widgets) {
     const item = button('', 'picker-item', () => {
       closePicker();
-      const placed = { id: newID(), widget: w.id, w: w.w, h: w.h, ...firstFit(w.w, w.h) };
+      // Catalog widths are in twelfths (home.go: WidgetInfo.W).
+      const ww = clamp(Math.round(w.w * maxW / 12), 1, maxW);
+      const placed = { id: newID(), widget: w.id, w: ww, h: w.h, ...firstFit(ww, w.h) };
       if (w.settings) placed.settings = w.settings;
       layout.push(placed);
       layout.sort(byPlace);
@@ -737,9 +870,13 @@ document.addEventListener('keydown', e => {
     layout.sort(byPlace);
     autoRefresh = !home.autoRefreshOff;
     autoSwitch.checked = autoRefresh;
+    homeWidth = home.width || 0;
+    maxW = home.columns >= minColumns && home.columns <= maxColumns ? home.columns : 12;
   } catch (e) {
     showCommandError('Could not load the home page: ' + e);
   }
+  syncWidth();
+  syncColumns();
   renderHome();
   if (!pageChosen) showPage(layout.length ? 'home' : 'runs', true);
   loadCatalog(); // names of plugins' widgets; describing plugins takes a moment

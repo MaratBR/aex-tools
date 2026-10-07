@@ -16,8 +16,17 @@ body {
 /* In a popup (sdk.js: aex.openPopup) the page is as tall as what it holds, and scrolls when the
    window is shorter. */
 html.aex-popup { height: auto; overflow: auto; }
+/* The page paints the theme's surface itself: the web view may draw a frame's canvas opaque in its
+   own colors (when its color-scheme differs from the window's), and a page background covers it. */
+html { background: var(--surface); }
 html.aex-popup body { height: auto; overflow: visible; }
 button { font: inherit; color: inherit; }
+/* Thin scrollbars in the theme's colors, as in the window (style.css): a rounded thumb on no track. */
+* { scrollbar-width: thin; scrollbar-color: var(--fill) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--fill); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--faint); }
 /* A select's list opens light in a widget's frame whatever its color-scheme, while its options take
    the select's text color: give them the theme's colors. */
 option, optgroup { background: var(--surface); color: var(--ink); }

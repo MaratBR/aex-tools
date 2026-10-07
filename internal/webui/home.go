@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,7 +36,7 @@ type WidgetInfo struct {
 	Plugin  string `json:"plugin,omitempty"` // the plugin it comes from, for a plugin's widget
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
-	W       int    `json:"w"` // size it is added with, in grid cells (gridColumns across)
+	W       int    `json:"w"` // size it is added with, in twelfths of the grid (gridColumns), whatever its columns
 	H       int    `json:"h"`
 	// Refresh is how often, in seconds, the home page tells it to load again (sdk.js: aex.onRefresh)
 	// while auto refresh is on (HomeLayout.AutoRefreshOff); 0: only after runs.
@@ -86,16 +87,26 @@ var windowAPIs = map[string]func(a *App, args map[string]any) (any, error){
 
 // Grid limits: sizes are clamped to them, so a layout from an older or edited file still fits.
 const (
-	gridColumns   = 12 // the grid's columns at full width: widths are in twelfths
+	gridColumns   = 12 // the grid's columns at full width by default, and what WidgetInfo.W is in
 	oldColumns    = 4  // the grid's columns before, still in home.json files without Columns, and plugins' sizes
-	maxWidgetW    = gridColumns
 	maxWidgetH    = 4
 	maxWidgets    = 48
 	maxRow        = maxWidgets * maxWidgetH // a widget's top row is at most this: room for gaps, not endless
 	homeFileLimit = 1 << 20
 	maxSettings   = 8 << 10 // a placement's settings, as JSON
 	minRefresh    = 5       // seconds: a plugin's widget refreshes at most this often, each call starts the plugin
+	minHomeWidth  = 900     // px: the home page's width at least, so the grid keeps all its columns (home.js: colsFor)
+	maxHomeWidth  = 8000
 )
+
+// The grid's columns at full width that can be picked (HomeLayout.Columns): more for finer widths
+// and places (home.js: minColumns, maxColumns).
+const (
+	minColumns = 2
+	maxColumns = 64
+)
+
+func validColumns(n int) bool { return n >= minColumns && n <= maxColumns }
 
 // HomeWidget is one widget placed on the home page.
 type HomeWidget struct {
@@ -103,7 +114,7 @@ type HomeWidget struct {
 	Widget string `json:"widget"` // WidgetInfo.ID
 	W      int    `json:"w"`
 	H      int    `json:"h"`
-	// X and Y are its place at full width: the column (0 to gridColumns-W) and row its top left
+	// X and Y are its place at full width: the column (0 to Columns-W) and row its top left
 	// corner is in, with gaps allowed. None (a file from before) places it where it fits first,
 	// after the widgets that have one, as the grid used to pack them.
 	X *int `json:"x,omitempty"`
@@ -118,8 +129,11 @@ type HomeLayout struct {
 	Widgets []HomeWidget `json:"widgets"`
 	// AutoRefreshOff turns off refreshing widgets on their own (WidgetInfo.Refresh), on by default.
 	AutoRefreshOff bool `json:"autoRefreshOff,omitempty"`
-	// Columns is the grid's columns the widths are in, gridColumns when saved; a file from before
-	// has none, its widths are in oldColumns. Only in the file.
+	// Width is how wide the home page is at most, in px, centred in the window; 0: the window's
+	// width. Set by dragging its edges in Edit.
+	Width int `json:"width,omitempty"`
+	// Columns is the grid's columns at full width, minColumns to maxColumns (picked in Edit): widths
+	// and places are in them. A file from before has none, its widths are in oldColumns.
 	Columns int `json:"columns,omitempty"`
 }
 
@@ -193,16 +207,26 @@ func (a *App) Home() (HomeLayout, error) {
 	if err := json.Unmarshal(b, &saved); err != nil {
 		return layout, fmt.Errorf("%s: %w", settings.HomeFile, err)
 	}
-	for i, w := range saved.Widgets {
-		if saved.Columns != gridColumns {
+	cols := saved.Columns
+	switch {
+	case cols == 0:
+		for i := range saved.Widgets {
 			saved.Widgets[i].W *= gridColumns / oldColumns
 		}
+		cols = gridColumns
+	case !validColumns(cols):
+		rescale(saved.Widgets, max(cols, 1), gridColumns)
+		cols = gridColumns
+	}
+	for i, w := range saved.Widgets {
 		if to, ok := renamedWidgets[w.Widget]; ok {
 			saved.Widgets[i].Widget = to
 		}
 	}
-	layout.Widgets = cleanWidgets(saved.Widgets)
+	layout.Columns = cols
+	layout.Widgets = cleanWidgets(saved.Widgets, cols)
 	layout.AutoRefreshOff = saved.AutoRefreshOff
+	layout.Width = homeWidth(saved.Width)
 	return layout, nil
 }
 
@@ -222,8 +246,14 @@ func (a *App) SaveHome(layout HomeLayout) error {
 	if len(layout.Widgets) > maxWidgets {
 		return fmt.Errorf("at most %d widgets", maxWidgets)
 	}
-	layout.Widgets = cleanWidgets(layout.Widgets)
-	layout.Columns = gridColumns
+	if layout.Columns == 0 {
+		layout.Columns = gridColumns
+	}
+	if !validColumns(layout.Columns) {
+		return fmt.Errorf("columns: %d is not from %d to %d", layout.Columns, minColumns, maxColumns)
+	}
+	layout.Widgets = cleanWidgets(layout.Widgets, layout.Columns)
+	layout.Width = homeWidth(layout.Width)
 	b, err := json.MarshalIndent(layout, "", "  ")
 	if err != nil {
 		return err
@@ -268,9 +298,31 @@ func validSettings(s json.RawMessage) bool {
 	return len(s) <= maxSettings && json.Unmarshal(s, &m) == nil && m != nil
 }
 
-// cleanWidgets drops bad widget ids and repeated placement ids, clamps sizes to the grid, places the
-// widgets (placeWidgets), and compacts settings, dropping those that are not a JSON object or too big.
-func cleanWidgets(list []HomeWidget) []HomeWidget {
+// homeWidth clamps the home page's width: 0 (none) stays, others go between minHomeWidth and
+// maxHomeWidth.
+func homeWidth(w int) int {
+	if w <= 0 {
+		return 0
+	}
+	return min(max(w, minHomeWidth), maxHomeWidth)
+}
+
+// rescale converts widths and columns of a grid of from columns to one of to (home.js: setColumns).
+func rescale(list []HomeWidget, from, to int) {
+	conv := func(n int) int { return int(math.Round(float64(n) * float64(to) / float64(from))) }
+	for i, w := range list {
+		list[i].W = max(conv(w.W), 1)
+		if w.X != nil {
+			x := conv(*w.X)
+			list[i].X = &x
+		}
+	}
+}
+
+// cleanWidgets drops bad widget ids and repeated placement ids, clamps sizes to a grid of cols
+// columns, places the widgets (placeWidgets), and compacts settings, dropping those that are not a
+// JSON object or too big.
+func cleanWidgets(list []HomeWidget, cols int) []HomeWidget {
 	out := []HomeWidget{}
 	seen := map[string]bool{}
 	for _, w := range list {
@@ -278,7 +330,7 @@ func cleanWidgets(list []HomeWidget) []HomeWidget {
 			continue
 		}
 		seen[w.ID] = true
-		w.W, w.H = min(max(w.W, 1), maxWidgetW), min(max(w.H, 1), maxWidgetH)
+		w.W, w.H = min(max(w.W, 1), cols), min(max(w.H, 1), maxWidgetH)
 		if w.Settings != nil {
 			var b bytes.Buffer
 			if !validSettings(w.Settings) || json.Compact(&b, w.Settings) != nil {
@@ -289,14 +341,14 @@ func cleanWidgets(list []HomeWidget) []HomeWidget {
 		}
 		out = append(out, w)
 	}
-	return placeWidgets(out)
+	return placeWidgets(out, cols)
 }
 
-// placeWidgets gives every widget a place in the grid at full width, none overlapping another, and
+// placeWidgets gives every widget a place in the grid of cols columns, none overlapping another, and
 // sorts them by it (top to bottom, then left to right). A widget with a place keeps it (clamped to
 // the grid), unless an earlier one (by that order) is there: it then goes down to the first row where
 // it fits. A widget without one goes where it fits first from the top left, in their order.
-func placeWidgets(list []HomeWidget) []HomeWidget {
+func placeWidgets(list []HomeWidget, cols int) []HomeWidget {
 	var placed, rest []HomeWidget
 	for _, w := range list {
 		if w.X == nil || w.Y == nil {
@@ -304,7 +356,7 @@ func placeWidgets(list []HomeWidget) []HomeWidget {
 			rest = append(rest, w)
 			continue
 		}
-		x, y := min(max(*w.X, 0), gridColumns-w.W), min(max(*w.Y, 0), maxRow)
+		x, y := min(max(*w.X, 0), cols-w.W), min(max(*w.Y, 0), maxRow)
 		w.X, w.Y = &x, &y
 		placed = append(placed, w)
 	}
@@ -317,7 +369,7 @@ func placeWidgets(list []HomeWidget) []HomeWidget {
 		out = append(out, w)
 	}
 	for _, w := range rest {
-		x, y := firstFit(out, w.W, w.H)
+		x, y := firstFit(out, w.W, w.H, cols)
 		w.X, w.Y = &x, &y
 		out = append(out, w)
 	}
@@ -341,10 +393,10 @@ func overlapsAny(list []HomeWidget, x, y, w, h int) bool {
 }
 
 // firstFit is the first place, row by row from the top left, where a widget of w×h overlaps none of
-// list (all placed).
-func firstFit(list []HomeWidget, w, h int) (x, y int) {
+// list (all placed), in a grid of cols columns.
+func firstFit(list []HomeWidget, w, h, cols int) (x, y int) {
 	for y = 0; ; y++ {
-		for x = 0; x+w <= gridColumns; x++ {
+		for x = 0; x+w <= cols; x++ {
 			if !overlapsAny(list, x, y, w, h) {
 				return x, y
 			}

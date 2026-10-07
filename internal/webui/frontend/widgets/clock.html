@@ -11,6 +11,8 @@
     #clocks { --size: 40px; flex: 1; min-width: 0; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 16px; }
     #clocks.stack { grid-auto-flow: row; grid-auto-columns: auto; grid-auto-rows: 1fr; }
     .clock { position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+    /* Never squeezed: fit() measures them whole (overflow: hidden would let the day shrink). */
+    .clock > * { flex: none; }
     .clock + .clock::before { content: ''; position: absolute; left: -8.5px; top: 20%; bottom: 20%; border-left: 1px solid var(--sep); }
     #clocks.stack .clock + .clock::before { left: 20%; right: 20%; top: -8.5px; bottom: auto; border-left: 0; border-top: 1px solid var(--sep); }
     .place { display: flex; align-items: baseline; gap: 6px; min-width: 0; max-width: 100%; font-size: 13px; font-weight: 600; }
@@ -32,8 +34,8 @@
     #settings { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; overflow-y: auto; }
     #settings label { display: flex; align-items: center; gap: 8px; }
     #settings .lbl { flex: none; width: 5.5em; color: var(--muted); }
-    #settings select { flex: 1; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px; font: inherit; color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
-    #settings select:focus { outline: none; box-shadow: var(--ring); }
+    #settings .xs-btn { flex: 1; min-width: 0; padding: 4px 6px; border: 0; border-radius: 6px; font: inherit; color: var(--ink); background: var(--fill); box-shadow: inset 0 0 0 .5px var(--sep); }
+    #settings .xs-btn:focus-visible, #settings .xs-btn[aria-expanded="true"] { outline: none; box-shadow: var(--ring); }
     #settings input[type=checkbox] { margin: 0; accent-color: var(--accent); }
     #settings .error { color: var(--fail); font-size: 12px; }
     #settings .error:empty { display: none; }
@@ -141,25 +143,30 @@
     }
 
     // fit lays the clocks out side by side or one under the other, whichever lets the time be
-    // larger, and sizes the time to fill its cell: measured at 100px, then scaled.
+    // larger with the place and the day fitting whole, and sizes the time to fill its cell: measured
+    // at 100px, then scaled. A layout where the day would be cut short loses to one where it fits.
     const gap = 16;
     function fit() {
       const n = clocksEl.children.length;
       if (!n || clocksEl.hidden) return;
       const W = clocksEl.clientWidth, H = clocksEl.clientHeight;
       clocksEl.style.setProperty('--size', '100px');
-      let tw = 0, rest = 0;
+      let tw = 0, th = 0, rest = 0, lw = 0;
       for (const c of clocksEl.children) {
         const [head, time, day] = c.children;
-        tw = Math.max(tw, time.getBoundingClientRect().width);
-        rest = Math.max(rest, head.offsetHeight + day.offsetHeight + 4);
+        const r = time.getBoundingClientRect();
+        tw = Math.max(tw, r.width);
+        th = Math.max(th, r.height);
+        rest = Math.max(rest, head.offsetHeight + day.offsetHeight + 4 + 2); // the gaps, and a little room
+        lw = Math.max(lw, day.scrollWidth + 1);
       }
-      if (!tw) return;
-      const size = (w, h) => Math.min(w * .95 / tw * 100, (h - rest) / 1.05);
+      if (!tw || !th) return;
+      const size = (w, h) => ({ size: Math.min(w * .95 / tw * 100, (h - rest) / th * 100), whole: w >= lw });
       const side = size((W - gap * (n - 1)) / n, H), stack = size(W, (H - gap * (n - 1)) / n);
-      const stacked = n > 1 && stack > side;
+      const better = (a, b) => (a.whole !== b.whole ? a.whole : a.size > b.size);
+      const stacked = n > 1 && better(stack, side);
       clocksEl.classList.toggle('stack', stacked);
-      clocksEl.style.setProperty('--size', Math.floor(Math.max(18, Math.min(160, stacked ? stack : side))) + 'px');
+      clocksEl.style.setProperty('--size', Math.floor(Math.max(12, Math.min(160, (stacked ? stack : side).size))) + 'px');
     }
 
     // tick renders now and again at the start of every minute.
