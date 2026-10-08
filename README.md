@@ -33,6 +33,16 @@ In a terminal: `aex-cli <tool> --help` shows what a tool takes, and `aex-cli --h
   aex asks for their parameters. Adding one asks which adapter runs it (or picks it by the file) and
   offers to approve it right away. Adapters that cannot work on your OS (AutoHotkey off Windows) are
   hidden; its menu's "View unsupported adapters" says why.
+- **Composer** (a page in the window, `aex composer` in the terminal) makes tools out of steps run in
+  order: aex tools, programs, opening a project in Visual Studio, VS Code or a JetBrains IDE (those
+  found on your device, with the projects they opened lately), an IP check ("is the VPN on?", asks
+  ipinfo.io where your IP is), messages on top of all windows, putting windows in places on the
+  screens (Windows, with AutoHotkey), switching aex to Home or minimizing it, delays, if / else,
+  trying steps until they work, and return (worked or failed). Each action suggests what is likely
+  wanted here: the browsers and apps found, the projects your IDEs opened lately. Drag blocks into the script, or write it as JSON. A failed
+  step is reported and the next one runs, unless you mark it critical; steps marked parallel run
+  together. Run one with `aex composed <name>`; in the window, Stop on its run interrupts it. A
+  program step can skip starting a program that is running already.
 - **cm-release** (a plugin) has the CM release steps: `pull-all`, `prepare-release`, `merge-prod` and
   `jira-handoff`.
 
@@ -84,7 +94,7 @@ Widgets follow it. To make your own, pick the closest one, click **Customize** (
 
 ## Where your data is kept
 
-- Settings, custom themes and output files are in the data folder, `%APPDATA%\aex` by default. You can open it from the
+- Settings, composed tools, custom themes and output files are in the data folder, `%APPDATA%\aex` by default. You can open it from the
   sidebar, or use another one with `--data-dir <dir>`.
 - Logins (the AEXT session, Jira token and Google login) are kept in the Windows Credential Manager
   (the Keychain on macOS), not in plain files.

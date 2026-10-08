@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
@@ -78,6 +79,10 @@ type Option struct {
 	Group   bool   `json:"group,omitempty"`
 }
 
+// asking lets one question be asked at a time: tools run together (a composed tool's parallel
+// steps) may ask at once, and each waits for the other's answer.
+var asking sync.Mutex
+
 // Ask prints question and returns the answer, trimmed.
 func Ask(question string) (string, error) { return Input(Field{Title: question}) }
 
@@ -88,6 +93,8 @@ func PromptSecret(question string) (string, error) {
 
 // Input asks for a line of text, trimmed. Validate errors are shown and the question asked again.
 func Input(f Field) (string, error) {
+	asking.Lock()
+	defer asking.Unlock()
 	f.Title = cleanTitle(f.Title)
 	check := func(s string) error {
 		if f.Validate == nil {
@@ -128,6 +135,8 @@ func Input(f Field) (string, error) {
 
 // Confirm asks a yes/no question; defaultYes picks the answer Enter gives.
 func Confirm(question string, defaultYes bool) (bool, error) {
+	asking.Lock()
+	defer asking.Unlock()
 	question = cleanTitle(question)
 	if Remote != nil {
 		return Remote.Confirm(question, defaultYes)
@@ -145,6 +154,8 @@ func Confirm(question string, defaultYes bool) (bool, error) {
 
 // Choose asks to pick one of options and returns its Value; the first option is preselected.
 func Choose(title string, options []Option) (string, error) {
+	asking.Lock()
+	defer asking.Unlock()
 	title = cleanTitle(title)
 	if Remote != nil {
 		return Remote.Choose(title, options)
@@ -173,6 +184,8 @@ func Choose(title string, options []Option) (string, error) {
 func PickTool(title string, tools []Option) (string, error) {
 	title = cleanTitle(title)
 	if Remote != nil {
+		asking.Lock()
+		defer asking.Unlock()
 		return Remote.PickTool(title, tools)
 	}
 	options := make([]Option, len(tools))

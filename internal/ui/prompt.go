@@ -149,6 +149,8 @@ func lineSecret(question string) (string, error) {
 
 // WaitKey returns after any key press (after Enter when stdin is not a terminal).
 func WaitKey() {
+	asking.Lock()
+	defer asking.Unlock()
 	if Remote != nil {
 		Remote.WaitKey()
 		return

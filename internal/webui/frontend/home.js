@@ -1,5 +1,5 @@
-// Pages and the home page. The window has three pages: Runs (the feed, app.js), Settings
-// (settings.js) and Home, a grid of widgets. It opens on Home when that has widgets, else on Runs.
+// Pages and the home page. The window has four pages: Runs (the feed, app.js), Settings
+// (settings.js), Composer (composer.js) and Home, a grid of widgets. It opens on Home when that has widgets, else on Runs.
 //
 // Each widget is a page of its own in a sandboxed frame (scripts only: no access to the window, no
 // network). Its page comes from the backend (built-in: widgets/<id>.html; a plugin's: from the
@@ -11,7 +11,7 @@ const grid = $('grid'), picker = $('widget-picker');
 
 let page = 'runs';
 let pageChosen = false; // once the user or a question picked a page, loading Home keeps it
-const scrollTops = { home: 0, runs: 0, settings: 0 };
+const scrollTops = { home: 0, runs: 0, settings: 0, composer: 0 };
 let catalog = { widgets: [], inactive: [] }; // WidgetList
 let layout = [];        // HomeWidget: {id, widget, w, h, x, y, settings}, sorted by place (byPlace)
 let autoRefresh = true; // !HomeLayout.autoRefreshOff
@@ -112,6 +112,7 @@ function showPage(name, auto = false) {
   $('home').hidden = name !== 'home';
   $('page').hidden = name !== 'runs';
   $('settings').hidden = name !== 'settings';
+  $('composer').hidden = name !== 'composer';
   document.body.dataset.page = name;
   document.querySelectorAll('.page-link').forEach(b => b.setAttribute('aria-current', String(b.dataset.page === name)));
   if (name === 'runs') document.body.classList.remove('runs-activity', 'runs-problem');
@@ -121,6 +122,7 @@ function showPage(name, auto = false) {
   syncSide(!auto);
   if (name === 'home') fitGrid();
   if (name === 'settings') onSettingsPage();
+  if (name === 'composer') onComposerPage();
 }
 
 // runsActivity marks Runs in the sidebar when a run prints while Home is shown.

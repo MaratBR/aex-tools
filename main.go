@@ -11,11 +11,13 @@ import (
 	"strings"
 
 	"aex/internal/autostart"
+	"aex/internal/composer"
 	"aex/internal/custom"
 	"aex/internal/plugin"
 	"aex/internal/settings"
 	"aex/internal/tool"
 	"aex/internal/tools/account"
+	"aex/internal/tools/composertool"
 	"aex/internal/tools/configure"
 	"aex/internal/tools/customtools"
 	"aex/internal/tools/onboarding"
@@ -34,7 +36,8 @@ import (
 var embeddedEnv string
 
 // Tool list order: built-in tools, each its own package under internal/tools, then plugins (see
-// internal/plugin), then custom tools (see internal/custom), added by loadPlugins.
+// internal/plugin), then custom tools (see internal/custom), then composed tools (see
+// internal/composer), added by loadPlugins.
 var builtins = []tool.Tool{
 	worklogsync.Tool,
 	quota.Tool,
@@ -42,6 +45,7 @@ var builtins = []tool.Tool{
 	configure.Tool,
 	plugins.Tool,
 	customtools.Tool,
+	composertool.Tool,
 	onboarding.Tool,
 	onboarding.ResetTool,
 	remind.Tool,
@@ -53,24 +57,53 @@ const debugGroup = "debug"
 var tools = withDebug(builtins)
 
 func init() {
-	// A custom tool cannot take a built-in tool's, a plugin's or an adapter's (its group's) name.
-	custom.Reserved = func(name string) bool {
-		return strings.EqualFold(name, debugGroup) || custom.IsAdapter(name) ||
+	builtin := func(name string) bool {
+		return strings.EqualFold(name, debugGroup) ||
 			slices.ContainsFunc(builtins, func(t tool.Tool) bool { return strings.EqualFold(t.Name, name) }) ||
 			slices.ContainsFunc(plugin.Names(), func(n string) bool { return strings.EqualFold(n, name) })
 	}
+	// A custom tool cannot take a built-in tool's, a plugin's, an adapter's (its group's) or a
+	// composed tool's name, nor the composed tools' group's.
+	custom.Reserved = func(name string) bool {
+		if builtin(name) || custom.IsAdapter(name) || strings.EqualFold(name, composer.Group) {
+			return true
+		}
+		entries, _ := composer.Load()
+		return composer.Find(entries, name) != nil
+	}
+	// Nor can a composed tool take any of those, or a custom tool's.
+	composer.Reserved = func(name string) bool {
+		if builtin(name) || custom.IsAdapter(name) {
+			return true
+		}
+		entries, _ := custom.Load()
+		return slices.ContainsFunc(entries, func(e custom.Entry) bool { return strings.EqualFold(e.Name, name) })
+	}
+	// A tool step may run a plugin, custom or composed tool: the list has them once loaded.
+	composer.Tools = func() []tool.Tool {
+		if !loaded {
+			loadPlugins()
+		}
+		return tools
+	}
 }
 
-// customGroups are the custom tools, one group per adapter, as loadPlugins found them.
-var customGroups []tool.Tool
+// extraGroups are the groups of custom tools (one per adapter) and of composed tools, as
+// loadPlugins found them: "aex <name>" runs a tool in them too.
+var extraGroups []tool.Tool
 
-// loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder and the
-// custom tools added (grouped by adapter).
+// loaded is set once loadPlugins has run.
+var loaded bool
+
+// loadPlugins sets tools to the built-in tools plus the plugins now in the plugins folder, the
+// custom tools added (grouped by adapter) and the composed tools.
 func loadPlugins() {
 	base := withDebug(builtins)
 	withPlugins := append(slices.Clip(base), plugin.Discover(base)...)
-	customGroups = custom.Discover(withPlugins)
-	tools = append(withPlugins, customGroups...)
+	extraGroups = custom.Discover(withPlugins)
+	extraGroups = append(extraGroups, composer.Discover(append(slices.Clip(withPlugins), extraGroups...))...)
+	tools = append(withPlugins, extraGroups...)
+	loaded = true
 }
 
 // withDebug takes the debug tools out of list, and with --debug puts them in the debug group at
@@ -113,6 +146,8 @@ Plugins (tools after the built-in ones) are executables in:
   %s
 Custom tools (after the plugins) are scripts added with "aex custom-tools add <path>", grouped by
 the adapter that runs them: "aex powershell <name>" (or just "aex <name>").
+Composed tools (last) are steps run in order, made in the window's Composer or with "aex composer":
+"aex composed <name>" (or just "aex <name>").
 
 Data folder (app settings .env.config, AEXT session, output), set with --data-dir <dir> or AEX_DATA_DIR:
   %s
@@ -209,8 +244,8 @@ func run(args []string) error {
 		t = findTool(args[0])
 	}
 	if t == nil {
-		// A custom tool also runs without its adapter's group: "aex <name>".
-		t = custom.Find(customGroups, args[0])
+		// A custom or composed tool also runs without its group: "aex <name>".
+		t = custom.Find(extraGroups, args[0])
 	}
 	if t == nil {
 		return fmt.Errorf("unknown tool: %s (see aex --help)", args[0])

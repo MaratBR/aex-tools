@@ -217,3 +217,10 @@ func isFile(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
 }
+
+// Exe is the AutoHotkey v2 executable aex runs scripts of its own with (the 64-bit one when there
+// is one), "" when AutoHotkey v2 is not installed.
+func Exe() string { return find("") }
+
+// NotInstalled says how to install AutoHotkey v2.
+const NotInstalled = notInstalled

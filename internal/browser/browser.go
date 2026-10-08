@@ -163,3 +163,7 @@ func Open(link string) error {
 	allowForeground()
 	return tool.OpenURL(address)
 }
+
+// Installed is what starts b on this device: its exe (Windows), its app (macOS) or its command
+// (Linux); "" when it is not installed.
+func Installed(b *Browser) string { return installed(b) }

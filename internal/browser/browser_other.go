@@ -3,7 +3,9 @@
 package browser
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 )
 
@@ -33,4 +35,29 @@ func launch(b *Browser, address string) error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+func installed(b *Browser) string {
+	if runtime.GOOS == "darwin" {
+		home, _ := os.UserHomeDir()
+		for _, app := range b.Mac {
+			for _, dir := range []string{"/Applications", filepath.Join(home, "Applications")} {
+				if p := filepath.Join(dir, app+".app"); isDir(p) {
+					return p
+				}
+			}
+		}
+		return ""
+	}
+	for _, name := range b.Linux {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
+func isDir(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
 }

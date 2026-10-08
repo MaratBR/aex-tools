@@ -1,6 +1,6 @@
 //go:build !windows && !darwin
 
-package gitclient
+package appicon
 
 import (
 	"errors"

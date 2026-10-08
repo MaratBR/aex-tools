@@ -167,6 +167,8 @@ async function runLine(line, { home = false } = {}) {
   if (!line || run) return;
   // configure is a page in the window, not a run.
   if (/^(configure|settings)\b/.test(line)) { openSettings('general'); return; }
+  // And composer is the Composer page.
+  if (/^composer\b/.test(line)) { showPage('composer'); return; }
   const { path, args } = resolve(line);
   // So is the debug tool onboarding (onboarding.js), there only with --debug.
   if (path.join(' ') === 'debug onboarding') { openOnboarding(); return; }
@@ -182,6 +184,22 @@ async function runLine(line, { home = false } = {}) {
   } catch (e) {
     finished({ status: String(e), ok: false });
   }
+}
+
+// interruptible shows a Stop button on the run while it is a composed tool that can be stopped
+// (App.Stop); stopping cancels the question open first, so a step asking ends too.
+function interruptible(on) {
+  if (!run) return;
+  run.el.querySelector('.stop')?.remove();
+  if (!on) return;
+  const stop = button('Stop', 'btn quiet small stop', () => {
+    stop.disabled = true;
+    stop.textContent = 'Stopping…';
+    cancelQuestion?.();
+    api().Stop();
+  });
+  stop.title = 'Stop the composed tool: the steps running stop, and no more run';
+  run.status.before(stop);
 }
 
 function finished({ status, ok, quiet }) {
@@ -673,6 +691,9 @@ window.runtime.EventsOn('output', onOutput);
 window.runtime.EventsOn('clear', onClear);
 window.runtime.EventsOn('prompt', onPrompt);
 window.runtime.EventsOn('finished', finished);
+window.runtime.EventsOn('interruptible', interruptible);
+// A composed tool's step switching the window to a page (composer.go: ShowHome).
+window.runtime.EventsOn('page', name => showPage(name));
 window.runtime.OnFileDrop((x, y, paths) => { if (dropHandler && paths && paths.length) dropHandler(paths); }, false);
 updateCommand();
 // The theme picked may be a custom one whose file changed since.

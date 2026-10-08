@@ -24,17 +24,19 @@ people using aex: keep it short, and put the details here. Building, dev builds 
   - `tool` — `Tool` type every tool exports (name, summary, run, or sub-tools for a group) and
     `ParseFlags` (gives `--help`)
   - `tools/<name>` — one package per built-in tool (`worklogsync`, `quota`, `account`, `configure`,
-    `plugins`, `customtools`), each exporting `Tool`; `main.go` lists them in the order the window shows them
+    `plugins`, `customtools`, `composertool`), each exporting `Tool`; `main.go` lists them in the order the window shows them
   - `plugin` — plugins (see Plugins): finds them, checks their safe hash, runs them; `plugin.Main` for
     a plugin's own `main`; `plugin.Lock` approves custom tools the same way
   - `custom` — custom tools (see Custom tools): the list of scripts added, their approval, parameter
     prompts, running them through their adapter
+  - `composer` — composed tools (see Composer): their JSON, checking, running their steps, the actions
   - `adapter` — the tool adapter interface and the parameter model every adapter shares (binding args,
     `--help`); `adapter/powershell` — the PowerShell one, `adapter/autohotkey` — the AutoHotkey v2 one
   - `gitinfo` — a file's git repo, commit, last commit that changed it and its changes not committed;
     a repo's state (branch, changes, commits to push and pull) for the Git status widget
-  - `gitclient` — the git client installed on the device (Fork, GitHub Desktop, …): finds it, opens it,
-    reads its icon
+  - `gitclient` — the git client installed on the device (Fork, GitHub Desktop, …): finds it, opens it
+  - `appicon` — an app's icon as a PNG data: URL: from an exe's resources (Windows), an .app (macOS)
+  - `ide` — IDE providers (see Composer): the IDEs installed, their icons and recent projects
   - `proc` — starting console programs without a console window (from the window)
   - `pty` — running a console program in a pseudo-console (ConPTY) the window shows as a terminal
   - `settings` — app root (repo or exe folder), data folder (`--data-dir`), output paths; loads `.env`,
@@ -106,6 +108,7 @@ Linux: `$XDG_CONFIG_HOME/aex` or `~/.config/aex`). Holds:
 - `credentials.json` — AEXT session and `JIRA_TOKEN`, only when there is no OS credential store (see Credentials)
 - `output\jira-export\` — generated files
 - `custom-tools.json` — the custom tools added (name, script path, adapter)
+- `composed-tools.json` — the composed tools (see Composer)
 - `update-check.json` — the last check of how far the build is behind GitHub (see About and licenses)
 - `reminders.json` — the reminders set up in Settings > Reminders, each with when it last showed
 - `home.json` — the window's home page: its widgets with their places, sizes and settings, and
@@ -246,6 +249,14 @@ asks whether to approve it now (default no): yes saves that SHA-256 as its safe 
 (`custom.Approve`, refused if the file changed since it was shown), so its first run does not ask.
 `--approve` does so without asking; otherwise it asks to be approved on its first run.
 
+## composer
+
+`aex composer` manages composed tools (see Composer) in the terminal: `list` (default), `show <name>`
+(its JSON), `actions` (the actions and their JSON fields), `put <file>` (saves one from JSON, `-` for
+stdin: adds it, or replaces the one with its name; `--replace <name>` replaces another, to rename it;
+not saved when the check finds errors), `remove <name> [--yes]`, `open` (the data folder). It is
+`Hidden`: the window has the Composer page instead, which typing `composer` opens.
+
 ## cm-release (plugin)
 
 A group of CM release tools (`.\bin\cm-release.ps1 <tool> [args]`). Needs Jira access (see Plugins).
@@ -312,7 +323,7 @@ means the default QA), then moves the ticket to In Production (transition `111`,
 
 ## Window
 
-`aex` without a tool opens the window: the pages (Home, Runs) and the tools on the left (a group opens
+`aex` without a tool opens the window: the pages (Home, Runs, Composer) and the tools on the left (a group opens
 under its name), the logins and settings under them, and the page on the right. It opens on Home when
 Home has widgets, else on Runs. Running a tool, and any question asked, shows Runs; a dot on Runs says
 a run printed while Home was shown. Tools are the same console programs as in the terminal:
@@ -825,6 +836,129 @@ else from PATH (a portable copy). Not found: describing fails with how to instal
 the window's tool list and on a run. Not interactive: it asks in its own windows (`InputBox`, `MsgBox`),
 its output to `*` (`FileAppend`) shows in the run; a script that stays running (hotkeys, a Gui) keeps
 its run going until it exits.
+
+## Composer
+
+A composed tool (`internal/composer`) is a name, a summary and steps, run in order. Each step is an
+action with `label` (its name in the output), `critical` and `parallel`. Actions are not tools: they
+run only as steps. Kept in `composed-tools.json` in the data folder, as
+`{"tools": [{"name", "summary", "steps": [{"action": "<kind>", "label", "critical", "parallel", …its fields}]}]}`;
+a field an action does not have is an error (`Step.UnmarshalJSON`). One that cannot be read stays in
+the file and is listed with why.
+
+They are the group `composed` after the custom tools (`composer.Discover`), run as
+`aex composed <name>` or `aex <name>`, and take no args. Their names are checked against built-in
+tools, plugins, adapters and custom tools both ways (`composer.Reserved`, `custom.Reserved`, set in
+`main.go`).
+
+Running (`composer.Execute`, `runSteps`): each step says when it starts and how it ended. A failed
+step is reported and the next one runs; a critical one that fails stops its steps after those
+running with it end (those that can stop are cancelled: a program waited for is killed, a check
+stops). Steps marked parallel next to one another run together, each line they print themselves
+(and a program's output) after `[n]`; an aex tool's own output is not prefixed. The steps of an if
+or a check run the same way, their lines indented under it. A `return` ends the steps it is in
+(`*Returned`) up to the check around it, where it ends one try, or else the composed tool, which
+then works or fails as the return says. Otherwise the tool fails when any step failed. Prompts are
+asked one at a time (`ui.asking`), so tools run together take turns asking.
+
+Interrupting: a composed tool run from the tool list (`interruptible`) can be stopped with
+`composer.Interrupt`, which cancels its context with `ErrInterrupted` as the cause: the steps running
+stop, those that can (a program waited for is killed; a delay, check, message or IP check stops; an
+aex tool step ends first), each saying it was interrupted, and no more run; the tool ends
+"interrupted". In the window `composer.OnInterruptible` shows a Stop button on the run while it
+runs (`App.Stop`); Stop also cancels the question open, so a step asking ends too.
+
+Actions (`Action`: `Kind`, `Describe`, `Check`, `Run`; listed in `Kinds`):
+
+- `tool` — runs an aex tool by its command line (`tool`: `quota`, `cm-release pull-all`; a name alone
+  also finds a custom or composed tool) with `args` (split as a command line, `"…"` keeps spaces). A
+  composed tool runs in place, so one running itself, also through others, fails
+  (`a runs itself: a → b → a`); naming itself directly is an error when saving.
+- `run` — runs a program (`path`, or a name on PATH; `~`, `$VAR`, `%VAR%` expanded) with `args` in `dir`,
+  waiting for it and failing on an exit code not 0, or with `detach` started and left running. With
+  `skipRunning` it is not started when a process runs that file already (`proc.Running`: Windows
+  by the exe's path, or its name when the path cannot be read; Linux `/proc`; macOS `ps`, a program
+  inside the .app), and the step works. The suggested programs have it on.
+- `open-ide` — opens `project` (a file or folder) in the IDE `ide` names, found by an IDE provider
+  (below). Never waited for. An id no provider knows is an error; one not found here a warning.
+- `message` — shows `text` (and `title`) as a reminder (see Reminders), `urgent` or not; with `wait`
+  the step ends once it is closed.
+- `ip-check` — asks where this device's public IP is (`https://ipinfo.io/json`, else
+  `https://ipapi.co/json/`) and fails when it is not in one of `want` or is in one of `avoid`: a
+  country code, or a country, region or city name, ignoring case. Each check opens new connections
+  (no keep-alive): one opened before the VPN came up would still go out the old way.
+- `if` — runs `cond`, one action (not an if or a return, without critical or parallel): when it works
+  the steps of `then` run, else those of `else` (`not` swaps them). The condition failing is no
+  failure; the if fails when the steps it ran did.
+- `check` — runs the steps of `do` again and again until a try works (none of them fails, or a return
+  returns worked), `every` seconds (5), giving up after `timeout` seconds (300; 0: never) or
+  `attempts` tries (0: no limit). `do` as one step alone (older files) reads as a list of it.
+- `return` — ends the steps it is in (above), worked or `fail`, with an optional `message`.
+- `delay` — waits `seconds` (fractions allowed).
+- `home`, `minimize` — switch the aex window to Home (the `page` event, `App.ShowHome`) or
+  minimize it, through `composer.Window`, set by `internal/webui` as it starts; in a terminal they fail.
+- `orient` — puts windows in places (Windows only, with AutoHotkey v2: `autohotkey.Exe`). Each of
+  `windows` finds windows by program (`exe`) and a part of their `title`, and puts the first (or
+  `all`) on `monitor` (from 1; 0 the main one) at `place`: one of `composer.Places` (halves,
+  quarters, thirds, two thirds, centered, maximized, minimized) or `custom` (`x`, `y`, `w`, `h` in
+  percent of the screen's work area). aex writes an AutoHotkey script (`orientScript`) that looks
+  for the windows every 250 ms for up to `wait` seconds (30): a window open from the start is placed
+  at once, one that shows up later after a second (an app may still move it as it opens). Windows
+  10 and 11 invisible borders are taken into account (`DWMWA_EXTENDED_FRAME_BOUNDS`). It fails
+  naming the rules no window was found for. `ListWindows` (another script) lists the screens' work
+  areas and the windows shown (visible, titled, not tool windows or cloaked ones), for the editor.
+
+Suggestions (`composer.Suggestions`, reused for 30 s): steps of an action likely wanted on this
+device, listed in the palette under their action (a few, then the rest on More): `run` the browsers
+found (`browser.Installed`) and well-known apps found where they install (`apps` in `suggest.go`:
+VPN clients, chat, …; paths under the user's folders written as `%LOCALAPPDATA%` and the like), each
+started without waiting; `open-ide` each IDE found and the projects opened last in any of them;
+`delay` common waits. Each has the program's icon (`internal/appicon`).
+
+IDE providers (`internal/ide`, `ide.Provider`, listed in `ide.Providers`): each finds a family of IDEs
+(`Installed`, one `IDE` per id), gives each one's icon (`Icon`, optional: the exe's or app's, through
+`internal/appicon`), the projects it opened lately that are still there (`Projects`, newest first),
+and the command that opens a project (`Command`); `Known` names an id whether installed or not. What
+they find is reused for 30 s (`ide.Installed`, `ide.Projects`). So far:
+
+- Visual Studio (Windows): each install `vswhere -all` lists is `vs<year>` (`vs2022`, a second one
+  `vs2022-2`); `vs` is the newest. Recent: the start window's list, the JSON of the
+  `CodeContainers.Offline` collection in `%LOCALAPPDATA%\Microsoft\VisualStudio\<major>.0_<instance>\ApplicationPrivateSettings.xml`.
+- Visual Studio Code: `vscode`, `Code.exe` where it installs (or next to `code` on PATH), the app on
+  macOS. Recent: each folder of `User/workspaceStorage` (its `workspace.json` says which folder or
+  workspace), opened when its `state.vscdb` last changed.
+- JetBrains: `rider`, `idea`, `goland`, `webstorm`, `pycharm`, `clion`, `phpstorm`, `rubymine`,
+  `datagrip`, `rustrover`: the newest install where Toolbox or the installer puts it, else the exe
+  its Toolbox script starts (or the script), else PATH. Its `product-info.json` gives the version and
+  its settings folder (`%APPDATA%\JetBrains\<dataDirectoryName>`, else the newest named like it).
+  Recent: `options/recentProjects.xml` (Rider: `recentSolutions.xml`), the `additionalInfo` entries
+  with their open or activation time.
+
+The editor shows only the IDEs found; a step naming one not found shows it as not found.
+
+Checking (`composer.Check`, also on every edit in the window) gives problems by step and field: a
+step by its number, one inside another after it with the part it is in (`"2"`, `"2.then.1"`,
+`"2.do.3"`, `"2.cond"`). Errors keep it from being saved, warnings do not (a tool or program not
+there now, a parallel step with no parallel one next to it).
+
+The Composer page (`frontend/composer.js`, `internal/webui/composer.go`: `Composer`,
+`ComposerCheck`, `ComposerSave`, `ComposerDelete`, `ComposerBrowse`) lists them on its left (New
+tool, or an example to start from: try until the VPN is on) and edits one as blocks or JSON, the
+same draft (kept per tool until saved or discarded, a dot for unsaved ones). Blocks: a palette of
+actions by group (Run, Windows, Checks, Flow), each with its suggestions, and of every tool
+(searchable) is dragged into the script (or clicked to add at the end). An if holds its condition
+and its then and else steps, a check its steps, each a list taking drops like the script; a block is
+dragged by its icon (not into itself), moved with ↑ ↓ on it within its list, dropped on the palette
+to remove; a condition dropped where one is goes after the if. Steps are found by their path
+(`cmpWhere`). Parallel steps next to one another are bracketed together. A block's label, critical
+and parallel show as badges after its fields; the toolbar over its top right (while its line is
+pointed at or has the focus) changes them, duplicates and removes it. An IDE's block shows its icon
+and a Recent list of the projects it opened, which fills the project in. An orient block lists its
+windows (program with its icon, title, screen, place) and adds one open now where it is now, one by
+name, or every program's largest window as it is now (`ComposerWindows`, Detect asks again); under
+them the screens as they are arranged, with where each window goes. Problems show on their
+block. Run saves first, then runs it on Runs. Saving reads the tool list again (`Host.Reload`),
+unless a tool runs.
 
 ## Config
 

@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"aex/internal/composer"
 	"aex/internal/reminder"
 	"aex/internal/tool"
 	"aex/internal/ui"
@@ -36,6 +37,8 @@ type Host struct {
 	Ready func()
 	// Changed, when set, runs after the settings form changed settings (or wiped them).
 	Changed func()
+	// Reload, when set, reads the tool list again (after a composed tool was saved or removed).
+	Reload func()
 }
 
 // InfoLine is one line of the header (the logins and settings under the tools): a label and styled text.
@@ -103,6 +106,10 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.emit = func(event string, data any) { runtime.EventsEmit(ctx, event, data) }
 	ui.Remote = a
+	// Composed tools' actions on the window (switch to Home, minimize) act on this one.
+	composer.Window = a
+	// A composed tool running can be stopped from its run (Stop).
+	composer.OnInterruptible = func(on bool) { a.send("interruptible", on) }
 	// The reminders set up on the Settings page, while the window is open.
 	go reminder.RunSchedule(ctx.Done())
 	out, err := captureOutput(func(text string) { a.emit("output", text) }, a.mark)
@@ -235,6 +242,9 @@ func (a *App) find(path []string) *tool.Tool {
 	}
 	return t
 }
+
+// Stop interrupts the composed tool running (composer.Interrupt); it reports whether one was.
+func (a *App) Stop() bool { return composer.Interrupt() }
 
 // Answer answers the open prompt id; cancelled answers it with a "cancelled" error.
 func (a *App) Answer(id int, value string, cancelled bool) {

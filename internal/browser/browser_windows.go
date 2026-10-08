@@ -138,3 +138,5 @@ func isFile(path string) bool {
 	st, err := os.Stat(path)
 	return path != "" && err == nil && !st.IsDir()
 }
+
+func installed(b *Browser) string { return find(b) }

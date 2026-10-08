@@ -71,6 +71,7 @@ func guiMenu() error {
 			return lines
 		},
 		Changed: func() { loginDone = startLoginCheck() },
+		Reload:  loadPlugins,
 		Ready: func() {
 			if settings.FakeError {
 				// After the start-up questions' run: output outside any run, as a widget's call makes.

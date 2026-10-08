@@ -1,18 +1,16 @@
 // Package gitclient finds the git client (a git GUI) installed on the device, opens it and gives
-// its icon, for the Git status widget.
+// its icon (internal/appicon), for the Git status widget.
 package gitclient
 
 import (
-	"bytes"
-	"encoding/base64"
 	"errors"
-	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
+
+	"aex/internal/appicon"
 )
 
 // client is a git GUI and where it installs.
@@ -82,24 +80,6 @@ func Open() error {
 	return cmd.Process.Release()
 }
 
-// IconSize is the icon's width and height in pixels.
-const IconSize = 64
-
-var icons sync.Map // path: data URL, or "" when it has none
-
 // Icon is the icon of the git client at path (from Find) as a PNG data: URL, "" when it cannot be
-// read. Kept for the path once read.
-func Icon(path string) string {
-	if url, ok := icons.Load(path); ok {
-		return url.(string)
-	}
-	url := ""
-	if img, err := readIcon(path, IconSize); err == nil {
-		var b bytes.Buffer
-		if png.Encode(&b, img) == nil {
-			url = "data:image/png;base64," + base64.StdEncoding.EncodeToString(b.Bytes())
-		}
-	}
-	icons.Store(path, url)
-	return url
-}
+// read.
+func Icon(path string) string { return appicon.DataURL(path) }

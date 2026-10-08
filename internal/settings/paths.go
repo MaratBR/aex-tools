@@ -33,6 +33,8 @@ var (
 	PluginSettingsDir string
 	// CustomToolsFile lists the custom tools added (internal/custom): scripts run by a tool adapter.
 	CustomToolsFile string
+	// ComposedToolsFile holds the composed tools (internal/composer): tools made of steps.
+	ComposedToolsFile string
 	// HomeFile holds the window's home page: its widgets, in order, with their sizes.
 	HomeFile string
 	// ThemesDir holds custom themes for the window, one JSON file each (internal/webui: themes.go).
@@ -95,6 +97,7 @@ func Init(dataDir, embeddedEnv string) error {
 	JiraExportDir = filepath.Join(OutputDir, "jira-export")
 	PluginSettingsDir = filepath.Join(DataDir, "plugin-settings")
 	CustomToolsFile = filepath.Join(DataDir, "custom-tools.json")
+	ComposedToolsFile = filepath.Join(DataDir, "composed-tools.json")
 	HomeFile = filepath.Join(DataDir, "home.json")
 	ThemesDir = filepath.Join(DataDir, "themes")
 	OnboardedFile = filepath.Join(DataDir, "onboarded")
