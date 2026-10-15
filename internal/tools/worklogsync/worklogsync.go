@@ -29,7 +29,7 @@ func worklogSyncHelp() string {
 	return fmt.Sprintf(`Usage: worklog-sync [--range <expr>] [--manual]
 
 Exports your Jira worklogs for a date range to <data folder>/output/jira-export/<timestamp>.csv,
-then offers to send the CSV to AEXT.
+then sends the CSV to AEXT.
 
 Without --range, a picker offers: a range suggested from AEXT (first working day of this
 month with no hours logged, through today), common ranges, or typing one.
@@ -329,13 +329,6 @@ func run(args []string) error {
 	}
 	fmt.Printf("%d rows, %s -> %s\n", len(rows), out.Bold(fmt.Sprintf("%.2fh", float64(seconds)/3600)), out.Cyan(csvFile))
 
-	if !ui.IsInteractive() {
-		return nil
-	}
-	send, err := ui.Confirm(fmt.Sprintf("Send CSV to AEXT? (edit %s first if needed)", filepath.Base(csvFile)), false)
-	if err != nil || !send {
-		return err
-	}
 	c, err := aextClient()
 	if err != nil {
 		return err
@@ -441,7 +434,7 @@ func splitDuplicates(entries []aext.Entry, existing []aext.TimeEntry) (keep []ae
 // Byte order mark, written as an escape: Go rejects a literal one in source.
 const bom = "\xef\xbb\xbf"
 
-// importCSV re-reads the CSV so manual edits made before confirming are what gets sent.
+// importCSV reads the CSV and sends its rows to AEXT.
 func importCSV(c *aext.Client, file string) error {
 	name := filepath.Base(file)
 	f, err := os.Open(file)

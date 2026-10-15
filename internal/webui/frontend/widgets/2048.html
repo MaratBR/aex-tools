@@ -84,6 +84,9 @@
     <div class="title">2048</div>
     <div class="score"><span>Score</span><b id="score">0</b></div>
     <div class="score"><span>Best</span><b id="best">0</b></div>
+    <button class="icon-btn" id="undo" type="button" title="Undo the last move (U, Ctrl+Z)" aria-label="Undo the last move" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+    </button>
     <button class="icon-btn" id="restart" type="button" title="New game" aria-label="New game">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66"/><path d="M4 4v4.5h4.5"/></svg>
     </button>
@@ -94,7 +97,7 @@
     // The game of 2048: arrow keys (or WASD) once the widget has the focus, or a swipe. Tiles of the
     // same number that run into each other merge; reaching 2048 wins, and the game can go on.
     // The board, score and best score are kept in this placement's settings (aex.saveSettings), so a
-    // game survives the window closing.
+    // game survives the window closing. One move can be undone (not two in a row), unless the game is over.
     const N = 4;
     const board = document.getElementById('board');
     const scoreEl = document.getElementById('score');
@@ -103,6 +106,8 @@
     let grid;          // grid[y][x]: a tile {id, v, x, y} or null
     let score = 0, best = 0, won = false, keepGoing = false;
     let nextId = 1;
+    let prev = null;   // the position before the last move, to undo it: {cells, score, won, keepGoing}
+    const undoBtn = document.getElementById('undo');
     const els = new Map(); // tile id -> its element
 
     for (let i = 0; i < N * N; i++) {
@@ -141,11 +146,25 @@
       tileEl(t).classList.add('new');
     }
 
-    function newGame() {
+    const cellsOf = () => grid.flat().map(t => t ? t.v : 0);
+
+    // Puts the tiles of cells (values by place, 0 for none) on the board, replacing those there.
+    function load(cells) {
       for (const el of els.values()) el.remove();
       els.clear();
       grid = empty();
+      cells.forEach((v, i) => {
+        if (!v) return;
+        const t = { id: nextId++, v: Number(v), x: i % N, y: Math.floor(i / N) };
+        grid[t.y][t.x] = t;
+        tileEl(t);
+      });
+    }
+
+    function newGame() {
+      load([]);
       score = 0; won = false; keepGoing = false;
+      prev = null;
       closeOverlay();
       addRandom(); addRandom();
       update();
@@ -160,6 +179,7 @@
       const next = empty();
       const gone = [];     // tiles merged into another: slide, then go
       const merged = [];   // tiles that got a merge this move
+      const before = { cells: cellsOf(), score, won, keepGoing };
       let moved = false;
       for (const y of ys) for (const x of xs) {
         const t = grid[y][x];
@@ -183,6 +203,7 @@
         next[ny][nx] = t;
       }
       if (!moved) return false;
+      prev = before;
       grid = next;
       for (const t of gone) {
         const el = els.get(t.id);
@@ -205,6 +226,17 @@
       return true;
     }
 
+    // Goes back to the position before the last move, once.
+    function undo() {
+      if (!prev || !canMove()) return;
+      closeOverlay();
+      load(prev.cells);
+      ({ score, won, keepGoing } = prev);
+      prev = null;
+      update();
+      save();
+    }
+
     const inside = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
 
     function canMove() {
@@ -221,6 +253,7 @@
       if (score > best) best = score;
       scoreEl.textContent = score;
       bestEl.textContent = best;
+      undoBtn.disabled = !prev || !canMove();
       if (won && !keepGoing) overlay('You made 2048!', [['Keep going', () => { keepGoing = true; closeOverlay(); save(); }, true], ['New game', newGame]]);
       else if (!canMove()) overlay('Game over', [['Try again', newGame, true]]);
     }
@@ -252,8 +285,7 @@
     function save() {
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
-        const cells = grid.flat().map(t => t ? t.v : 0);
-        aex.saveSettings({ cells, score, best, won, keepGoing }).catch(() => {});
+        aex.saveSettings({ cells: cellsOf(), score, best, won, keepGoing, prev }).catch(() => {});
       }, 400);
     }
 
@@ -261,17 +293,14 @@
       const s = aex.settings;
       best = Number(s.best) || 0;
       if (!Array.isArray(s.cells) || s.cells.length !== N * N) return false;
-      grid = empty();
-      s.cells.forEach((v, i) => {
-        if (!v) return;
-        const t = { id: nextId++, v: Number(v), x: i % N, y: Math.floor(i / N) };
-        grid[t.y][t.x] = t;
-        tileEl(t);
-      });
+      load(s.cells);
       if (!grid.flat().some(Boolean)) return false;
       score = Number(s.score) || 0;
       won = !!s.won;
       keepGoing = !!s.keepGoing;
+      const p = s.prev;
+      if (p && Array.isArray(p.cells) && p.cells.length === N * N)
+        prev = { cells: p.cells, score: Number(p.score) || 0, won: !!p.won, keepGoing: !!p.keepGoing };
       update();
       return true;
     }
@@ -281,6 +310,11 @@
       a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1],
     };
     document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'u' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const dir = keys[e.key.length === 1 ? e.key.toLowerCase() : e.key];
       if (!dir) return;
@@ -305,6 +339,7 @@
     });
     addEventListener('pointercancel', () => { start = null; });
 
+    undoBtn.addEventListener('click', () => { undo(); board.focus(); });
     document.getElementById('restart').addEventListener('click', () => { newGame(); board.focus(); });
 
     if (!restore()) newGame();

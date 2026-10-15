@@ -121,7 +121,7 @@ environment variable (real environment only). Click its path in the window's sid
 ## worklog-sync
 
 Exports Jira worklogs to `<data folder>\output\jira-export\<timestamp>.csv` (`date,project,hours,description`,
-one row per day + issue), then offers to send it to AEXT.
+one row per day + issue), then sends it to AEXT without asking.
 
 Before sending, rows AEXT already has (`GET /api/time-entries/`: same date, project and description) are
 skipped and listed; so are rows repeated in the CSV (the first row counts). When the hours differ, the
@@ -138,7 +138,7 @@ AEXT login is by emailed code. When `AEXT_EMAIL` is not set but a saved session 
 AEXT reports for it (`/api/auth/me`, checked by the window header and `account`) is used and saved to app settings. The session cookie is kept in the credential store (see Credentials).
 Parallel requests share one login.
 
-The CSV is re-read before import, so it can be edited before confirming. After import the quota is shown.
+After import the quota is shown.
 
 ## quota
 
@@ -539,8 +539,10 @@ Widgets so far:
   bottom of the picture rate the cat; the rating does nothing (not kept or sent anywhere), and each of
   the 5 ratings has its own message saying so. Each cat is a he or a she at random, for the messages.
 - `2048` — the game of 2048 on a 4×4 board: arrow keys or WASD once the widget has the focus (click
-  it), or a swipe. Reaching 2048 offers to keep going. The board, score and best score are kept in the
-  placement's settings, so a game goes on after the window closes. No auto refresh.
+  it), or a swipe. Reaching 2048 offers to keep going. The undo button (or U, Ctrl+Z) takes back the
+  last move, one only (not two in a row), and not once the game is over. The board, score, best score
+  and the position to undo to are kept in the placement's settings, so a game goes on after the window
+  closes. No auto refresh.
 - `clock` — the time now in one or two time zones (IANA names; `America/Chicago`, Central Time, by
   default), each with its place, short zone name (CDT, GMT+5) and how far it is from the device, and
   its date, marked Tomorrow / Yesterday (or the date) when it is not today on the device. 24-hour by
