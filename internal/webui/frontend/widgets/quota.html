@@ -77,8 +77,46 @@
     @media (max-height: 330px) { .rows .extra { display: none; } }
     @media (max-width: 300px) { .of .pct { display: none; } }
 
-    /* Debug view (--debug only): everything the quota was computed from, in the popup. */
+    /* How it is counted (the popup): the month as a calendar, each day by how it counts, the sums made
+       of them, and under Details everything the quota was computed from. */
     .dbg { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
+    .dbg .tabs { display: flex; gap: 4px; }
+    .dbg .tabs .btn[aria-pressed="true"] { background: var(--fill); color: var(--ink); font-weight: 600; }
+    .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal .wd { color: var(--muted); font-size: 11px; text-align: center; }
+    .cell { --c: var(--ok); position: relative; min-height: 50px; padding: 4px 6px; border-radius: 6px; overflow: hidden;
+      background: color-mix(in srgb, var(--c) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent);
+      display: flex; flex-direction: column; justify-content: space-between; cursor: default; }
+    .cell .n { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .cell .hrs { align-self: flex-end; font-variant-numeric: tabular-nums; position: relative; }
+    .cell .lbl { position: absolute; top: 5px; right: 6px; font-size: 10px; color: var(--muted); max-width: 60%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cell .fill { position: absolute; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--c) 22%, transparent); }
+    .cell.st-upcoming { --c: var(--muted); background: none; box-shadow: inset 0 0 0 1px var(--sep); }
+    .cell.st-missing { --c: var(--warn); }
+    .cell.st-today { box-shadow: inset 0 0 0 2px var(--warn); }
+    .cell.st-approved, .cell.st-pending, .cell.st-holiday { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--c) 26%, transparent) 0 2px, color-mix(in srgb, var(--c) 8%, transparent) 2px 6px); }
+    .cell.st-approved { --c: var(--approved); }
+    .cell.st-pending { --c: var(--pending); }
+    .cell.st-holiday { --c: var(--holiday); }
+    .cell.st-weekend { --c: var(--faint); background: none; box-shadow: none; color: var(--faint); }
+    .cell.st-nocal { --c: var(--fail); background: none; box-shadow: none; outline: 1px dashed var(--fail); outline-offset: -1px; }
+    .cell.st-offhours .hrs { color: var(--warn); font-weight: 600; }
+    .cell.blank { background: none; box-shadow: none; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .legend .sw2 { display: inline-block; width: 12px; height: 12px; margin-right: 5px; border-radius: 3px; vertical-align: -2px; }
+    .legend .muted { margin-left: 4px; }
+    .sum { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
+    .sum .t { display: flex; flex-direction: column; padding: 5px 9px; border-radius: 6px; background: var(--fill); }
+    .sum .t b { font: 600 16px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+    .sum .t span { color: var(--muted); font-size: 11px; }
+    .sum .t.res { background: color-mix(in srgb, var(--ok) 13%, transparent); }
+    .sum .t.res.bad { background: color-mix(in srgb, var(--fail) 12%, transparent); }
+    .sum .t.res.near { background: color-mix(in srgb, var(--warn) 13%, transparent); }
+    .sum .op { align-self: center; color: var(--muted); font-size: 15px; }
+    .rules { margin: 0; padding-left: 18px; color: var(--muted); line-height: 1.5; }
+    .dbg details.more > summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+    .dbg details.more[open] > summary { margin-bottom: 10px; }
+    .dbg details.more > div { display: flex; flex-direction: column; gap: 12px; }
     .dbg h3 { margin: 4px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
     .dbg .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 14px; margin: 0; }
     .dbg .kv dt { color: var(--muted); }
@@ -108,8 +146,8 @@
     <button class="icon-btn" id="next" type="button" title="Next month" aria-label="Next month" disabled>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
     </button>
-    <button class="icon-btn" id="debug" type="button" title="Debug view (--debug)" aria-label="Debug view" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7a3 3 0 0 1 6 0M12 11v9M3 13h4M17 13h4M4 7l3 2M20 7l-3 2M4 20l3-3M20 20l-3-3"/></svg>
+    <button class="icon-btn" id="debug" type="button" title="How it is counted" aria-label="How it is counted">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>
     </button>
     <button class="icon-btn" id="refresh" type="button" title="Refresh" aria-label="Refresh">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
@@ -135,6 +173,14 @@
       return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0');
     };
     const rangeDay = d => d.replaceAll('-', '.'); // 2026.09.20, as worklog-sync's --range takes it
+    // Where Sync starts: the first of this month, or a week before it until the 10th.
+    function syncFrom(today) {
+      const first = today.slice(0, 8) + '01';
+      if (Number(today.slice(8)) >= 10) return first;
+      const d = new Date(first + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 7);
+      return d.toISOString().slice(0, 10);
+    }
 
     function node(tag, cls, text) {
       const e = document.createElement(tag);
@@ -241,7 +287,6 @@
       content.removeAttribute('aria-busy');
       const [q, last] = r.months;
       warnHours = r.warnHours ?? 1;
-      debugBtn.hidden = !r.debug;
       document.getElementById('month').textContent = '· ' + monthName(q.month);
       content.textContent = '';
       content.style.display = 'contents';
@@ -290,17 +335,21 @@
       row(rows, 'Expected', node('span', 'muted', expected), 'extra');
       content.append(rows);
 
-      // worklog-sync's "this week" is from Monday through today; a past month syncs its missing days.
+      // Sync is this month through today, plus the last week of last month before the 10th; a past
+      // month syncs its missing days.
       const actions = node('div', 'actions');
-      const action = (label, primary, line) => {
+      const action = (label, primary, line, title) => {
         const b = node('button', 'btn' + (primary ? ' primary' : ''), label);
         b.type = 'button';
+        if (title) b.title = title;
         b.onclick = () => aex.run(line);
         actions.append(b);
       };
       if (q.current) {
         if (missing.length) action('Run worklog-sync', true, 'worklog-sync');
-        action('Sync this week', !missing.length || hasDiffs(), 'worklog-sync --range "this week"');
+        const from = syncFrom(r.today);
+        action('Sync', !missing.length || hasDiffs(), `worklog-sync --range "${rangeDay(from)}-${rangeDay(r.today)}"`,
+          `Sync ${shortDay(from)} – ${shortDay(r.today)} from Jira to AEXT`);
       } else if (missing.length) {
         action('Sync missing days', true, `worklog-sync --range "${rangeDay(missing[0])}-${rangeDay(missing[missing.length - 1])}"`);
       }
@@ -463,9 +512,159 @@
       }
     }
 
-    // The debug view: with --debug the reply has debug (home.go: QuotaDebug), and the bug button
-    // opens the month shown in a popup, which loads it again itself (Reload, and on every refresh).
-    debugBtn.onclick = () => aex.openPopup({ title: 'AEXT quota · debug', width: 760, data: { month: offset ? shownMonth() : '' } }).catch(() => {});
+    // How it is counted: the ⓘ button opens the month shown in a popup, which loads it again itself with
+    // debug (home.go: QuotaDebug), on Reload and on every refresh.
+    debugBtn.onclick = () => aex.openPopup({ title: 'AEXT quota · how it is counted', width: 760, data: { month: offset ? shownMonth() : '' } }).catch(() => {});
+
+    let pick = 0, moreOpen = false; // which of the reply's two months the popup shows; Details open
+
+    // How each day counts toward the quota, for the calendar's cells and its legend.
+    const statuses = {
+      logged: { label: 'Counted, logged', why: 'A working day in the AEXT calendar: it counts toward the quota' },
+      missing: { label: 'Counted, nothing logged', why: 'A working day before today with no hours: a missing day' },
+      today: { label: 'Today', why: 'Counted and due already: until its hours are logged it counts as behind' },
+      upcoming: { label: 'Counted, still to come', why: 'A working day after today: in the quota, not due yet' },
+      approved: { label: 'Leave', why: 'Approved leave on a working day: taken out of the quota' },
+      pending: { label: 'Leave, pending', why: 'Leave not approved yet: taken out of the quota like approved leave (with a warning)' },
+      holiday: { label: 'Holiday', why: 'A weekday the AEXT calendar has as not working: not in the quota' },
+      weekend: { label: 'Weekend', why: 'Not working in the AEXT calendar: not in the quota' },
+      nocal: { label: 'Not in calendar', why: 'The AEXT calendar has no entry for this day: not in the quota' },
+    };
+    const swatch = { logged: 'var(--ok)', missing: 'var(--warn)', today: 'var(--warn)', upcoming: 'var(--sep)', approved: 'var(--approved)',
+      pending: 'var(--pending)', holiday: 'var(--holiday)', weekend: 'var(--fill)', nocal: 'var(--fail)' };
+
+    function dayStatus(day, r, d, calendar) {
+      if (!calendar.has(day.date)) return 'nocal';
+      if (day.kind === 'leave') return day.leave.approved ? 'approved' : 'pending';
+      if (day.kind === 'holiday' || day.kind === 'weekend') return day.kind;
+      if (!d.workingDays[day.date]) return 'nocal';
+      if (day.date === r.today) return 'today';
+      if (day.date > r.today) return 'upcoming';
+      return day.hours > 0 ? 'logged' : 'missing';
+    }
+
+    // explain draws the month q: a calendar of its days by how each counts, a legend with how many of
+    // each, how the working days and hours add up, and the rules behind them.
+    function explain(dbg, r, q) {
+      const d = r.debug, raw = d.raw;
+      const calendar = new Map((raw.workingDays || []).map(w => [w.date, w.is_working_day]));
+      const ignored = new Set(d.ignoredStatuses || []);
+      const ignoredOn = date => (raw.leaves || []).filter(l => ignored.has(l.status) && l.start <= date && date <= l.end);
+      const counts = {};
+      let weekdays = 0, holidays = 0, noCal = 0, workWeekend = 0, leave = 0;
+
+      const cal = node('div', 'cal');
+      for (const w of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) cal.append(node('div', 'wd', w));
+      const days = q.days || [];
+      if (days.length) for (let i = (dayOf(days[0].date).getDay() + 6) % 7; i > 0; i--) cal.append(node('div', 'cell blank'));
+      for (const day of days) {
+        const s = dayStatus(day, r, d, calendar);
+        counts[s] = (counts[s] || 0) + 1;
+        const wd = dayOf(day.date).getDay();
+        const weekday = wd !== 0 && wd !== 6;
+        const working = calendar.get(day.date) === true;
+        if (weekday) weekdays++;
+        if (weekday && calendar.get(day.date) === false) holidays++;
+        if (weekday && !calendar.has(day.date)) noCal++;
+        if (!weekday && working) workWeekend++;
+        if (day.kind === 'leave') leave++;
+
+        const c = node('div', 'cell st-' + s);
+        const off = s !== 'logged' && s !== 'missing' && s !== 'today' && s !== 'upcoming';
+        if (day.hours && off) c.classList.add('st-offhours');
+        c.append(node('span', 'n', String(+day.date.slice(8))));
+        const label = day.leave ? (day.leave.type || 'leave').replaceAll('_', ' ') : s === 'holiday' ? 'holiday' : s === 'nocal' ? 'no entry' : !weekday && working ? 'working' : '';
+        if (label) c.append(node('span', 'lbl', label));
+        if (day.hours) {
+          if (!off && r.hoursPerDay > 0) {
+            const f = node('div', 'fill');
+            f.style.height = Math.min(1, day.hours / r.hoursPerDay) * 100 + '%';
+            c.append(f);
+          }
+          c.append(node('span', 'hrs', h(day.hours)));
+        }
+        const tip = [shortDay(day.date) + ' · ' + statuses[s].label, statuses[s].why];
+        if (!weekday && working) tip.push('A weekend day the AEXT calendar has as working');
+        if (day.leave) tip.push('Leave: ' + (day.leave.type || '?') + (day.leave.approved ? ', approved' : ', pending'));
+        for (const l of ignoredOn(day.date)) tip.push(`Ignored ${l.status} leave (${l.leave_type || '?'})`);
+        if (day.hours) tip.push(h(day.hours) + ' logged' + (off ? ': counts toward logged, though the day is off' : ''));
+        else if (s === 'missing') tip.push('Nothing logged');
+        c.title = tip.join('\n');
+        cal.append(c);
+      }
+      dbg.append(cal);
+
+      const legend = node('div', 'legend');
+      for (const [s, info] of Object.entries(statuses)) {
+        if (!counts[s]) continue;
+        const e = node('span');
+        e.title = info.why;
+        const sw = node('span', 'sw2');
+        if (s === 'approved' || s === 'pending' || s === 'holiday')
+          sw.style.background = `repeating-linear-gradient(-45deg, ${swatch[s]} 0 2px, color-mix(in srgb, ${swatch[s]} 30%, transparent) 2px 4px)`;
+        else if (s === 'today' || s === 'upcoming' || s === 'nocal') sw.style.boxShadow = `inset 0 0 0 ${s === 'today' ? 2 : 1}px ${swatch[s]}`;
+        else sw.style.background = swatch[s];
+        e.append(sw, info.label, node('span', 'muted', String(counts[s])));
+        legend.append(e);
+      }
+      dbg.append(legend);
+
+      // The working days: weekdays, less days off, plus working weekend days.
+      const sum = (terms, result, cls) => {
+        const e = node('div', 'sum');
+        terms.forEach(([op, value, label], i) => {
+          if (i) e.append(node('span', 'op', op));
+          const t = node('div', 't');
+          t.append(node('b', '', value), node('span', '', label));
+          e.append(t);
+        });
+        e.append(node('span', 'op', '='));
+        const t = node('div', 't res' + (cls ? ' ' + cls : ''));
+        t.append(node('b', '', result[0]), node('span', '', result[1]));
+        e.append(t);
+        return e;
+      };
+      const terms = [['', String(weekdays), 'weekdays']];
+      if (holidays) terms.push(['−', String(holidays), 'holidays']);
+      if (noCal) terms.push(['−', String(noCal), 'not in calendar']);
+      if (workWeekend) terms.push(['+', String(workWeekend), 'working weekend days']);
+      if (leave) terms.push(['−', String(leave), 'leave days']);
+      dbg.append(node('h3', '', 'Working days'), sum(terms, [String(q.workingDays), 'working days']));
+      const made = weekdays - holidays - noCal + workWeekend - leave;
+      if (made !== q.workingDays) dbg.append(node('div', 'flag', `▲ These add up to ${made}, but the quota counted ${q.workingDays}: see Details.`));
+
+      dbg.append(node('h3', '', 'Hours'));
+      dbg.append(sum([['', String(q.workingDays), 'working days'], ['×', h(r.hoursPerDay), 'per day (HOURS_PER_DAY)']], [h(q.expected), 'expected']));
+      if (q.current) {
+        dbg.append(sum([['', String(q.daysDue), 'days due, today included'], ['×', h(r.hoursPerDay), 'per day']], [h(q.expectedToDate), 'due by today']));
+        const v = verdict(q);
+        dbg.append(sum([['', h(q.expectedToDate), 'due by today'], ['−', h(q.logged), 'logged']],
+          [h(Math.abs(q.behind)), q.behind > epsilon ? 'behind' : q.behind < -epsilon ? 'ahead' : 'on track'], v.cls === 'bad' ? 'bad' : v.cls === 'near' ? 'near' : ''));
+        if (q.daysLeft > 0 && q.remaining > epsilon)
+          dbg.append(sum([['', h(q.remaining), 'still to log'], ['÷', String(q.daysLeft), 'days left, today included']], [h(q.perDayLeft) + '/day', 'to finish']));
+      } else if (!q.future) {
+        dbg.append(sum([['', h(q.expected), 'expected'], ['−', h(q.logged), 'logged']],
+          q.remaining <= epsilon ? ['✔', 'complete'] : [h(q.remaining), 'short'], q.remaining <= epsilon ? '' : shortCls(q)));
+      }
+      if (q.leaveHours > epsilon || q.offDayHours > epsilon) {
+        const parts = [];
+        if (q.leaveHours > epsilon) parts.push(h(q.leaveHours) + ' on leave days');
+        if (q.offDayHours > epsilon) parts.push(h(q.offDayHours) + ' on weekends and holidays');
+        dbg.append(node('div', 'flag', `▲ Logged includes ${parts.join(' and ')}: they count toward logged hours.`));
+      }
+
+      const tz = d.tzOffset === 'auto' ? 'the device’s time zone' : 'UTC' + (d.tzOffset >= 0 ? '+' : '') + d.tzOffset;
+      const rules = node('ul', 'rules');
+      for (const t of [
+        `A day is in the quota when the AEXT working-days calendar${r.country ? ` (${r.country})` : ''} has it as working and you have no leave on it.`,
+        ((d.ignoredStatuses || []).length ? `Leaves ${d.ignoredStatuses.join(' or ')} are ignored; pending` : 'Pending') +
+          ' leaves are taken out like approved ones. Leave on a day off changes nothing.',
+        'Logged is every hour AEXT has in the month, days off included.',
+        'Today is due: until its hours are logged it counts as behind. A missing day is a working day before today with no hours.',
+        `Days are in ${tz} (TZ_OFFSET_HOURS); today is ${shortDay(r.today)}.`,
+      ]) rules.append(node('li', '', t));
+      dbg.append(node('h3', '', 'Rules'), rules);
+    }
 
     async function loadDebug() {
       let dbg = document.getElementById('dbg');
@@ -475,7 +674,7 @@
       }
       try {
         const month = aex.popup.data.month;
-        renderDebug(dbg, await aex.call('quota', month ? { month } : {}));
+        renderDebug(dbg, await aex.call('quota', month ? { month, debug: true } : { debug: true }));
       } catch (e) {
         dbg.textContent = '';
         dbg.append(node('div', 'notice', 'Could not load the quota: ' + e.message));
@@ -512,10 +711,32 @@
       };
       top.append(node('span', 'muted', 'Loaded at ' + new Date().toLocaleTimeString()), button('Reload', loadDebug));
       dbg.append(top);
-      if (r.needLogin) return dbg.append(node('div', 'notice', 'No AEXT session (needLogin).'));
+      if (r.needLogin) return dbg.append(node('div', 'notice', 'Not logged in to AEXT.'));
       const d = r.debug;
-      if (!d) return dbg.append(node('div', 'notice', 'No debug data: aex is not running with --debug.'));
+      if (!d) return dbg.append(node('div', 'notice', 'AEXT sent nothing to explain.'));
       const raw = d.raw;
+      warnHours = r.warnHours ?? 1;
+
+      // Which month: the one shown in the widget, or the one before it.
+      const tabs = node('div', 'tabs');
+      r.months.forEach((q, i) => {
+        const b = button(monthName(q.month), () => {
+          pick = i;
+          renderDebug(dbg, r);
+        });
+        b.setAttribute('aria-pressed', String(i === pick));
+        tabs.append(b);
+      });
+      dbg.append(tabs);
+      explain(dbg, r, r.months[pick] || r.months[0]);
+
+      const details = node('details', 'more');
+      const more = node('div');
+      details.open = moreOpen;
+      details.ontoggle = () => (moreOpen = details.open);
+      details.append(node('summary', '', 'Details'), more);
+      dbg.append(details);
+      dbg = more;
 
       dbg.append(node('h3', '', 'Inputs'), kv([
         ['today', r.today], ['now', d.now], ['device', d.device], ['TZ_OFFSET_HOURS', d.tzOffset],

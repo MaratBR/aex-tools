@@ -54,11 +54,12 @@ page's sides to make it narrower (centred), or click Width to make it full width
 − / + (2 to 64) set how fine widths and places are. A widget
 this aex does not have (e.g. from another version) stays on the page with a warning, to remove in Edit.
 
-- **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including one that
-  syncs this week (Monday through today). ‹ › show other months. Leave (approved green, pending blue)
+- **AEXT quota**: this month's hours at a glance, with buttons to run worklog-sync, including Sync:
+  this month through today (before the 10th, from a week before the 1st). ‹ › show other months. Leave (approved green, pending blue)
   and holidays show on the bar and are skipped, with a warning when you logged hours on them. A month
   short by less than an hour shows in yellow (Settings > Widgets to change it). It also compares this
-  week's hours in Jira with AEXT and says when they differ.
+  week's hours in Jira with AEXT and says when they differ. ⓘ shows how each day of the month is
+  counted, as a calendar, and how the numbers add up.
 - **Google Calendar**: what's on now and coming up in one calendar.
 - **Jira tickets**: your open tickets, tickets where you are in a field you pick, or a JQL query; add
   tabs for several lists. To Do tickets not updated for 2 weeks are faded.

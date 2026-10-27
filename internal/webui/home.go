@@ -486,10 +486,10 @@ type QuotaReply struct {
 	Country     string        `json:"country,omitempty"`
 	Months      []quota.Month `json:"months,omitempty"`
 	Warnings    []string      `json:"warnings,omitempty"` // leave warnings (quota --verbose)
-	Debug       *QuotaDebug   `json:"debug,omitempty"`    // only with --debug: the widget's debug view
+	Debug       *QuotaDebug   `json:"debug,omitempty"`    // only when asked ({"debug": true}): the widget's "how it is counted" view
 }
 
-// QuotaDebug is everything the quota was computed from, for the quota widget's debug view.
+// QuotaDebug is everything the quota was computed from, for the quota widget's "how it is counted" view.
 type QuotaDebug struct {
 	Now           string                    `json:"now"`    // in TZ_OFFSET_HOURS
 	Device        string                    `json:"device"` // the device's clock and zone
@@ -536,7 +536,7 @@ func quotaAPI(args map[string]any) (any, error) {
 		Months:      []quota.Month{quota.ComputeMonth(month, now, d), quota.ComputeMonth(prev, now, d)},
 		Warnings:    d.Warnings,
 	}
-	if settings.Debug {
+	if debug, _ := args["debug"].(bool); debug {
 		var tz any = "auto"
 		if hours, ok := settings.TZOffsetHours(); ok {
 			tz = hours

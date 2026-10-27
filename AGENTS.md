@@ -470,7 +470,8 @@ Widgets so far:
 
 - `quota` (refreshes every minute) — AEXT quota: this month's hours against the quota (the quota tool's numbers: behind or
   ahead, due by today, hours/day to finish, working days without hours with a button to run
-  worklog-sync), a button to sync this week (`worklog-sync --range "this week"`: Monday through today)
+  worklog-sync), a Sync button (`worklog-sync --range "<from>-<today>"`: from the 1st of
+  this month, or before the 10th from 7 days before the 1st, so last month's last week too; `syncFrom`)
   and whether last month is complete. ‹ › show other months (up to 12 ahead; the `quota` call takes
   `{"month": "YYYY-MM"}`), kept as months from this one, so it follows when the month turns; This
   month goes back. A past month shows complete or short, its missing days with a button to sync
@@ -488,15 +489,22 @@ Widgets so far:
   rows (project mapped, hours to hundredths), against AEXT entries of the same day, project and
   description; AEXT entries whose description is not an issue key (logged by hand) are left out. It
   says ✔ matches, or how many differ and by how much in all, each day and issue with both hours on
-  hover, and Sync this week becomes the main button. Jira's worklogs (a request per issue) are reused
+  hover, and Sync becomes the main button. Jira's worklogs (a request per issue) are reused
   for 5 minutes, unless the refresh button is clicked; AEXT's are asked for every time. Nothing shows
   without a Jira login.
   Without an AEXT session it offers to log in (`account --login aext`).
-  With `--debug` the `quota` call also returns what the numbers came from (`QuotaDebug` in `home.go`:
-  now, the device's clock, the settings, AEXT's raw working days, summary and leaves with how long each
-  took, `quota.Raw`, and the day maps made of them), and a bug button opens the month shown in a popup
-  with it all: both months' fields, every day (calendar, kind, leave, counted, hours, flags), the
-  leaves (ignored ones struck through), warnings and the raw reply.
+  The ⓘ button opens "how it is counted" for the month shown (or the one before it), in a popup: the
+  month as a calendar, each day by how it counts (counted and logged, missing, today, still to come,
+  leave, pending leave, holiday, weekend, not in the AEXT calendar; its hours, filling it; why on
+  hover, with ignored leaves on it), a legend with how many of each, the sums (weekdays − holidays −
+  not in calendar + working weekend days − leave = working days; × `HOURS_PER_DAY` = expected; due by
+  today, behind or ahead, per day to finish; or short for a past month), hours logged on days off,
+  and the rules. Details (closed by default) has the rest: inputs, both months' fields, every day
+  (calendar, kind, leave, counted, hours, flags), the leaves (ignored ones struck through), warnings
+  and the raw reply. For it the popup asks the `quota` call with `{"debug": true}`, which then also
+  returns what the numbers came from (`QuotaDebug` in `home.go`: now, the device's clock, the
+  settings, AEXT's raw working days, summary and leaves with how long each took, `quota.Raw`, and the
+  day maps made of them); no `--debug` needed.
 - `google-calendars` (every minute) — Google Calendar: the events on now in one calendar, each with the
   time left and (smaller) when it ends (an all-day one: "all day", or "last day" on the last of several), then the upcoming ones through the third working day after today
   (AEXT working-days calendar with a session, else Monday to Friday), by day, one line each: start time,
