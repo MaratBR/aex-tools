@@ -80,8 +80,6 @@
     /* How it is counted (the popup): the month as a calendar, each day by how it counts, the sums made
        of them, and under Details everything the quota was computed from. */
     .dbg { display: flex; flex-direction: column; gap: 12px; font-size: 12px; }
-    .dbg .tabs { display: flex; gap: 4px; }
-    .dbg .tabs .btn[aria-pressed="true"] { background: var(--fill); color: var(--ink); font-weight: 600; }
     .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
     .cal .wd { color: var(--muted); font-size: 11px; text-align: center; }
     .cell { --c: var(--ok); position: relative; min-height: 50px; padding: 4px 6px; border-radius: 6px; overflow: hidden;
@@ -132,8 +130,50 @@
     .dbg tr.ignored td { text-decoration: line-through; color: var(--faint); }
     .dbg .flag { color: var(--warn); }
     .dbg pre { margin: 0; max-height: 360px; overflow: auto; padding: 8px; border-radius: 6px; background: var(--fill); font-size: 11px; }
-    .dbg .top { display: flex; gap: 6px; align-items: center; }
-    .dbg .top .muted { flex: 1; }
+    /* The popup's month selector: ‹ month ▾ ›, This / Last month, when it loaded and Reload, with a
+       bar under it running while a month loads (what was shown stays, faded, so nothing jumps). */
+    .dbg .top { position: relative; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding-bottom: 10px; box-shadow: inset 0 -.5px 0 var(--sep); }
+    .dbg button { transition: background-color .15s, color .15s, transform .12s ease; }
+    .dbg button:active:not(:disabled) { transform: scale(.93); }
+    .dbg .icon-btn:disabled { opacity: .35; cursor: default; background: none; }
+    .dbg .icon-btn svg { transition: transform .15s ease; }
+    .dbg .back:hover:not(:disabled) svg { transform: translateX(-2px); }
+    .dbg .fwd:hover:not(:disabled) svg { transform: translateX(2px); }
+    .mnav { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 999px; background: var(--fill-2); }
+    .mbtn { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 156px; padding: 4px 12px; border: 0; border-radius: 999px; background: none;
+      font: 600 13px/18px var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; }
+    .mbtn:hover:not(:disabled), .mbtn[aria-expanded="true"] { background: var(--hover); }
+    .mbtn:disabled { cursor: default; color: var(--muted); }
+    .mbtn svg { width: 12px; height: 12px; fill: none; stroke: var(--muted); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: transform .18s ease; }
+    .mbtn[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .chips { display: flex; gap: 4px; }
+    .chip { padding: 3px 10px; border: 0; border-radius: 999px; background: var(--fill); color: var(--muted); font-size: 12px; font-weight: 500; cursor: pointer; }
+    .chip:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
+    .chip[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); font-weight: 600; }
+    .chip:disabled { opacity: .5; cursor: default; }
+    .stamp { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .dbg.loading #reload svg { animation: spin .9s linear infinite; }
+    .progress { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; overflow: hidden; border-radius: 2px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .progress::before { content: ''; position: absolute; top: 0; bottom: 0; left: -35%; width: 35%; border-radius: 2px; background: var(--accent); animation: slide 1.1s ease-in-out infinite; }
+    .dbg.loading .progress { opacity: 1; }
+    @keyframes slide { to { left: 100%; } }
+    .dbg .body { display: flex; flex-direction: column; gap: 12px; transition: opacity .2s; }
+    .dbg.loading .body { opacity: .5; }
+    .dbg .body.in-next { animation: in-next .22s ease-out; }
+    .dbg .body.in-prev { animation: in-prev .22s ease-out; }
+    @keyframes in-next { from { opacity: 0; transform: translateX(14px); } }
+    @keyframes in-prev { from { opacity: 0; transform: translateX(-14px); } }
+    .dbg .cal .sk { height: 50px; }
+    /* The month picker: a year with ‹ ›, its months; this month outlined, the one shown filled. */
+    .picker { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; width: 256px; padding: 10px; border-radius: 12px; background: var(--surface);
+      box-shadow: var(--pop-shadow); transform-origin: top left; animation: pop .14s ease-out; }
+    @keyframes pop { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
+    .picker .yr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .picker .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .picker .m { padding: 7px 0; border: 0; border-radius: 8px; background: none; font-size: 13px; cursor: pointer; }
+    .picker .m:hover { background: var(--hover); }
+    .picker .m.now { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); }
+    .picker .m[aria-selected="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
   </style>
 </head>
 <body>
@@ -521,7 +561,8 @@
     // debug (home.go: QuotaDebug), on Reload and on every refresh.
     debugBtn.onclick = () => aex.openPopup({ title: 'AEXT quota · how it is counted', width: 760, data: { month: offset ? shownMonth() : '' } }).catch(() => {});
 
-    let pick = 0, moreOpen = false; // which of the reply's two months the popup shows; Details open
+    let moreOpen = false; // Details open
+    const weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     // How each day counts toward the quota, for the calendar's cells and its legend.
     const statuses = {
@@ -559,9 +600,10 @@
       let weekdays = 0, holidays = 0, noCal = 0, workWeekend = 0, leave = 0;
 
       const cal = node('div', 'cal');
-      for (const w of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) cal.append(node('div', 'wd', w));
+      for (const w of weekdayNames) cal.append(node('div', 'wd', w));
       const days = q.days || [];
-      if (days.length) for (let i = (dayOf(days[0].date).getDay() + 6) % 7; i > 0; i--) cal.append(node('div', 'cell blank'));
+      const lead = days.length ? (dayOf(days[0].date).getDay() + 6) % 7 : 0;
+      for (let i = lead; i > 0; i--) cal.append(node('div', 'cell blank'));
       for (const day of days) {
         const s = dayStatus(day, r, d, calendar);
         counts[s] = (counts[s] || 0) + 1;
@@ -597,6 +639,8 @@
         c.title = tip.join('\n');
         cal.append(c);
       }
+      // Always six weeks, so the popup keeps its height from month to month.
+      for (let i = lead + days.length; i < 42; i++) cal.append(node('div', 'cell blank'));
       dbg.append(cal);
 
       const legend = node('div', 'legend');
@@ -671,18 +715,175 @@
       dbg.append(node('h3', '', 'Rules'), rules);
     }
 
+    // The popup's month (YYYY-MM): the widget's at first ('' for this month until the first reply
+    // says which it is), then any picked. Replies are kept by month and shown at once when picked
+    // again, while the month loads anew.
+    let popMonth = '', popToday = '', popSeq = 0, popIn = '', pickYear = 0, picker = null, popMinHeight = 0;
+    const popCache = new Map();
+    let dbgEl, bodyEl, monthBtn, monthLabel, stampEl, navBtns, thisChip, lastChip;
+
+    function iconBtn(label, svg, onclick, cls) {
+      const b = node('button', 'icon-btn' + (cls ? ' ' + cls : ''));
+      b.type = 'button';
+      b.title = label;
+      b.setAttribute('aria-label', label);
+      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`;
+      b.onclick = onclick;
+      return b;
+    }
+    const backIcon = '<path d="M15 5l-7 7 7 7"/>', fwdIcon = '<path d="M9 5l7 7-7 7"/>';
+
+    function chip(label, onclick) {
+      const b = node('button', 'chip', label);
+      b.type = 'button';
+      b.onclick = onclick;
+      return b;
+    }
+
+    function buildDebug() {
+      dbgEl = document.body.appendChild(node('div', 'dbg'));
+      const top = node('div', 'top');
+      const nav = node('div', 'mnav');
+      monthBtn = node('button', 'mbtn');
+      monthBtn.type = 'button';
+      monthBtn.title = 'Pick a month';
+      monthBtn.setAttribute('aria-haspopup', 'dialog');
+      monthBtn.setAttribute('aria-expanded', 'false');
+      monthLabel = node('span');
+      monthBtn.append(monthLabel);
+      monthBtn.insertAdjacentHTML('beforeend', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>');
+      monthBtn.onclick = () => (picker ? closePicker() : openPicker());
+      navBtns = [
+        iconBtn('Previous month', backIcon, () => pickMonth(addMonths(popMonth, -1)), 'back'),
+        iconBtn('Next month', fwdIcon, () => pickMonth(addMonths(popMonth, 1)), 'fwd'),
+      ];
+      nav.append(navBtns[0], monthBtn, navBtns[1]);
+      thisChip = chip('This month', () => pickMonth(popToday));
+      lastChip = chip('Last month', () => pickMonth(addMonths(popToday, -1)));
+      const chips = node('div', 'chips');
+      chips.append(thisChip, lastChip);
+      stampEl = node('span', 'stamp');
+      const reload = iconBtn('Reload', '<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/>', () => loadDebug());
+      reload.id = 'reload';
+      top.append(nav, chips, stampEl, reload, node('div', 'progress'));
+      bodyEl = node('div', 'body');
+      dbgEl.append(top, bodyEl);
+
+      document.addEventListener('pointerdown', e => {
+        if (picker && !picker.contains(e.target) && !monthBtn.contains(e.target)) closePicker();
+      });
+      document.addEventListener('keydown', e => {
+        if (e.key !== 'Escape' || !picker) return;
+        e.preventDefault(); // closes the picker, not the popup
+        closePicker();
+        monthBtn.focus();
+      });
+      updateTop();
+    }
+
+    // updateTop shows the month picked; until the first reply says what this month is, it waits.
+    function updateTop() {
+      const known = !!popToday && !!popMonth;
+      monthLabel.textContent = popMonth ? monthName(popMonth) : 'Loading…';
+      monthBtn.disabled = !known;
+      for (const b of [...navBtns, thisChip, lastChip]) b.disabled = !known;
+      thisChip.setAttribute('aria-pressed', String(known && popMonth === popToday));
+      lastChip.setAttribute('aria-pressed', String(known && popMonth === addMonths(popToday, -1)));
+    }
+
+    function pickMonth(m) {
+      closePicker();
+      if (!m || m === popMonth) return;
+      popIn = m > popMonth ? 'in-next' : 'in-prev';
+      popMonth = m;
+      updateTop();
+      const r = popCache.get(m);
+      if (r) renderDebug(r);
+      loadDebug();
+    }
+
+    function openPicker() {
+      pickYear = +popMonth.slice(0, 4);
+      picker = node('div', 'picker');
+      picker.setAttribute('role', 'dialog');
+      picker.setAttribute('aria-label', 'Pick a month');
+      const yr = node('div', 'yr');
+      const year = node('span');
+      const grid = node('div', 'grid');
+      const draw = () => {
+        year.textContent = String(pickYear);
+        grid.textContent = '';
+        for (let i = 0; i < 12; i++) {
+          const ym = pickYear + '-' + String(i + 1).padStart(2, '0');
+          const b = node('button', 'm' + (ym === popToday ? ' now' : ''), new Date(pickYear, i, 1).toLocaleString('en', { month: 'short' }));
+          b.type = 'button';
+          b.setAttribute('aria-selected', String(ym === popMonth));
+          if (ym === popToday) b.title = 'This month';
+          b.onclick = () => pickMonth(ym);
+          grid.append(b);
+        }
+      };
+      yr.append(iconBtn('Previous year', backIcon, () => (pickYear--, draw()), 'back'), year,
+        iconBtn('Next year', fwdIcon, () => (pickYear++, draw()), 'fwd'));
+      picker.append(yr, grid);
+      draw();
+      dbgEl.querySelector('.top').append(picker);
+      monthBtn.setAttribute('aria-expanded', 'true');
+      (grid.querySelector('[aria-selected="true"]') || grid.firstChild).focus();
+    }
+
+    function closePicker() {
+      if (!picker) return;
+      picker.remove();
+      picker = null;
+      monthBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    // skeletonDebug stands in for the first month while it loads, about as tall as it will be.
+    function skeletonDebug() {
+      bodyEl.textContent = '';
+      const sk = (w, hgt) => {
+        const e = node('span', 'sk');
+        e.style.width = w;
+        if (hgt) e.style.height = hgt + 'px';
+        return e;
+      };
+      const cal = node('div', 'cal');
+      for (const w of weekdayNames) cal.append(node('div', 'wd', w));
+      for (let i = 0; i < 42; i++) cal.append(sk('auto'));
+      const legend = node('div', 'legend');
+      legend.append(sk('110px', 12), sk('90px', 12), sk('70px', 12), sk('80px', 12));
+      const sums = [0, 1, 2].map(() => {
+        const s = node('div', 'sum');
+        s.append(sk('90px', 42), sk('90px', 42), sk('90px', 42));
+        return s;
+      });
+      bodyEl.append(cal, legend, ...sums);
+    }
+
     async function loadDebug() {
-      let dbg = document.getElementById('dbg');
-      if (!dbg) {
-        dbg = document.body.appendChild(node('div', 'dbg'));
-        dbg.id = 'dbg';
-      }
+      const n = ++popSeq, month = popMonth;
+      dbgEl.classList.add('loading');
+      if (!bodyEl.childElementCount) skeletonDebug();
       try {
-        const month = aex.popup.data.month;
-        renderDebug(dbg, await aex.call('quota', month ? { month, debug: true } : { debug: true }));
+        const r = await aex.call('quota', month ? { month, debug: true } : { debug: true });
+        r.loadedAt = new Date();
+        if (!r.needLogin) popCache.set(r.months[0].month, r);
+        if (n !== popSeq) return;
+        if (!r.needLogin) {
+          popToday = r.today.slice(0, 7);
+          popMonth = r.months[0].month;
+        }
+        renderDebug(r);
       } catch (e) {
-        dbg.textContent = '';
-        dbg.append(node('div', 'notice', 'Could not load the quota: ' + e.message));
+        if (n !== popSeq) return;
+        bodyEl.textContent = '';
+        bodyEl.append(node('div', 'notice', 'Could not load the quota: ' + e.message));
+      } finally {
+        if (n === popSeq) {
+          dbgEl.classList.remove('loading');
+          updateTop();
+        }
       }
     }
 
@@ -705,35 +906,27 @@
       return t;
     }
 
-    function renderDebug(dbg, r) {
+    // renderDebug draws reply r under the month selector, sliding in from the side it was picked on.
+    function renderDebug(r) {
+      let dbg = bodyEl;
       dbg.textContent = '';
-      const top = node('div', 'top');
-      const button = (label, onclick) => {
-        const b = node('button', 'btn', label);
-        b.type = 'button';
-        b.onclick = onclick;
-        return b;
-      };
-      top.append(node('span', 'muted', 'Loaded at ' + new Date().toLocaleTimeString()), button('Reload', loadDebug));
-      dbg.append(top);
+      dbg.classList.remove('in-next', 'in-prev');
+      if (popIn) {
+        void dbg.offsetWidth; // restarts the animation
+        dbg.classList.add(popIn);
+        popIn = '';
+      }
+      stampEl.textContent = 'Loaded ' + r.loadedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       if (r.needLogin) return dbg.append(node('div', 'notice', 'Not logged in to AEXT.'));
       const d = r.debug;
       if (!d) return dbg.append(node('div', 'notice', 'AEXT sent nothing to explain.'));
       const raw = d.raw;
       warnHours = r.warnHours ?? 1;
-
-      // Which month: the one shown in the widget, or the one before it.
-      const tabs = node('div', 'tabs');
-      r.months.forEach((q, i) => {
-        const b = button(monthName(q.month), () => {
-          pick = i;
-          renderDebug(dbg, r);
-        });
-        b.setAttribute('aria-pressed', String(i === pick));
-        tabs.append(b);
-      });
-      dbg.append(tabs);
-      explain(dbg, r, r.months[pick] || r.months[0]);
+      explain(dbg, r, r.months[0]);
+      // The popup only grows from month to month (a past month has fewer sums than this one).
+      dbg.style.minHeight = '';
+      popMinHeight = Math.max(popMinHeight, dbg.offsetHeight);
+      dbg.style.minHeight = popMinHeight + 'px';
 
       const details = node('details', 'more');
       const more = node('div');
@@ -807,7 +1000,9 @@
     if (aex.popup) {
       document.querySelector('.head').hidden = true;
       content.hidden = true;
-      aex.onRefresh(loadDebug);
+      popMonth = aex.popup.data.month || '';
+      buildDebug();
+      aex.onRefresh(() => loadDebug());
       loadDebug();
     } else {
       prevBtn.onclick = () => go(offset - 1);

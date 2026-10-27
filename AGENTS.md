@@ -495,8 +495,12 @@ Widgets so far:
   for 5 minutes, unless the refresh button is clicked; AEXT's are asked for every time. Nothing shows
   without a Jira login.
   Without an AEXT session it offers to log in (`account --login aext`).
-  The ⓘ button opens "how it is counted" for the month shown (or the one before it), in a popup: the
-  month as a calendar, each day by how it counts (counted and logged, missing, today, still to come,
+  The ⓘ button opens "how it is counted" for the month shown, in a popup. Its top picks the month:
+  ‹ › a month at a time, the month's name opens a picker (a year with ‹ ›, its 12 months: any month
+  of any year), This month and Last month as shortcuts, when it loaded and Reload. Replies are kept
+  per month in the popup; while one loads a bar runs under the top and what was shown stays, faded
+  (the first time grey blocks stand in), and the calendar always has six weeks, so it does not
+  jump. Then the month as a calendar, each day by how it counts (counted and logged, missing, today, still to come,
   leave, pending leave, holiday, weekend, not in the AEXT calendar; its hours, filling it; why on
   hover, with ignored leaves on it), a legend with how many of each, the sums (weekdays − holidays −
   not in calendar + working weekend days − leave = working days; × `HOURS_PER_DAY` = expected; due by

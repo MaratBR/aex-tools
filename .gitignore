@@ -6,3 +6,4 @@ output/
 .DS_Store
 dist/
 .env.config
+.playwright-mcp/
