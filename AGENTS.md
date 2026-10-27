@@ -481,7 +481,9 @@ Widgets so far:
   skipped; an Off row lists them as periods. Hours logged on leave days and on weekends and
   holidays are a warning ("You worked 12h during your off time and 3h on non-working days",
   `quota.OffWork`). A month over and short by less than `QUOTA_WARN_HOURS` (default 1) shows in the
-  warning color (yellow) instead of red, here and in the quota tool. While it loads (the first time, or
+  warning color (yellow) instead of red, here and in the quota tool. This month behind by no more
+  than today still needs for a full day (`HOURS_PER_DAY` less today's hours, on a working day) is
+  yellow too: logging today catches up. While it loads (the first time, or
   a month not loaded yet) grey blocks stand where the numbers go. One row high it shows only the
   numbers and the bar.
   With this month shown, a Jira week row compares this week (Monday through today) in Jira with AEXT

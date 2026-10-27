@@ -191,11 +191,16 @@
 
     const shortCls = q => (q.remaining < warnHours ? 'near' : 'bad');
 
-    function verdict(q) {
+    // Hours still to log today for a full day: 0 when today is not a working day.
+    const todayLeft = (q, r) =>
+      q.days.some(d => d.date === r.today && d.kind === 'work') ? Math.max(0, r.hoursPerDay - q.today) : 0;
+
+    function verdict(q, r) {
       if (q.future) return { cls: 'neutral', text: 'Upcoming' };
       if (q.remaining <= epsilon) return { cls: 'good', text: q.current ? 'Quota filled' : 'Complete' };
       if (!q.current) return { cls: shortCls(q), text: h(q.remaining) + ' short' };
-      if (q.behind > epsilon) return { cls: 'bad', text: h(q.behind) + ' behind' };
+      // Behind only by what is left of today: a full day today catches up.
+      if (q.behind > epsilon) return { cls: q.behind <= todayLeft(q, r) + epsilon ? 'near' : 'bad', text: h(q.behind) + ' behind' };
       if (q.behind < -epsilon) return { cls: 'good', text: h(-q.behind) + ' ahead' };
       return { cls: 'good', text: 'On track' };
     }
@@ -291,7 +296,7 @@
       content.textContent = '';
       content.style.display = 'contents';
 
-      const v = verdict(q);
+      const v = verdict(q, r);
       const big = node('div', 'big');
       big.append(node('span', 'logged', h(q.logged)));
       const of = node('span', 'of', '/ ' + h(q.expected) + ' ');
@@ -637,7 +642,7 @@
       dbg.append(sum([['', String(q.workingDays), 'working days'], ['×', h(r.hoursPerDay), 'per day (HOURS_PER_DAY)']], [h(q.expected), 'expected']));
       if (q.current) {
         dbg.append(sum([['', String(q.daysDue), 'days due, today included'], ['×', h(r.hoursPerDay), 'per day']], [h(q.expectedToDate), 'due by today']));
-        const v = verdict(q);
+        const v = verdict(q, r);
         dbg.append(sum([['', h(q.expectedToDate), 'due by today'], ['−', h(q.logged), 'logged']],
           [h(Math.abs(q.behind)), q.behind > epsilon ? 'behind' : q.behind < -epsilon ? 'ahead' : 'on track'], v.cls === 'bad' ? 'bad' : v.cls === 'near' ? 'near' : ''));
         if (q.daysLeft > 0 && q.remaining > epsilon)
